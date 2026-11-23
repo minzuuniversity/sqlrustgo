@@ -27,6 +27,17 @@ VERIFIER_REL = "docs/releases/v4.1.0/refactoring/tools/verify_baseline.py"
 RECORD_REL = "docs/refactor/v4.1.0-c/takeover/BASELINE_FREEZE.json"
 MATERIAL_FILE = "docs/releases/v4.1.0/refactoring/REFACTOR_TASK_DAG.json"
 ALREADY_PRESENT_FILE = "scripts/soak/soak_steady_window.py"
+# A material file a downstream task may legitimately rewrite in place (Task 2
+# re-points the forward bindings); its blob must not be part of B3's verdict.
+REWRITTEN_FILE = "docs/releases/v4.1.0/refactoring/tools/verify_handoff.py"
+# An imported file whose deletion must still turn the validator red.
+DELETED_FILE = "docs/releases/v4.1.0/refactoring/audit/HARA-410/evidence/MANIFEST.json"
+# The one imported path a downstream task relocates (Task 4 moves ADR-410-011
+# into refactoring/adrs/ and rewrites its Status / Approvals lines).
+RELOCATABLE_FILE = ("docs/releases/v4.1.0/refactoring/runtime-contract/"
+                    "20261120-pr5915/ADR-410-011-UNIFIED_RUNTIME_CONTRACT.md")
+RELOCATED_TO = ("docs/releases/v4.1.0/refactoring/adrs/"
+                "ADR-410-011-UNIFIED_RUNTIME_CONTRACT.md")
 
 FAILURES: list[str] = []
 
@@ -117,6 +128,31 @@ def commit_tampering(repo: Path, path: str, extra: bytes, message: str):
     return repoint
 
 
+def commit_tree_change(repo: Path, path: str, extra: bytes = b"", move_to: str | None = None,
+                       message: str = "probe: tree change") -> None:
+    """Change HEAD's tree without touching the frozen record."""
+    target = Path(repo) / path
+    if move_to:
+        subprocess.run(["git", "mv", path, move_to], cwd=str(repo), check=True,
+                       capture_output=True)
+        target = Path(repo) / move_to
+    if extra:
+        target.write_bytes(target.read_bytes() + extra)
+        subprocess.run(["git", "add", move_to or path], cwd=str(repo), check=True,
+                       capture_output=True)
+    subprocess.run(["git", "-c", "user.name=probe", "-c", "user.email=probe@example.invalid",
+                    "commit", "--quiet", "-m", message],
+                   cwd=str(repo), check=True, capture_output=True)
+
+
+def expect_green(repo: Path, name: str) -> None:
+    """A legitimate downstream change must NOT turn the verifier red."""
+    proc = run_verifier(repo)
+    check(f"{name} ⇒ 退出码 0", proc.returncode == 0, proc.stdout.strip()[-400:])
+    check(f"{name} ⇒ 判定行 4/4 PASS", "4/4 PASS" in proc.stdout, proc.stdout.strip()[-400:])
+    check(f"{name} ⇒ 判定行是 COMPLETE", "COMPLETE" in proc.stdout, proc.stdout.strip()[-400:])
+
+
 def main() -> int:
     branch = git_out(REPO_ROOT, "rev-parse", "--abbrev-ref", "HEAD")
     print(f"分支：{branch}")
@@ -171,7 +207,42 @@ def main() -> int:
         subprocess.run(["git", "reset", "--hard", "--quiet", pristine], cwd=str(shared),
                        check=True, capture_output=True)
 
-        print("D. 工作树漂移")
+        print("D. 下游任务的合法改动不得判红；真正的删除必须判红")
+        # Task 2 的形态：前向绑定被就地改写 ⇒ 路径还在、blob 变了
+        commit_tree_change(shared, REWRITTEN_FILE, b"\n// task 2 re-pointed this\n",
+                           message="probe: in-place rewrite (Task 2 shape)")
+        expect_green(shared, "就地改写导入材料（Task 2 形态）")
+        subprocess.run(["git", "reset", "--hard", "--quiet", pristine], cwd=str(shared),
+                       check=True, capture_output=True)
+
+        # 真正的删除：路径没了、冻结 blob 也没了 ⇒ 必须判红
+        subprocess.run(["git", "rm", "--quiet", DELETED_FILE], cwd=str(shared),
+                       check=True, capture_output=True)
+        subprocess.run(["git", "-c", "user.name=probe", "-c", "user.email=probe@example.invalid",
+                        "commit", "--quiet", "-m", "probe: deleted an imported path"],
+                       cwd=str(shared), check=True, capture_output=True)
+        proc = run_verifier(shared)
+        check("删除导入路径 ⇒ 退出码非 0", proc.returncode != 0, f"got {proc.returncode}")
+        check("删除导入路径 ⇒ 报出缺失路径", "no longer present in HEAD" in proc.stdout,
+              proc.stdout.strip()[-400:])
+        subprocess.run(["git", "reset", "--hard", "--quiet", pristine], cwd=str(shared),
+                       check=True, capture_output=True)
+
+        # 搬走但内容未变（冻结 blob 仍在树里）⇒ 不得判红
+        commit_tree_change(shared, RELOCATABLE_FILE, move_to=RELOCATED_TO,
+                           message="probe: moved an imported path")
+        expect_green(shared, "搬走导入路径（内容未变）")
+        subprocess.run(["git", "reset", "--hard", "--quiet", pristine], cwd=str(shared),
+                       check=True, capture_output=True)
+
+        # Task 4 的形态：搬进 adrs/ 并改写第 6 行 ⇒ 路径与冻结 blob 都不在了
+        commit_tree_change(shared, RELOCATABLE_FILE, extra=b"\n<!-- task 4 rewrote this -->\n",
+                           move_to=RELOCATED_TO, message="probe: moved and rewritten")
+        expect_green(shared, "搬走并改写导入路径（Task 4 形态）")
+        subprocess.run(["git", "reset", "--hard", "--quiet", pristine], cwd=str(shared),
+                       check=True, capture_output=True)
+
+        print("E. 工作树漂移")
         drift = Path(shared) / ALREADY_PRESENT_FILE
         original_bytes = drift.read_bytes()
         drift.write_bytes(original_bytes + b"\n# drift\n")
@@ -182,13 +253,13 @@ def main() -> int:
               proc.stdout.strip()[-400:])
         drift.write_bytes(original_bytes)
 
-        print("E. python -O 必须拒绝运行")
+        print("F. python -O 必须拒绝运行")
         proc = run_verifier(shared, python_flags=["-O"])
         check("退出码非 0", proc.returncode != 0, f"got {proc.returncode}")
         check("不打印 4/4 PASS", "4/4 PASS" not in proc.stdout, proc.stdout.strip()[-400:])
         check("说明拒绝原因", "python -O" in proc.stdout, proc.stdout.strip()[-400:])
 
-        print("F. 单分支克隆：核不了的交叉核对必须被显式报告")
+        print("G. 单分支克隆：核不了的交叉核对必须被显式报告")
         single = tmp / "single"
         clone_single_branch(single, branch)
         for sha in ("45da6968ae2baaade6a31206eeee5854a8514ee2",
@@ -198,9 +269,13 @@ def main() -> int:
                                  cwd=str(single), capture_output=True).returncode != 0)
         proc = run_verifier(single)
         check("正常模式退出码 0", proc.returncode == 0, proc.stdout.strip()[-400:])
-        check("输出 4/4 PASS", "4/4 PASS" in proc.stdout)
-        check("显式列出跳过的交叉核对", "skipped:" in proc.stdout, proc.stdout.strip()[-400:])
-        check("判定行写明跳过数量", "cross-check(s) skipped" in proc.stdout,
+        check("判定行标出 PARTIAL", "PARTIAL" in proc.stdout, proc.stdout.strip()[-400:])
+        check("判定行不再声称 4/4 PASS", "4/4 PASS" not in proc.stdout,
+              proc.stdout.strip()[-400:])
+        check("判定行写明跳过数量且标为未核",
+              "SKIPPED (not verified)" in proc.stdout, proc.stdout.strip()[-400:])
+        check("逐条列出跳过的交叉核对", "skipped:" in proc.stdout, proc.stdout.strip()[-400:])
+        check("部分核对的检查标为 PARTIAL", "[B3] PARTIAL" in proc.stdout,
               proc.stdout.strip()[-400:])
         proc = run_verifier(single, "--strict")
         check("--strict 退出码非 0", proc.returncode != 0, f"got {proc.returncode}")

@@ -16,10 +16,37 @@ cannot be HEAD itself: a commit cannot contain its own SHA.
 Every counting and enumerating assertion is pinned to the frozen `base_sha`,
 never to HEAD.  HEAD moves as later tasks build on the baseline, and a
 validator that counts files in a moving ref goes red for reasons that have
-nothing to do with baseline integrity (Task 4 relocates ADR-410-011 out of
-the runtime-contract directory).  The HEAD side is only checked for
-*presence* -- the frozen content must still be in the tree, possibly
-relocated -- never for an exact count.
+nothing to do with baseline integrity.
+
+The HEAD side of B3 asserts PATH PRESENCE, not blob identity.  The freeze
+record freezes *identity* (which baseline, which material, which commit) --
+content is supposed to evolve as later tasks legitimately re-point bindings.
+Who owns which imported path:
+
+  * Task 2 (前向/历史 SHA 重指) rewrites these imported files **in place**,
+    so their path survives but their blob does not:
+      - docs/releases/v4.1.0/refactoring/REFACTOR_TASK_DAG.json
+        (tasks[].base_sha)
+      - docs/releases/v4.1.0/refactoring/TEST_COVERAGE_MATRIX.json
+        (cases[].base_sha)
+      - docs/refactor/v4.1.0-c/handoff/03_TASK_MANIFEST.jsonl (base_commit)
+      - docs/releases/v4.1.0/refactoring/test-factory-design/14_HANDOFF_MANIFEST.json
+        (base_sha)
+      - plus the handoff manifests that carry their hashes
+        (01_ARCHITECTURE_BASELINE.json, 04_TASK_DEPENDENCY_DAG.json,
+        10_HANDOFF_MANIFEST.json) and evidence/SOURCE_BINDINGS.json
+  * Task 4 (ADR 批准落地) **relocates** ADR-410-011 out of
+    runtime-contract/20261120-pr5915/ into refactoring/adrs/ and rewrites its
+    Status / Approvals lines -- so neither the old path nor the frozen blob
+    survives; see RELOCATABLE below.
+  * Content-level guarantees for the rewritable files belong to the
+    downstream per-task validators (verify_sha_scope.py, verify_matrix.py,
+    verify_handoff.py), not here.
+
+The blob-level comparison B3 does against the *source* commits is a
+frozen-versus-frozen comparison (45da6968ae vs the frozen base_sha): it
+proves the import itself was faithful and can never be affected by what a
+later task rewrites.
 
 Source-side cross-checks (comparing the baseline against the original source
 commits 45da6968ae / b681b74ca3 / 9a61cf59c0 / cfd4306b7e) can only run when
@@ -46,6 +73,18 @@ DEVELOP_TIP = "8cbde5b6d33c876fa1197474c46d50142a9823bd"
 MATERIAL_COMMIT = "45da6968ae2baaade6a31206eeee5854a8514ee2"
 RUNTIME_COMMIT = "b681b74ca3c0373cb2b7c44ff2cb032cf1a1c540"
 
+# Imported paths that a downstream task legitimately relocates, with the task
+# that owns them.  Such a path may leave its original directory *and* be
+# rewritten, so neither its path nor its frozen blob has to survive in HEAD;
+# the relocation is recognised by the file name still being present somewhere.
+# A plain deletion (the name gone everywhere) still turns B3 red.
+RELOCATABLE = {
+    "docs/releases/v4.1.0/refactoring/runtime-contract/20261120-pr5915/"
+    "ADR-410-011-UNIFIED_RUNTIME_CONTRACT.md":
+        "Task 4 moves it into docs/releases/v4.1.0/refactoring/adrs/ and "
+        "rewrites its Status / Approvals lines",
+}
+
 SKIPPED = []
 NOTES = []
 
@@ -61,8 +100,12 @@ def require(condition, message):
 
 
 def skip(check, detail):
-    """Record a cross-check that could not run (never reported as verified)."""
-    SKIPPED.append(f"{check}: {detail}")
+    """Record a cross-check that could not run (never reported as verified).
+
+    `check` is the assertion id (B1..B4) the skipped cross-check belongs to, so
+    the summary can say which check was only partially verified.
+    """
+    SKIPPED.append((check, detail))
 
 
 def note(message):
@@ -121,7 +164,12 @@ def path_import_entry(record):
 
 
 def compare_blobs(source_rev, base_rev, paths, label):
-    """The baseline must carry the source commit's bytes, unchanged."""
+    """The baseline must carry the source commit's bytes, unchanged.
+
+    Frozen-versus-frozen comparison (source commit vs the frozen base_sha):
+    it proves the *import* was faithful and is unaffected by what a later
+    task rewrites in HEAD.
+    """
     source = tree_entries(source_rev, paths)
     landed = tree_entries(base_rev, paths)
     for path in paths:
@@ -130,6 +178,39 @@ def compare_blobs(source_rev, base_rev, paths, label):
         require(source[path] == landed[path],
                 f"{label} file {path} was altered during import: "
                 f"{source[path][2][:12]} != {landed[path][2][:12]}")
+
+
+def missing_from_head(delta, frozen, head):
+    """Imported paths that are no longer accounted for in HEAD's tree.
+
+    Identity, not content: an imported path counts as present when
+
+      1. the path is still in HEAD -- its content may have been legitimately
+         rewritten in place (Task 2 re-points the forward bindings), so the
+         blob is deliberately not compared here;
+      2. its frozen blob is still in HEAD under another path -- the file was
+         relocated but not rewritten;
+      3. it is a declared relocation (RELOCATABLE) and the file name is still
+         in HEAD -- relocated *and* rewritten (Task 4 moves ADR-410-011 into
+         adrs/ and edits its Status / Approvals lines).
+
+    Anything else is a genuine deletion.
+    """
+    by_blob = {}
+    by_name = {}
+    for path, entry in head.items():
+        by_blob.setdefault(entry[2], set()).add(path)
+        by_name.setdefault(path.rsplit("/", 1)[-1], set()).add(path)
+    missing = []
+    for path in delta:
+        if path in head:
+            continue
+        if frozen[path][2] in by_blob:
+            continue
+        if path in RELOCATABLE and by_name.get(path.rsplit("/", 1)[-1]):
+            continue
+        missing.append(path)
+    return sorted(missing)
 
 
 def b1():
@@ -183,26 +264,16 @@ def b3(record):
                 f"the imported material is not the file set of {MATERIAL_COMMIT[:10]}")
         compare_blobs(MATERIAL_COMMIT, base, sorted(material), "material")
     else:
-        skip("B3/material", f"{MATERIAL_COMMIT[:10]} is not reachable")
+        skip("B3", f"material: {MATERIAL_COMMIT[:10]} is not reachable")
     if have_commit(RUNTIME_COMMIT):
         require(runtime == set(tree_entries(RUNTIME_COMMIT, path_import["path"])),
                 f"the imported runtime contract is not the file set of {RUNTIME_COMMIT[:10]}")
         compare_blobs(RUNTIME_COMMIT, base, sorted(runtime), "runtime contract")
     else:
-        skip("B3/runtime-contract", f"{RUNTIME_COMMIT[:10]} is not reachable")
-    frozen = tree_entries(base)
-    head = tree_entries("HEAD")
-    by_blob = {}
-    for path, entry in head.items():
-        by_blob.setdefault(entry[2], set()).add(path)
-    missing = []
-    for path in delta:
-        blob = frozen[path][2]
-        if head.get(path, (None, None, None))[2] == blob or blob in by_blob:
-            continue
-        missing.append(path)
+        skip("B3", f"runtime-contract: {RUNTIME_COMMIT[:10]} is not reachable")
+    missing = missing_from_head(delta, tree_entries(base), tree_entries("HEAD"))
     require(not missing,
-            f"{len(missing)} imported file(s) are no longer present in HEAD: {sorted(missing)[:5]}")
+            f"{len(missing)} imported path(s) are no longer present in HEAD: {missing[:5]}")
     return (f"{len(material)} material file(s) + {len(runtime)} runtime-contract file(s) "
             f"imported over develop, all still present in HEAD")
 
@@ -219,7 +290,7 @@ def check_applied(entry, base):
     require(diff_paths(f"{cherry}^", cherry),
             f"cherry-pick commit {cherry[:10]} carries no change but its entry is 'applied'")
     if not have_commit(sha):
-        skip("B4/applied", f"{sha[:10]} is not reachable; skipped the blob comparison")
+        skip("B4", f"applied: {sha[:10]} is not reachable; skipped the blob comparison")
         return
     paths = changed_paths(sha)
     require(paths, f"applied commit {sha[:10]} touches no file")
@@ -231,7 +302,7 @@ def check_already_present(entry, record):
     sha = entry["sha"]
     base, parent = record["base_sha"], record["parent"]
     if not have_commit(sha):
-        skip("B4/already-present", f"{sha[:10]} is not reachable; skipped the comparison")
+        skip("B4", f"already-present: {sha[:10]} is not reachable; skipped the comparison")
         return
     paths = changed_paths(sha)
     require(paths, f"commit {sha[:10]} touches no file")
@@ -313,30 +384,42 @@ def main():
 
     checks = (("B1", b1), ("B2", lambda: b2(record)), ("B3", lambda: b3(record)),
               ("B4", lambda: b4(record)))
-    passed = 0
+    results = []
     for name, check in checks:
         try:
             detail = check()
         except BaselineError as exc:
-            print(f"[{name}] FAIL  {exc}")
+            results.append((name, "FAIL", str(exc), ""))
         except Exception as exc:  # a broken record must fail closed, not crash
-            print(f"[{name}] FAIL  {type(exc).__name__}: {exc}")
+            results.append((name, "FAIL", f"{type(exc).__name__}: {exc}", ""))
         else:
-            passed += 1
-            print(f"[{name}] PASS  {detail}")
+            skipped_here = sum(1 for cid, _ in SKIPPED if cid == name)
+            scope = (f"[{skipped_here} cross-check(s) skipped - not verified]"
+                     if skipped_here else "")
+            results.append((name, "PASS" if not skipped_here else "PARTIAL",
+                            detail, scope))
+    for name, status, detail, scope in results:
+        print(f"[{name}] {status}  {detail}" + (f"  {scope}" if scope else ""))
     for message in NOTES:
         print(f"note: {message}")
-    for message in SKIPPED:
-        print(f"skipped: {message}")
-    verdict = f"{passed}/{len(checks)} PASS"
+    for check_id, detail in SKIPPED:
+        print(f"skipped: {check_id} {detail}")
+    tally = {}
+    for _, status, _, _ in results:
+        tally[status] = tally.get(status, 0) + 1
+    verdict = ", ".join(f"{tally[status]}/{len(checks)} {status}"
+                        for status in ("PASS", "PARTIAL", "FAIL") if tally.get(status))
     if SKIPPED:
-        verdict += f", {len(SKIPPED)} source-side cross-check(s) skipped"
+        verdict += (f" -- {len(SKIPPED)} source-side cross-check(s) SKIPPED "
+                    f"(not verified)")
         if args.strict:
             verdict += " -- STRICT FAIL"
             print(verdict)
             return 1
+    else:
+        verdict += " -- COMPLETE: every assertion ran"
     print(verdict)
-    return 0 if passed == len(checks) else 1
+    return 0 if not tally.get("FAIL") else 1
 
 
 if __name__ == "__main__":
