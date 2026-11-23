@@ -74,15 +74,16 @@ MATERIAL_COMMIT = "45da6968ae2baaade6a31206eeee5854a8514ee2"
 RUNTIME_COMMIT = "b681b74ca3c0373cb2b7c44ff2cb032cf1a1c540"
 
 # Imported paths that a downstream task legitimately relocates, with the task
-# that owns them.  Such a path may leave its original directory *and* be
-# rewritten, so neither its path nor its frozen blob has to survive in HEAD;
-# the relocation is recognised by the file name still being present somewhere.
-# A plain deletion (the name gone everywhere) still turns B3 red.
+# that owns them and where the file went.  Such a path may leave its original
+# directory *and* be rewritten, so neither its path nor its frozen blob has to
+# survive in HEAD; the relocation is recognised by the declared target still
+# being present.  A plain deletion (the file gone) still turns B3 red.
 RELOCATABLE = {
     "docs/releases/v4.1.0/refactoring/runtime-contract/20261120-pr5915/"
     "ADR-410-011-UNIFIED_RUNTIME_CONTRACT.md":
-        "Task 4 moves it into docs/releases/v4.1.0/refactoring/adrs/ and "
-        "rewrites its Status / Approvals lines",
+        ("docs/releases/v4.1.0/refactoring/adrs/ADR-410-011.md",
+         "Task 4 moved it into docs/releases/v4.1.0/refactoring/adrs/ as "
+         "ADR-410-011.md and rewrote its Status / Approvals lines"),
 }
 
 SKIPPED = []
@@ -190,24 +191,24 @@ def missing_from_head(delta, frozen, head):
          blob is deliberately not compared here;
       2. its frozen blob is still in HEAD under another path -- the file was
          relocated but not rewritten;
-      3. it is a declared relocation (RELOCATABLE) and the file name is still
-         in HEAD -- relocated *and* rewritten (Task 4 moves ADR-410-011 into
-         adrs/ and edits its Status / Approvals lines).
+      3. it is a declared relocation (RELOCATABLE) and the file was moved to
+         the declared target -- relocated *and* rewritten (Task 4 moved
+         ADR-410-011 into adrs/ as ADR-410-011.md and edited its Status /
+         Approvals lines).
 
     Anything else is a genuine deletion.
     """
     by_blob = {}
-    by_name = {}
     for path, entry in head.items():
         by_blob.setdefault(entry[2], set()).add(path)
-        by_name.setdefault(path.rsplit("/", 1)[-1], set()).add(path)
     missing = []
     for path in delta:
         if path in head:
             continue
         if frozen[path][2] in by_blob:
             continue
-        if path in RELOCATABLE and by_name.get(path.rsplit("/", 1)[-1]):
+        relocation = RELOCATABLE.get(path)
+        if relocation is not None and relocation[0] in head:
             continue
         missing.append(path)
     return sorted(missing)

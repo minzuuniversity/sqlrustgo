@@ -35,7 +35,9 @@
       ],
       "dependencies": [],
       "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "approved_adr_refs": [],
+      "approved_adr_refs": [
+        "ADR-410-009"
+      ],
       "proposed_adr_refs": [
         "ADR-410-001",
         "ADR-410-002",
@@ -173,7 +175,9 @@
         "C01-01"
       ],
       "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "approved_adr_refs": [],
+      "approved_adr_refs": [
+        "ADR-410-009"
+      ],
       "proposed_adr_refs": [
         "ADR-410-001",
         "ADR-410-002",
@@ -317,7 +321,9 @@
         "C01-01"
       ],
       "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "approved_adr_refs": [],
+      "approved_adr_refs": [
+        "ADR-410-009"
+      ],
       "proposed_adr_refs": [
         "ADR-410-001",
         "ADR-410-002",
@@ -461,7 +467,9 @@
         "C01-03"
       ],
       "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "approved_adr_refs": [],
+      "approved_adr_refs": [
+        "ADR-410-009"
+      ],
       "proposed_adr_refs": [
         "ADR-410-001",
         "ADR-410-002",
@@ -609,7 +617,11 @@
         "C01-04"
       ],
       "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "approved_adr_refs": [],
+      "approved_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-005"
+      ],
       "proposed_adr_refs": [
         "ADR-410-001",
         "ADR-410-002",
@@ -758,7 +770,9 @@
         "C01-05"
       ],
       "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "approved_adr_refs": [],
+      "approved_adr_refs": [
+        "ADR-410-005"
+      ],
       "proposed_adr_refs": [
         "ADR-410-001",
         "ADR-410-002",
@@ -906,7 +920,9 @@
         "C01-04"
       ],
       "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "approved_adr_refs": [],
+      "approved_adr_refs": [
+        "ADR-410-004"
+      ],
       "proposed_adr_refs": [
         "ADR-410-001",
         "ADR-410-002",
@@ -1055,7 +1071,11 @@
         "C01-04"
       ],
       "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "approved_adr_refs": [],
+      "approved_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-003",
+        "ADR-410-004"
+      ],
       "proposed_adr_refs": [
         "ADR-410-001",
         "ADR-410-002",
@@ -1204,7 +1224,9 @@
         "C01-04"
       ],
       "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "approved_adr_refs": [],
+      "approved_adr_refs": [
+        "ADR-410-009"
+      ],
       "proposed_adr_refs": [
         "ADR-410-001",
         "ADR-410-002",
@@ -1352,7 +1374,12 @@
         "C01-05"
       ],
       "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "approved_adr_refs": [],
+      "approved_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-003",
+        "ADR-410-008",
+        "ADR-410-009"
+      ],
       "proposed_adr_refs": [
         "ADR-410-001",
         "ADR-410-002",
@@ -1501,7 +1528,11 @@
         "C01-09"
       ],
       "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "approved_adr_refs": [],
+      "approved_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-008",
+        "ADR-410-009"
+      ],
       "proposed_adr_refs": [
         "ADR-410-001",
         "ADR-410-002",
@@ -1652,7 +1683,12 @@
         "C01-09"
       ],
       "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "approved_adr_refs": [],
+      "approved_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-003",
+        "ADR-410-008"
+      ],
       "proposed_adr_refs": [
         "ADR-410-001",
         "ADR-410-002",
@@ -1802,7 +1838,11 @@
         "C01-12"
       ],
       "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "approved_adr_refs": [],
+      "approved_adr_refs": [
+        "ADR-410-005",
+        "ADR-410-007",
+        "ADR-410-010"
+      ],
       "proposed_adr_refs": [
         "ADR-410-001",
         "ADR-410-002",
@@ -1954,7 +1994,14 @@
         "C01-12"
       ],
       "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "approved_adr_refs": [],
+      "approved_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-002",
+        "ADR-410-003",
+        "ADR-410-005",
+        "ADR-410-008",
+        "ADR-410-009"
+      ],
       "proposed_adr_refs": [
         "ADR-410-001",
         "ADR-410-002",
@@ -2251,7 +2298,9 @@
         "C01-04"
       ],
       "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "approved_adr_refs": [],
+      "approved_adr_refs": [
+        "ADR-410-009"
+      ],
       "proposed_adr_refs": [
         "ADR-410-001",
         "ADR-410-002",
@@ -2399,7 +2448,11 @@
         "C01-06"
       ],
       "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "approved_adr_refs": [],
+      "approved_adr_refs": [
+        "ADR-410-002",
+        "ADR-410-007",
+        "ADR-410-010"
+      ],
       "proposed_adr_refs": [
         "ADR-410-001",
         "ADR-410-002",
@@ -2558,7 +2611,12 @@
         "C01-17"
       ],
       "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "approved_adr_refs": [],
+      "approved_adr_refs": [
+        "ADR-410-001",
+        "ADR-410-005",
+        "ADR-410-008",
+        "ADR-410-009"
+      ],
       "proposed_adr_refs": [
         "ADR-410-001",
         "ADR-410-002",

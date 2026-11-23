@@ -23,11 +23,12 @@
   "adr_catalogue": {
     "expected_ids": [
       "ADR-410-001", "ADR-410-002", "ADR-410-003", "ADR-410-004", "ADR-410-005",
-      "ADR-410-006", "ADR-410-007", "ADR-410-008", "ADR-410-009", "ADR-410-010"
+      "ADR-410-006", "ADR-410-007", "ADR-410-008", "ADR-410-009", "ADR-410-010",
+      "ADR-410-011"
     ],
-    "expected_size": 10,
-    "adr_410_011_in_adrs": false,
-    "recorded_by": "Task 3 (2026-11-23)",
-    "note": "The state of docs/releases/v4.1.0/refactoring/adrs/ at this stage. O7 merges ADR-410-011 into adrs/ when the task that relocates it out of runtime-contract/20261120-pr5915/ does the move; that task updates this record and the gate follows it. verify_handoff.py asserts against this record, not against a set of acceptable values."
+    "expected_size": 11,
+    "adr_410_011_in_adrs": true,
+    "recorded_by": "Task 4 (2026-11-23)",
+    "note": "The state of docs/releases/v4.1.0/refactoring/adrs/ after Task 4 relocated ADR-410-011 out of runtime-contract/20261120-pr5915/ (O7) and recorded the owner's tiers in the ADR bodies (ADR-DECISION-RECORD.md:35-47): 001/002/005 APPROVED, 006/011 CONDITIONALLY_APPROVED, 003/004/007/008/009/010 APPROVED_DIRECTION. verify_handoff.py asserts against this record, not against a set of acceptable values."
   }
 }

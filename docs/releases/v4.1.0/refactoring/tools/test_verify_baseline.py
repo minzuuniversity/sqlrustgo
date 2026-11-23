@@ -32,12 +32,18 @@ ALREADY_PRESENT_FILE = "scripts/soak/soak_steady_window.py"
 REWRITTEN_FILE = "docs/releases/v4.1.0/refactoring/tools/verify_handoff.py"
 # An imported file whose deletion must still turn the validator red.
 DELETED_FILE = "docs/releases/v4.1.0/refactoring/audit/HARA-410/evidence/MANIFEST.json"
-# The one imported path a downstream task relocates (Task 4 moves ADR-410-011
-# into refactoring/adrs/ and rewrites its Status / Approvals lines).
+# Where an imported file may be moved to without changing its content: the
+# frozen blob stays in the tree, so B3 must not call it missing.
+MOVED_FILE = ("docs/releases/v4.1.0/refactoring/audit/HARA-410/evidence/"
+              "MANIFEST-relocated.json")
+# The one imported path a downstream task relocates.  Task 4 already moved
+# ADR-410-011 out of runtime-contract/20261120-pr5915/ into refactoring/adrs/
+# as ADR-410-011.md and rewrote its Status / Approvals lines, so neither the
+# old path nor the frozen blob survives.  The relocation is tolerated by the
+# RELOCATABLE registry -- but deleting the relocated file must still be red.
 RELOCATABLE_FILE = ("docs/releases/v4.1.0/refactoring/runtime-contract/"
                     "20261120-pr5915/ADR-410-011-UNIFIED_RUNTIME_CONTRACT.md")
-RELOCATED_TO = ("docs/releases/v4.1.0/refactoring/adrs/"
-                "ADR-410-011-UNIFIED_RUNTIME_CONTRACT.md")
+RELOCATED_ADR = "docs/releases/v4.1.0/refactoring/adrs/ADR-410-011.md"
 
 FAILURES: list[str] = []
 
@@ -262,16 +268,24 @@ def main() -> int:
                        check=True, capture_output=True)
 
         # 搬走但内容未变（冻结 blob 仍在树里）⇒ 不得判红
-        commit_tree_change(shared, RELOCATABLE_FILE, move_to=RELOCATED_TO,
+        commit_tree_change(shared, DELETED_FILE, move_to=MOVED_FILE,
                            message="probe: moved an imported path")
         expect_green(shared, "搬走导入路径（内容未变）")
         subprocess.run(["git", "reset", "--hard", "--quiet", pristine], cwd=str(shared),
                        check=True, capture_output=True)
 
-        # Task 4 的形态：搬进 adrs/ 并改写第 6 行 ⇒ 路径与冻结 blob 都不在了
-        commit_tree_change(shared, RELOCATABLE_FILE, extra=b"\n<!-- task 4 rewrote this -->\n",
-                           move_to=RELOCATED_TO, message="probe: moved and rewritten")
-        expect_green(shared, "搬走并改写导入路径（Task 4 形态）")
+        # Task 4 的形态已经在树里（搬进 adrs/ 并改写 Status / Approvals 行），
+        # 干净树那一节就是它的证明；RELOCATABLE 不是空白支票：把搬走的那个文件
+        # 删掉 ⇒ 必须判红。
+        subprocess.run(["git", "rm", "--quiet", RELOCATED_ADR], cwd=str(shared),
+                       check=True, capture_output=True)
+        subprocess.run(["git", "-c", "user.name=probe", "-c", "user.email=probe@example.invalid",
+                        "commit", "--quiet", "-m", "probe: deleted the relocated ADR"],
+                       cwd=str(shared), check=True, capture_output=True)
+        proc = run_verifier(shared)
+        check("删除已迁移的 ADR-410-011 ⇒ 退出码非 0", proc.returncode != 0, f"got {proc.returncode}")
+        check("删除已迁移的 ADR-410-011 ⇒ 报出缺失路径", "no longer present in HEAD" in proc.stdout,
+              proc.stdout.strip()[-400:])
         subprocess.run(["git", "reset", "--hard", "--quiet", pristine], cwd=str(shared),
                        check=True, capture_output=True)
 

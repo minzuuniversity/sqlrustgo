@@ -66,8 +66,25 @@ ADR011_README_REL = ("docs/releases/v4.1.0/refactoring/runtime-contract/20261120
                      "00_DECISION_README.md")
 ADR011_DST_REL = "docs/releases/v4.1.0/refactoring/adrs/ADR-410-011.md"
 
-# The `Status:` line every ADR in the shipped corpus carries.
-CORPUS_STATUS = "Status: PROPOSED / OWNER_REVIEW_REQUIRED。Approvals: []。本轮无正式接口实现。"
+# The `Status:` line each ADR in the shipped corpus carries.  Task 4 wrote the
+# owner's tiers into the ADR bodies (ADR-DECISION-RECORD.md:35-47): the fixture
+# replaces the line it finds, so the pinned text has to be the one the corpus
+# actually carries -- otherwise a probe would edit nothing and prove nothing.
+CORPUS_STATUS = {
+    ADR_REL:
+        "Status: APPROVED（无条件批准，依 ADR-DECISION-RECORD.md:38，2026-11-21）。"
+        "Approvals: []。Approval: OWNER-DECISION-C-ROUTE（属主 2026-11-21 集中裁决），"
+        "绑定 sha256:3a84ed54c50a3d36041c361dd19572c72023b0edb2dfa5d39c312c6180cb2de2"
+        "（BASE=fd849ae20541901d5e59f45cd3ba2c51093f5d5e 下的本 ADR 原文；当前摘要见 "
+        "handoff/01_ARCHITECTURE_BASELINE.json adrs[].sha256）。本轮无正式接口实现。",
+    ADR003_REL:
+        "Status: APPROVED_DIRECTION（批准方向，实施另审，具体契约满足阶段门禁，"
+        "依 ADR-DECISION-RECORD.md:40，2026-11-21）。Approvals: [ADR-410-001, ADR-410-002]。"
+        "Approval: OWNER-DECISION-C-ROUTE（属主 2026-11-21 集中裁决），"
+        "绑定 sha256:790aadc50a7cb6170ffb402af828eb752f10082d20a873a81d7b5d86bf4e3047"
+        "（BASE=fd849ae20541901d5e59f45cd3ba2c51093f5d5e 下的本 ADR 原文；当前摘要见 "
+        "handoff/01_ARCHITECTURE_BASELINE.json adrs[].sha256）。本轮无正式接口实现。",
+}
 
 FAILURES: list[str] = []
 SKIPPED: list[str] = []
@@ -141,8 +158,9 @@ def set_adr_status(repo: Path, status_line: str, rel: str = ADR_REL) -> None:
     """Replace an ADR's `Status:` line with `status_line`."""
     path = Path(repo) / rel
     text = path.read_text()
-    assert CORPUS_STATUS in text, "the corpus status line changed"
-    path.write_text(text.replace(CORPUS_STATUS, status_line))
+    corpus = CORPUS_STATUS[rel]
+    assert corpus in text, f"the corpus status line of {rel} changed"
+    path.write_text(text.replace(corpus, status_line))
 
 
 def cite_adr(repo: Path, adr_id: str, authorized: bool = False) -> None:
@@ -328,7 +346,7 @@ def main() -> int:
             path = Path(repo) / ADR_REL
             text = path.read_text()
             path.write_text(text.replace(
-                CORPUS_STATUS,
+                CORPUS_STATUS[ADR_REL],
                 "Status: PROPOSED / OWNER_REVIEW_REQUIRED。\n- Approvals: [OWNER-DECISION-C-ROUTE]"))
         probe_red(shared, pristine, "项目符号行上的 Approvals ⇒ 判红",
                   "not exactly an ADR id", mutate_bullet_approvals)
@@ -346,17 +364,18 @@ def main() -> int:
         check("PROPOSED 分支另有独立的一臂",
               "still PROPOSED" in reason, f"got {reason!r}")
 
-        print("G. 下游任务把档位写进 ADR 正文之后，臂必须照样被拒")
-        # The next task writes the owner's tiers into the ADR bodies.  If an arm
-        # took its expected outcome from the corpus, it would stop being
-        # rejected the day that lands -- and the next task would fail through
-        # no fault of its own.
+        print("G. 仓内档位变化之后，臂必须照样被拒")
+        # Task 4 wrote the owner's tiers into the ADR bodies.  If an arm took
+        # its expected outcome from the corpus, it would stop being rejected
+        # the day that lands -- and every later corpus change would silently
+        # disarm it.  The probe therefore moves the corpus the other way: the
+        # arms pin their own tier map and must reject either way.
         def promote_adr_003(repo: Path) -> None:
             set_adr_status(repo,
-                           "Status: APPROVED_DIRECTION（依 ADR-DECISION-RECORD.md:35-47，"
+                           "Status: APPROVED（依 ADR-DECISION-RECORD.md:35-47，"
                            "2026-11-21）。Approvals: []。", rel=ADR003_REL)
         if not CAN_FINALIZE:
-            skip("ADR-410-003 升格为 APPROVED_DIRECTION 后 --check 仍退出 0",
+            skip("ADR-410-003 变成 APPROVED 后 --check 仍退出 0",
                  f"这台机器无法重签（{FINALIZE_DETAIL}）")
         else:
             promote_adr_003(shared)
@@ -366,7 +385,7 @@ def main() -> int:
                 proc = run_verifier(shared, "--check")
             finally:
                 git_reset(shared, pristine)
-            check("ADR-410-003 变成 APPROVED_DIRECTION 后 --check 仍退出 0",
+            check("ADR-410-003 变成 APPROVED 后 --check 仍退出 0",
                   proc.returncode == 0, proc.stdout.strip()[-600:])
             promoted = {}
             if proc.returncode == 0:
@@ -377,7 +396,7 @@ def main() -> int:
             check("十个变异臂仍然全部被拒",
                   len(promoted.get("mutation_rejections", [])) == 10,
                   f"got {promoted.get('mutation_rejections')}")
-            check("升格后档位越权臂仍被拒",
+            check("仓内档位变了之后档位越权臂仍被拒",
                   "tier_overreach" in promoted.get("mutation_rejections", []),
                   f"got {promoted.get('mutation_rejections')}")
 
@@ -419,35 +438,41 @@ def main() -> int:
                   "no longer matches the frozen base commit's copy", mutate_hara, resign=True)
 
         print("J. ADR 目录的期望状态必须钉死")
-        def merge_adr_011(repo: Path) -> None:
-            """Simulate the O7 merge: relocate ADR-410-011 and record it.
+        # Task 4 did the O7 merge: ADR-410-011 now lives in adrs/ and the
+        # freeze record expects eleven ADRs.  The probes below undo the merge
+        # to show that the gate follows the recorded expectation -- it neither
+        # hard-codes a count nor accepts a catalogue that drifted away from
+        # the record.
+        def unmerge_adr_011(repo: Path) -> None:
+            """Undo the O7 merge: move ADR-410-011 back and repair the link.
 
             The relocation also has to repair the link the runtime contract's
             README carries to the ADR -- the gate checks markdown links, so a
             merge that leaves a dangling link is not a merge that passes.
             """
-            src = Path(repo) / ADR011_SRC_REL
-            dst = Path(repo) / ADR011_DST_REL
+            src = Path(repo) / ADR011_DST_REL
+            dst = Path(repo) / ADR011_SRC_REL
             dst.write_text(src.read_text())
             src.unlink()
             readme = Path(repo) / ADR011_README_REL
             text = readme.read_text()
-            readme.write_text(text.replace("](ADR-410-011-UNIFIED_RUNTIME_CONTRACT.md)",
-                                            "](../../adrs/ADR-410-011.md)"))
+            readme.write_text(text.replace("](../../adrs/ADR-410-011.md)",
+                                            "](ADR-410-011-UNIFIED_RUNTIME_CONTRACT.md)"))
+        probe_red(shared, pristine, "把 011 移出 adrs/ 再重签 ⇒ 判红（期望钉在 freeze 记录里）",
+                  "expects", unmerge_adr_011)
+
+        def unmerge_and_record(repo: Path) -> None:
+            """Undo the merge *and* record the smaller catalogue."""
+            unmerge_adr_011(repo)
             def mutate(data):
                 expectation = data["adr_catalogue"]
-                expectation["expected_ids"] = sorted(
-                    set(expectation["expected_ids"]) | {"ADR-410-011"})
+                expectation["expected_ids"] = [i for i in expectation["expected_ids"]
+                                               if i != "ADR-410-011"]
                 expectation["expected_size"] = len(expectation["expected_ids"])
-                expectation["adr_410_011_in_adrs"] = True
+                expectation["adr_410_011_in_adrs"] = False
             edit_json(repo, FREEZE_REL, mutate)
-        probe_green(shared, pristine, "O7 合并 011 并记录期望 ⇒ 绿", merge_adr_011)
-
-        def merge_then_drop(repo: Path) -> None:
-            merge_adr_011(repo)
-            (Path(repo) / ADR011_DST_REL).unlink()
-        probe_red(shared, pristine, "合并后把 011 拿掉再重签 ⇒ 判红",
-                  "expects", merge_then_drop)
+        probe_green(shared, pristine, "把 011 移出 adrs/ 并同步记录 ⇒ 绿（门禁跟随记录）",
+                    unmerge_and_record)
 
         print("K. CLI 的三条边界")
         proc = run_verifier(shared, python_flags=["-O"])

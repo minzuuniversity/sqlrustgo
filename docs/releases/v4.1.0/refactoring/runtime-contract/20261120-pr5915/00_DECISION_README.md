@@ -17,6 +17,6 @@ source_agent=Codex GPT-6.1 Sol；source_run=RUNTIME-5915-20261120；timestamp=20
 | Recovery | 只加载可信committed snapshot，重放完整已提交事务；丢弃loser workspace；不能靠“过滤redo”清除脏快照 |
 | 职责 | TM统一状态/冲突/决定；TxStore唯一mutation/undo/发布；Backend做可靠IO；WalService唯一LSN/fsync |
 
-阅读：[证据复核](01_EVIDENCE_ADJUDICATION.md) → [统一ADR](ADR-410-011-UNIFIED_RUNTIME_CONTRACT.md) → [迁移与回退](03_MIGRATION_AND_ROLLBACK.md) → [验收矩阵](04_COUNTEREXAMPLE_ACCEPTANCE_MATRIX.json) → [Owner待批项](05_OWNER_APPROVAL_REQUEST.md) → [DSH交接](handoff/00_HANDOFF_README.md)。
+阅读：[证据复核](01_EVIDENCE_ADJUDICATION.md) → [统一ADR](../../adrs/ADR-410-011.md) → [迁移与回退](03_MIGRATION_AND_ROLLBACK.md) → [验收矩阵](04_COUNTEREXAMPLE_ACCEPTANCE_MATRIX.json) → [Owner待批项](05_OWNER_APPROVAL_REQUEST.md) → [DSH交接](handoff/00_HANDOFF_README.md)。
 
-原45da6968ae/C722 manifest与十份PROPOSED ADR原字节保持不变。ADR-011是待审收敛提案，批准后才以版本化变更更新001–010及索引，不建立并行生效的架构SSOT。本包不扩大DSH-A/B已有授权；Owner待批项不自动转执行任务。
+原45da6968ae/C722 manifest与十份PROPOSED ADR原字节保持不变。ADR-011原为待审收敛提案；属主2026-11-21条件批准（7项补充验收契约冻结前不授权实现）后，已由版本化变更并入refactoring/adrs/ADR-410-011.md，001–010的Status/Approvals行按ADR-DECISION-RECORD.md落地，不建立并行生效的架构SSOT。本包不扩大DSH-A/B已有授权；Owner待批项不自动转执行任务。
