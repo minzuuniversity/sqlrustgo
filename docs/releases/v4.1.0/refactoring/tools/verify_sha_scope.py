@@ -91,10 +91,6 @@ def note(message):
         NOTES.append(message)
 
 
-def git(*args):
-    return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
-
-
 def git_ok(*args):
     return subprocess.run(
         ["git", *args], cwd=ROOT,
@@ -240,8 +236,7 @@ def s5(base):
             f"binding(s) still equal to {HISTORICAL_COMMIT[:10]}")
 
 
-def s6(base):
-    del base
+def s6():
     if not PILOT_EVIDENCE.is_file():
         skip("S6/pilot-evidence", f"{PILOT_EVIDENCE} does not exist")
         return f"pilot rerun summary not present, the binding was not checked"
@@ -283,7 +278,7 @@ def main():
         return 1
 
     checks = (("S1", lambda: s1(base)), ("S2", lambda: s2(base)), ("S3", lambda: s3(base)),
-              ("S4", lambda: s4(base)), ("S5", lambda: s5(base)), ("S6", lambda: s6(base)))
+              ("S4", lambda: s4(base)), ("S5", lambda: s5(base)), ("S6", s6))
     passed = 0
     for name, check in checks:
         try:
