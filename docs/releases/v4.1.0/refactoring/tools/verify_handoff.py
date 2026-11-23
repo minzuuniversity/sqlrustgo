@@ -338,7 +338,8 @@ def check():
         require(not entry["approval_refs"] or set(entry["approval_refs"])<=set(tiers),
                 f"{entry['id']} cites approval references that are not real ADR ids: "
                 f"{sorted(set(entry['approval_refs'])-set(tiers))}")
-    assert len(read(PLAN/"TEST_COVERAGE_MATRIX.json")["cases"])==75
+    cases=read(PLAN/"TEST_COVERAGE_MATRIX.json")["cases"]
+    assert len(cases)==75
     links=0
     for directory in [PLAN,HAND.parent]:
         for p in directory.rglob("*.md"):
@@ -350,6 +351,11 @@ def check():
     require(all(p.startswith(ALLOWED_CHANGE_PREFIXES) for p in changed),changed)
     pending=[t["task_id"] for t in dag["tasks"] if not t["approved_adr_refs"]]
     tier_counts={tier:sum(1 for v in tiers.values() if v==tier) for tier in list(ADR_TIERS)+["PROPOSED"]}
+    # The catalogue aggregate says how far the owner's ADR decision got; the
+    # state says whether the handoff may treat it as settled.  A task that
+    # still has no ADR mapped is an unsettled handoff, whatever the ADR texts
+    # say.
+    state="PENDING" if pending or baseline["adr_approval"]=="PENDING" else baseline["adr_approval"]
     notes=[]
     if pending:
         notes.append(f"{len(pending)} of {len(dag['tasks'])} task(s) still carry an empty "
@@ -357,7 +363,7 @@ def check():
     if "ADR-410-011" not in tiers:
         notes.append("ADR-410-011 is not merged into adrs/ yet (O7); the catalogue holds ten "
                      "ADRs and Task 4 owns the relocation")
-    return {"kind":"OFFLINE_DELIVERY_VALIDATION_NOT_EXECUTION_CERTIFICATION","source_run":"C-ALPHA-01-HANDOFF-20261120","timestamp":datetime.datetime.now(datetime.timezone.utc).isoformat(),"native_tasks":18,"adrs":len(baseline["adrs"]),"adr_catalogue_matches_adrs_dir":len(baseline["adrs"])==len(tiers),"adr_011_merged_into_adrs":"ADR-410-011" in tiers,"adr_tiers":tier_counts,"adr_approval":baseline["adr_approval"],"adr_approval_state":"PENDING" if baseline["adr_approval"]=="PENDING" else baseline["adr_approval"],"tasks_with_empty_approved_adr_refs":len(pending),"tasks_pending_adr_approval":pending,"pilot_input_cases":75,"hara_hashed_files":55,"manifest_bound_files":len(manifest["files"]),"task_dag":"ACYCLIC_NO_MISSING_DEPENDENCIES","mutation_rejections":rejected,"mutation_rejection_reasons":reasons,"local_links":links,"authorized_dispatch_count":0,"authorized_tokens":0,"proposed_token_upper":2570000,"handoff_manifest_sha256":sha(HAND/"10_HANDOFF_MANIFEST.json"),"notes":notes}
+    return {"kind":"OFFLINE_DELIVERY_VALIDATION_NOT_EXECUTION_CERTIFICATION","source_run":"C-ALPHA-01-HANDOFF-20261120","timestamp":datetime.datetime.now(datetime.timezone.utc).isoformat(),"native_tasks":len(native),"adrs":len(baseline["adrs"]),"adr_catalogue_matches_adrs_dir":len(baseline["adrs"])==len(tiers),"adr_011_merged_into_adrs":"ADR-410-011" in tiers,"adr_tiers":tier_counts,"adr_approval":baseline["adr_approval"],"adr_approval_state":state,"tasks_with_empty_approved_adr_refs":len(pending),"tasks_pending_adr_approval":pending,"pilot_input_cases":len(cases),"hara_hashed_files":len(m["files"]),"manifest_bound_files":len(manifest["files"]),"task_dag":"ACYCLIC_NO_MISSING_DEPENDENCIES","mutation_rejections":rejected,"mutation_rejection_reasons":reasons,"local_links":links,"authorized_dispatch_count":sum(1 for x in dag["tasks"]+dag["future_epics"] if x["dispatch_allowed"]),"authorized_tokens":dag["budget"]["authorized_tokens"],"proposed_token_upper":dag["budget"]["proposed_total_token_upper"],"handoff_manifest_sha256":sha(HAND/"10_HANDOFF_MANIFEST.json"),"notes":notes}
 
 def main():
     parser=argparse.ArgumentParser(description="Offline validation of the v4.1.0 C-ALPHA-01 handoff package.")
