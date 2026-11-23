@@ -26,8 +26,10 @@
     {
       "case_id": "PILOT-T1-001",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "append_only_storage::tests::transaction_lifecycle",
@@ -54,8 +56,10 @@
     {
       "case_id": "PILOT-T1-002",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "engine::memory_storage_rollback_after_bufferpool_insert_does_not_change_pages_visited",
@@ -82,8 +86,10 @@
     {
       "case_id": "PILOT-T1-003",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "engine::tests::rollback_actually_undoes_an_insert_4948",
@@ -110,8 +116,10 @@
     {
       "case_id": "PILOT-T1-004",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "engine::tests::rollback_of_update_restores_only_the_changed_row_5072",
@@ -138,8 +146,10 @@
     {
       "case_id": "PILOT-T1-005",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "engine::tests::test_nested_transaction_returns_error",
@@ -166,8 +176,10 @@
     {
       "case_id": "PILOT-T1-006",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "engine::tests::test_rollback_removes_inserted_rows",
@@ -194,8 +206,10 @@
     {
       "case_id": "PILOT-T1-007",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "engine::tests::test_rollback_restores_deleted_rows",
@@ -222,8 +236,10 @@
     {
       "case_id": "PILOT-T1-008",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "engine::tests::test_storage_engine_begin_rollback",
@@ -250,8 +266,10 @@
     {
       "case_id": "PILOT-T1-009",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "engine::tests::test_storage_engine_set_current_tx_id",
@@ -278,8 +296,10 @@
     {
       "case_id": "PILOT-T1-010",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "engine::tests::test_storage_engine_transaction",
@@ -306,8 +326,10 @@
     {
       "case_id": "PILOT-T1-011",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "file_storage::tests::test_in_transaction",
@@ -334,8 +356,10 @@
     {
       "case_id": "PILOT-T1-012",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "file_storage::tests::test_set_current_tx_id",
@@ -362,8 +386,10 @@
     {
       "case_id": "PILOT-T1-013",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "parallel_wal_storage::tests::transaction_lifecycle_via_wal",
@@ -390,8 +416,10 @@
     {
       "case_id": "PILOT-T1-014",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "pitr::tests::open_transaction_at_target_is_not_applied",
@@ -418,8 +446,10 @@
     {
       "case_id": "PILOT-T1-015",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "read_write_split::tests::test_classify_sql_transaction",
@@ -446,8 +476,10 @@
     {
       "case_id": "PILOT-T1-016",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "semisync::tests::test_semi_sync_master_record_transactions",
@@ -474,8 +506,10 @@
     {
       "case_id": "PILOT-T1-017",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "table_level_storage::tests::transaction_lifecycle_passthrough",
@@ -502,8 +536,10 @@
     {
       "case_id": "PILOT-T1-018",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "vtu_guard::tests::test_3129_memory_storage_in_transaction_reflects_tx_id",
@@ -530,8 +566,10 @@
     {
       "case_id": "PILOT-T1-019",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "vtu_guard::tests::test_3129_vtu_guard_passes_in_tx_with_memory_storage",
@@ -558,8 +596,10 @@
     {
       "case_id": "PILOT-T1-020",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "vtu_guard::tests::test_vtu_guard_tx_state_via_set_current_tx_id",
@@ -586,8 +626,10 @@
     {
       "case_id": "PILOT-T1-021",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "wal_legacy::tests::test_wal_5_transactions",
@@ -614,8 +656,10 @@
     {
       "case_id": "PILOT-T1-022",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "wal_legacy::tests::test_wal_manager_log_rollback",
@@ -642,8 +686,10 @@
     {
       "case_id": "PILOT-T1-023",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "wal_legacy::tests::test_wal_multiple_transactions",
@@ -670,8 +716,10 @@
     {
       "case_id": "PILOT-T1-024",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "wal_storage::tests::test_active_txs_lifecycle_begin_rollback",
@@ -698,8 +746,10 @@
     {
       "case_id": "PILOT-T1-025",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "wal_storage::tests::test_wal_active_tx_ids_empty",
@@ -726,8 +776,10 @@
     {
       "case_id": "PILOT-T1-026",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "wal_storage::tests::test_wal_set_current_tx_id",
@@ -754,8 +806,10 @@
     {
       "case_id": "PILOT-T1-027",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "wal_storage::tests::test_wal_storage_multiple_transactions",
@@ -782,8 +836,10 @@
     {
       "case_id": "PILOT-T1-028",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "wal_storage::tests::test_wal_storage_rollback",
@@ -810,8 +866,10 @@
     {
       "case_id": "PILOT-T1-101",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "tf_t1_01_insert_then_rollback",
@@ -838,8 +896,11 @@
     {
       "case_id": "PILOT-T1-102",
       "feature": "T1",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-04",
+        "INV-01"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "tf_t1_02_savepoint_partial_rollback",
@@ -866,8 +927,10 @@
     {
       "case_id": "PILOT-T2-001",
       "feature": "T2",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-02"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::tests::duplicate_keys_keep_every_row_id",
@@ -894,8 +957,10 @@
     {
       "case_id": "PILOT-T2-002",
       "feature": "T2",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-02"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "file_storage::tests::test_save_trigger_load_trigger_duplicate",
@@ -922,8 +987,10 @@
     {
       "case_id": "PILOT-T2-003",
       "feature": "T2",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-02"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "mvcc::tests::test_empty_table_snapshot",
@@ -950,8 +1017,10 @@
     {
       "case_id": "PILOT-T2-004",
       "feature": "T2",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-02"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "mvcc::tests::test_find_visible_at_snapshot_before_all",
@@ -978,8 +1047,10 @@
     {
       "case_id": "PILOT-T2-005",
       "feature": "T2",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-02"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "mvcc::tests::test_gc_drops_old_versions",
@@ -1006,8 +1077,10 @@
     {
       "case_id": "PILOT-T2-006",
       "feature": "T2",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-02"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "mvcc::tests::test_get_visible_pk_lookup",
@@ -1034,8 +1107,11 @@
     {
       "case_id": "PILOT-T3-001",
       "feature": "T3",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-07",
+        "INV-10"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "adaptive_hash_index::tests::test_invalidate_page_removes_entries",
@@ -1062,8 +1138,11 @@
     {
       "case_id": "PILOT-T3-002",
       "feature": "T3",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-07",
+        "INV-10"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "append_only_storage::tests::flush_clears_dirty",
@@ -1090,8 +1169,11 @@
     {
       "case_id": "PILOT-T3-003",
       "feature": "T3",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-07",
+        "INV-10"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "binary_storage::tests::test_bin_flush",
@@ -1118,8 +1200,11 @@
     {
       "case_id": "PILOT-T3-004",
       "feature": "T3",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-07",
+        "INV-10"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "buffer_pool::tests::buffer_pool_bumps_disk_reads_on_loader_invocation",
@@ -1146,8 +1231,11 @@
     {
       "case_id": "PILOT-T3-005",
       "feature": "T3",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-07",
+        "INV-10"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "buffer_pool::tests::buffer_pool_bumps_disk_writes_on_insert",
@@ -1174,8 +1262,11 @@
     {
       "case_id": "PILOT-T3-006",
       "feature": "T3",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-07",
+        "INV-10"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "buffer_pool::tests::buffer_pool_bumps_pages_visited_on_get_or_load",
@@ -1202,8 +1293,11 @@
     {
       "case_id": "PILOT-T3-007",
       "feature": "T3",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-07",
+        "INV-10"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "buffer_pool::tests::buffer_pool_stats_exposes_five_new_fields_with_zero_init",
@@ -1230,8 +1324,11 @@
     {
       "case_id": "PILOT-T3-008",
       "feature": "T3",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-07",
+        "INV-10"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "buffer_pool::tests::test_buffer_pool_basic",
@@ -1258,14 +1355,23 @@
     {
       "case_id": "PILOT-T4-101",
       "feature": "T4",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-14"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "tf_t4_01_scan_after_insert_sees_rows",
         "declared_source": null,
         "claimed_status": "KNOWN_FAIL",
         "declared_invariant": "后端能力契约"
+      },
+      "red_identity": {
+        "test_fn": "tf_t4_01_scan_after_insert_sees_rows",
+        "package_or_target": "sqlrustgo-storage / tf_t4_stub_silent_success",
+        "source_sha256": "35e03d78234e2f680ec1407389c4695a904250a809cc396a2dcebc6241464e0a",
+        "rc": 101,
+        "attribution": "STUB_SILENT_SUCCESS: insert Ok but scan returned 0 rows (expected 2) — D-001 BinaryTableStorageV2 桩静默成功 (#5913); source crates/storage/tests/tf_t4_stub_silent_success.rs; evidence docs/refactor/v4.1.0-c/takeover/dsh-b/artifacts/d001_20261120T165449.log"
       },
       "seed": "N/A",
       "backend": "BinaryTableStorageV2",
@@ -1286,14 +1392,23 @@
     {
       "case_id": "PILOT-T4-102",
       "feature": "T4",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-14"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "tf_t4_02_delete_reports_real_count",
         "declared_source": null,
         "claimed_status": "KNOWN_FAIL",
         "declared_invariant": "后端能力契约"
+      },
+      "red_identity": {
+        "test_fn": "tf_t4_02_delete_reports_real_count",
+        "package_or_target": "sqlrustgo-storage / tf_t4_stub_silent_success",
+        "source_sha256": "35e03d78234e2f680ec1407389c4695a904250a809cc396a2dcebc6241464e0a",
+        "rc": 101,
+        "attribution": "STUB_SILENT_SUCCESS: delete Ok(0) though 1 row was inserted — D-001 BinaryTableStorageV2 桩静默成功 (#5913); source crates/storage/tests/tf_t4_stub_silent_success.rs; evidence docs/refactor/v4.1.0-c/takeover/dsh-b/artifacts/d001_20261120T165449.log"
       },
       "seed": "N/A",
       "backend": "BinaryTableStorageV2",
@@ -1314,14 +1429,23 @@
     {
       "case_id": "PILOT-T4-103",
       "feature": "T4",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-14"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "tf_t4_03_update_reports_real_count",
         "declared_source": null,
         "claimed_status": "KNOWN_FAIL",
         "declared_invariant": "后端能力契约"
+      },
+      "red_identity": {
+        "test_fn": "tf_t4_03_update_reports_real_count",
+        "package_or_target": "sqlrustgo-storage / tf_t4_stub_silent_success",
+        "source_sha256": "35e03d78234e2f680ec1407389c4695a904250a809cc396a2dcebc6241464e0a",
+        "rc": 101,
+        "attribution": "STUB_SILENT_SUCCESS: update Ok(0) though 1 row exists — D-001 BinaryTableStorageV2 桩静默成功 (#5913); source crates/storage/tests/tf_t4_stub_silent_success.rs; evidence docs/refactor/v4.1.0-c/takeover/dsh-b/artifacts/d001_20261120T165449.log"
       },
       "seed": "N/A",
       "backend": "BinaryTableStorageV2",
@@ -1342,14 +1466,23 @@
     {
       "case_id": "PILOT-T4-104",
       "feature": "T4",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-14"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "tf_t4_04_non_tx_backend_must_reject_or_document",
         "declared_source": null,
         "claimed_status": "KNOWN_FAIL",
         "declared_invariant": "非事务后端须显式拒绝"
+      },
+      "red_identity": {
+        "test_fn": "tf_t4_04_non_tx_backend_must_reject_or_document",
+        "package_or_target": "sqlrustgo-storage / tf_t4_stub_silent_success",
+        "source_sha256": "35e03d78234e2f680ec1407389c4695a904250a809cc396a2dcebc6241464e0a",
+        "rc": 101,
+        "attribution": "UNSUPPORTED_NOT_REJECTED: begin_transaction Ok on a backend whose scan/delete are stubs — must be UNSUPPORTED — D-001 (#5914); source crates/storage/tests/tf_t4_stub_silent_success.rs; evidence docs/refactor/v4.1.0-c/takeover/dsh-b/artifacts/d001_20261120T165449.log"
       },
       "seed": "N/A",
       "backend": "BinaryTableStorageV2",
@@ -1370,8 +1503,10 @@
     {
       "case_id": "PILOT-T4-001",
       "feature": "T4",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-14"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "append_only_storage::tests::compact_table_drops_tombstones",
@@ -1398,8 +1533,10 @@
     {
       "case_id": "PILOT-T4-002",
       "feature": "T4",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-14"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "append_only_storage::tests::create_insert_scan_roundtrip",
@@ -1426,8 +1563,10 @@
     {
       "case_id": "PILOT-T4-003",
       "feature": "T4",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-14"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "append_only_storage::tests::delete_with_tombstones",
@@ -1454,8 +1593,10 @@
     {
       "case_id": "PILOT-T4-004",
       "feature": "T4",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-14"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "append_only_storage::tests::has_list_get_drop_table",
@@ -1482,8 +1623,10 @@
     {
       "case_id": "PILOT-T4-005",
       "feature": "T4",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-14"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "append_only_storage::tests::insert_missing_table_errors",
@@ -1510,8 +1653,10 @@
     {
       "case_id": "PILOT-T4-006",
       "feature": "T4",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-14"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "append_only_storage::tests::load_table_nonexistent_is_noop",
@@ -1538,8 +1683,10 @@
     {
       "case_id": "PILOT-T4-007",
       "feature": "T4",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-14"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "append_only_storage::tests::new_creates_dir_and_load_all_empty",
@@ -1566,8 +1713,10 @@
     {
       "case_id": "PILOT-T4-008",
       "feature": "T4",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-14"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "append_only_storage::tests::stub_methods_return_ok_or_empty",
@@ -1594,8 +1743,10 @@
     {
       "case_id": "PILOT-T4-009",
       "feature": "T4",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-14"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "binary_format::tests::test_binary_format_error_display",
@@ -1622,8 +1773,10 @@
     {
       "case_id": "PILOT-T4-010",
       "feature": "T4",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-14"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "binary_format::tests::test_helpers_write_read_string",
@@ -1650,8 +1803,11 @@
     {
       "case_id": "PILOT-T5-001",
       "feature": "T5",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-05",
+        "INV-15"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "adaptive_hash_index::tests::test_record_access_updates_promoted_count",
@@ -1678,8 +1834,11 @@
     {
       "case_id": "PILOT-T5-002",
       "feature": "T5",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-05",
+        "INV-15"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::index::composite_index_tests::test_composite_btree_insert_and_search",
@@ -1706,8 +1865,11 @@
     {
       "case_id": "PILOT-T5-003",
       "feature": "T5",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-05",
+        "INV-15"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::index::tests::test_btree_index_delete",
@@ -1734,8 +1896,11 @@
     {
       "case_id": "PILOT-T5-004",
       "feature": "T5",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-05",
+        "INV-15"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::index::tests::test_btree_index_delete_multiple",
@@ -1762,8 +1927,11 @@
     {
       "case_id": "PILOT-T5-005",
       "feature": "T5",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-05",
+        "INV-15"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::index::tests::test_btree_index_insert",
@@ -1790,8 +1958,11 @@
     {
       "case_id": "PILOT-T5-006",
       "feature": "T5",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-05",
+        "INV-15"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::index::tests::test_btree_index_insert_multiple",
@@ -1818,8 +1989,11 @@
     {
       "case_id": "PILOT-T5-007",
       "feature": "T5",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-05",
+        "INV-15"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::index::tests::test_btree_index_search_after_insert",
@@ -1846,8 +2020,11 @@
     {
       "case_id": "PILOT-T5-008",
       "feature": "T5",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-05",
+        "INV-15"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::index::tests::test_btree_node_insert_key_value",
@@ -1874,8 +2051,11 @@
     {
       "case_id": "PILOT-T6-001",
       "feature": "T6",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-08",
+        "INV-07"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "checkpoint::tests::test_checkpoint_cleanup",
@@ -1902,8 +2082,11 @@
     {
       "case_id": "PILOT-T6-002",
       "feature": "T6",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-08",
+        "INV-07"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "checkpoint::tests::test_checkpoint_manager_default",
@@ -1930,8 +2113,11 @@
     {
       "case_id": "PILOT-T6-003",
       "feature": "T6",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-08",
+        "INV-07"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "checkpoint::tests::test_checkpoint_metadata_serialization",
@@ -1958,8 +2144,11 @@
     {
       "case_id": "PILOT-T6-004",
       "feature": "T6",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-08",
+        "INV-07"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "checkpoint::tests::test_checkpoint_needs",
@@ -1986,8 +2175,11 @@
     {
       "case_id": "PILOT-T6-005",
       "feature": "T6",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-08",
+        "INV-07"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "checkpoint::tests::test_checkpoint_record",
@@ -2014,8 +2206,11 @@
     {
       "case_id": "PILOT-T6-006",
       "feature": "T6",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-08",
+        "INV-07"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "checkpoint::tests::test_checkpoint_save_load",
@@ -2040,10 +2235,13 @@
       "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
     },
     {
-      "case_id": "PILOT-T6-001",
+      "case_id": "PILOT-T6-001B",
       "feature": "T6",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-12",
+        "INV-07"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "(crash-recovery-kill-9)",
@@ -2068,10 +2266,13 @@
       "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
     },
     {
-      "case_id": "PILOT-T6-002",
+      "case_id": "PILOT-T6-002B",
       "feature": "T6",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-10",
+        "INV-11"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "(checkpoint-torn-write)",
@@ -2098,8 +2299,11 @@
     {
       "case_id": "PILOT-T5-101",
       "feature": "T5",
-      "invariant_ids": [],
-      "invariant_mapping_status": "UNREVIEWED",
+      "invariant_ids": [
+        "INV-01",
+        "INV-05"
+      ],
+      "invariant_mapping_status": "MAPPED",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "(odku-rollback-noop)",
@@ -2124,6 +2328,17 @@
       "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
     }
   ],
+  "status_vocabulary_mapping": {
+    "PASS": "PASS",
+    "COVERED_PASS": "PASS",
+    "FAILED_RED": "KNOWN_FAIL",
+    "COVERED_RED": "KNOWN_FAIL",
+    "FAIL": "FAIL",
+    "NOT_RUN": "NOT_RUN",
+    "INFRA_ERROR": "INFRA_ERROR",
+    "UNSUPPORTED": "UNSUPPORTED",
+    "DIALECT_DIFFERENCE": "DIALECT_DIFFERENCE"
+  },
   "hara_families": [
     {
       "finding_id": "F01",
