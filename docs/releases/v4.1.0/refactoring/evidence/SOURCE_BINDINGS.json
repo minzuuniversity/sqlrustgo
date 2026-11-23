@@ -1,8 +1,8 @@
 {
   "source_agent": "Codex GPT-6.1 Sol",
   "source_run": "C-ALPHA-01-HANDOFF-20261120",
-  "timestamp": "2026-11-23T12:56:06.277026+00:00",
-  "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+  "timestamp": "2026-11-23T13:25:45.825417+00:00",
+  "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
   "dsh_local_sha": "551308365d6a7140ca820a2f72352d09bdcb8d99",
   "kos_local_sha": "97d9809a145e709fcde39d9eb02800e4a4c42b2b",
   "remote_schema_heads_verified": false,
