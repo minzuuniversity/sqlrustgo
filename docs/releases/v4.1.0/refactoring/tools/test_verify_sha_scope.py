@@ -153,7 +153,12 @@ def main() -> int:
         shared = tmp / "shared"
         clone_shared(shared, branch)
         if under_test:
+            # Commit the verifier under test: every probe resets the clone back
+            # to `pristine`, so an uncommitted copy would be restored away after
+            # the first probe and the rest would silently test the committed
+            # verifier instead.
             shutil.copyfile(under_test, Path(shared) / VERIFIER_REL)
+            commit_all(shared, "probe: the verifier under test")
         pristine = git_out(shared, "rev-parse", "HEAD")
 
         print("A. 干净树")
