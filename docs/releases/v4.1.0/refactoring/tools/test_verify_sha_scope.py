@@ -76,6 +76,10 @@ def clone_shared(dest: Path, branch: str) -> None:
     subprocess.run(["git", "clone", "--quiet", "--shared", "--branch", branch,
                     str(source_repo()), str(dest)],
                    check=True, capture_output=True, text=True)
+    # No auto-gc: a background gc writing into the clone while the temporary
+    # directory is being removed makes the cleanup fail with ENOTEMPTY.
+    subprocess.run(["git", "config", "gc.auto", "0"], cwd=str(dest),
+                   check=True, capture_output=True)
 
 
 def run_verifier(repo: Path, *args: str, python_flags: list[str] | None = None):
@@ -144,7 +148,7 @@ def main() -> int:
     if under_test:
         print(f"被测校验器：{under_test}（覆盖克隆内的版本）")
 
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         tmp = Path(tmp)
         shared = tmp / "shared"
         clone_shared(shared, branch)
