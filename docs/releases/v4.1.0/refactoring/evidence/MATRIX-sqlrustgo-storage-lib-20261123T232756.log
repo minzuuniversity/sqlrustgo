@@ -1,0 +1,49 @@
+
+running 42 tests
+test buffer_pool::tests::buffer_pool_stats_exposes_five_new_fields_with_zero_init ... ok
+test append_only_storage::tests::transaction_lifecycle ... ok
+test append_only_storage::tests::flush_clears_dirty ... ok
+test buffer_pool::tests::test_buffer_pool_basic ... ok
+test buffer_pool::tests::buffer_pool_bumps_disk_reads_on_loader_invocation ... ok
+test buffer_pool::tests::buffer_pool_bumps_disk_writes_on_insert ... ok
+test bplus_tree::tests::duplicate_keys_keep_every_row_id ... ok
+test engine::tests::test_nested_transaction_returns_error ... ok
+test buffer_pool::tests::buffer_pool_bumps_pages_visited_on_get_or_load ... ok
+test engine::tests::test_storage_engine_set_current_tx_id ... ok
+test engine::tests::test_storage_engine_transaction ... ok
+test adaptive_hash_index::tests::test_invalidate_page_removes_entries ... ok
+test engine::tests::test_storage_engine_begin_rollback ... ok
+test mvcc::tests::test_empty_table_snapshot ... ok
+test mvcc::tests::test_find_visible_at_snapshot_before_all ... ok
+test mvcc::tests::test_gc_drops_old_versions ... ok
+test mvcc::tests::test_get_visible_pk_lookup ... ok
+test parallel_wal_storage::tests::transaction_lifecycle_via_wal ... ok
+test file_storage::tests::test_in_transaction ... ok
+test file_storage::tests::test_set_current_tx_id ... ok
+test engine::tests::test_rollback_removes_inserted_rows ... ok
+test engine::tests::rollback_actually_undoes_an_insert_4948 ... ok
+test semisync::tests::test_semi_sync_master_record_transactions ... ok
+test engine::tests::rollback_of_update_restores_only_the_changed_row_5072 ... ok
+test engine::tests::test_rollback_restores_deleted_rows ... ok
+test table_level_storage::tests::transaction_lifecycle_passthrough ... ok
+test vtu_guard::tests::test_3129_memory_storage_in_transaction_reflects_tx_id ... ok
+test vtu_guard::tests::test_3129_vtu_guard_passes_in_tx_with_memory_storage ... ok
+test vtu_guard::tests::test_vtu_guard_tx_state_via_set_current_tx_id ... ok
+test pitr::tests::open_transaction_at_target_is_not_applied ... ok
+test read_write_split::tests::test_classify_sql_transaction ... ok
+test binary_storage::tests::test_bin_flush ... ok
+test wal_storage::tests::test_wal_set_current_tx_id ... ok
+test wal_storage::tests::test_wal_active_tx_ids_empty ... ok
+test wal_storage::tests::test_active_txs_lifecycle_begin_rollback ... ok
+test wal_storage::tests::test_wal_storage_multiple_transactions ... ok
+test wal_storage::tests::test_wal_storage_rollback ... ok
+test engine::memory_storage_rollback_after_bufferpool_insert_does_not_change_pages_visited ... ok
+test file_storage::tests::test_save_trigger_load_trigger_duplicate ... ok
+test wal_legacy::tests::test_wal_manager_log_rollback ... ok
+test wal_legacy::tests::test_wal_multiple_transactions ... ok
+test wal_legacy::tests::test_wal_5_transactions ... ok
+
+test result: ok. 42 passed; 0 failed; 0 ignored; 0 measured; 884 filtered out; finished in 0.01s
+
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.52s
+     Running unittests src/lib.rs (target/debug/deps/sqlrustgo_storage-01cf0e6d83a630fd)
