@@ -2,14 +2,14 @@
   "version": "C-HANDOFF-1",
   "source_agent": "Codex GPT-6.1 Sol",
   "source_run": "C-ALPHA-01-HANDOFF-20261120",
-  "timestamp": "2026-11-23T13:30:48.852996+00:00",
+  "timestamp": "2026-11-23T13:43:52.552658+00:00",
   "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
   "source_uri": "http://192.168.0.252:3000/openclaw/sqlrustgo",
   "conflict_resolution": "Owner approval and live DSH policy required",
   "status": "CANDIDATE_NOT_AUTHORIZED",
   "files": {
     "docs/refactor/v4.1.0-c/handoff/00_HANDOFF_README.md": "f2310d75dfc235badd937753947bf172d0e0dc5595f8fea01ac1d1224bc671b6",
-    "docs/refactor/v4.1.0-c/handoff/01_ARCHITECTURE_BASELINE.json": "627648a36bc87aed876f68af57f45002c3868a1633eae10f02cb697ed31fb6d0",
+    "docs/refactor/v4.1.0-c/handoff/01_ARCHITECTURE_BASELINE.json": "31af7b74ac6efb9ef5eaa045144f03c5f0fa9a57a07790c0cc74fe42b7e472b6",
     "docs/refactor/v4.1.0-c/handoff/02_MILESTONE_PLAN.json": "b2dd01f31381f4519bb9862f79762c1e7e437e6d48b02404b93a9aca68bd65f3",
     "docs/refactor/v4.1.0-c/handoff/03_TASK_MANIFEST.jsonl": "1f0133823c42dded0415d622a087eb1f711d199c450d15949599ab7677481fea",
     "docs/refactor/v4.1.0-c/handoff/04_TASK_DEPENDENCY_DAG.json": "76f22b0e9b1e75559b91286c4073699a9d60470c7c31e8beac671c45c0fccb28",
@@ -176,7 +176,7 @@
     "docs/releases/v4.1.0/refactoring/evidence/PR_SPEC.md": "f95bb25d6167c097bd5545c6a3bfa4683b742d5887fe5d256598650565ceefe1",
     "docs/releases/v4.1.0/refactoring/evidence/PR_TEST_DESIGN.md": "20755c9961f3f217db266e33d5dd909d9008589ab6f7042a8e63dddbf99ef74d",
     "docs/releases/v4.1.0/refactoring/evidence/PR_TEST_PLAN.md": "6d4edfe4513d89e6d11e5fee874ea1a6fc27f6c4064d4e075ddeed401ca4c939",
-    "docs/releases/v4.1.0/refactoring/evidence/SOURCE_BINDINGS.json": "916aaaae354fb6f39d2e6df263b6fbd2750a505b2ea654d1d43d11711e16acb0",
+    "docs/releases/v4.1.0/refactoring/evidence/SOURCE_BINDINGS.json": "e7ce732bc8cc2b012cfe85bc3b6574616838f1e42d968380ae4b8f9242b42a11",
     "docs/releases/v4.1.0/refactoring/evidence/WORK_RECORD.md": "3964d7c3dddb90f74e1e3736930f38f440c98666287e3c7d53d352c7a183d8a8",
     "docs/releases/v4.1.0/refactoring/evidence/aoci_maintain.json": "4517d6f72d5dda26933d14624a062ae53d1642de76fe64b45f92461c683bda62",
     "docs/releases/v4.1.0/refactoring/evidence/aoci_overview.json": "e8e2d6810fd1b508dc670224525d0e81e819a6fd00fcde6d92d94baf8d092426",
@@ -230,6 +230,7 @@
     "docs/releases/v4.1.0/refactoring/evidence/gitea-releases.json": "0c6e6b6473b6f97c29ab30fe3363a5add250ea7fed90756e7a2db1731dd9185c",
     "docs/releases/v4.1.0/refactoring/evidence/gitea-tags.json": "1d87874a9bfb1aae5860374c071c4918ed4242b1e3d5f26bfb1f4f45a2de840d",
     "docs/releases/v4.1.0/refactoring/evidence/gitnexus-staged.json": "a1ce655701c6977c3f8f55b4295cca1e41ad1b152e3ec87727149aac2c6dce5a",
+    "docs/releases/v4.1.0/refactoring/evidence/validation.json": "69bfabc045d011c4a71e018d2fdc1f09e665bc621c660393d50e8a56fd9b52c9",
     "docs/releases/v4.1.0/refactoring/runtime-contract/20261120-pr5915/00_DECISION_README.md": "986ee3f7016138e1c384fde679623b5fc5efddc4d7a800d3d6d1865c59c647bb",
     "docs/releases/v4.1.0/refactoring/runtime-contract/20261120-pr5915/01_EVIDENCE_ADJUDICATION.md": "5285572070b06a127d4f27ec6b9193a0d62f1e832fd77c0153d99549efac44ae",
     "docs/releases/v4.1.0/refactoring/runtime-contract/20261120-pr5915/03_MIGRATION_AND_ROLLBACK.md": "402d026ff9702411eb2dd49a74aa823d991df2af695422cfac2b438a2ba4494f",
@@ -275,6 +276,7 @@
     "docs/releases/v4.1.0/refactoring/runtime-contract/20261120-pr5915/evidence/test-source-identity.log": "6191f0f0d5b5b74014e8b818a8c46662eb0f29e11eb40c683f1e239ba102899d",
     "docs/releases/v4.1.0/refactoring/runtime-contract/20261120-pr5915/evidence/toolchain.json": "d731e33c2c6c0e2c571c30c73d155aa56fbe3e1a3744ddba8009239dddee0ff8",
     "docs/releases/v4.1.0/refactoring/runtime-contract/20261120-pr5915/evidence/toolchain.log": "e0a03bccf22d7879cab5f3dffa6589dd425c6085ccb22507e3d2e2e8c60f9148",
+    "docs/releases/v4.1.0/refactoring/runtime-contract/20261120-pr5915/evidence/validation.json": "229fc0fb07f1f6bc9965a482c4ad275e14cff2675903828f9345e9f99247291f",
     "docs/releases/v4.1.0/refactoring/runtime-contract/20261120-pr5915/handoff/00_HANDOFF_README.md": "c98887cdc312b0c0a017e39a1019e9a078c35302348ae74d8d567438074c6420",
     "docs/releases/v4.1.0/refactoring/runtime-contract/20261120-pr5915/handoff/01_LOCAL_BINDING.json": "bdf84dd008841c3fd9b9fab68e38158711ae4287c186f6767e0ee835ea7acc88",
     "docs/releases/v4.1.0/refactoring/runtime-contract/20261120-pr5915/handoff/02_DSHA_REVIEW_REQUEST.md": "7c52dd5e07e5a2ada29e5cfa0034e133fb0330a10b62314f574155eadc7a9b91",
@@ -304,16 +306,19 @@
     "docs/releases/v4.1.0/refactoring/test-factory-design/SHA256SUMS": "f59d1b177695b87866f3c47091a52a4ccb81311e77da0ff07a42fc997a1ce94b",
     "docs/releases/v4.1.0/refactoring/tools/requirements.txt": "cb9e5058abe248be8579db704a1c9e30e655b30cb7d5dd093bebf97f44766591",
     "docs/releases/v4.1.0/refactoring/tools/test_verify_baseline.py": "c3d70524a4314550c53cc8d8461bf5623473a814a211f6f20dc80612c1fced91",
+    "docs/releases/v4.1.0/refactoring/tools/test_verify_handoff.py": "c5e6013794613499aeaa207d92fa574ab0f30339e66f73ca0553da6ed3a131df",
     "docs/releases/v4.1.0/refactoring/tools/test_verify_sha_scope.py": "f09abdb717090f11a3174452260908c6acb7b7f8e6eb99ae668f6d273fded8d4",
     "docs/releases/v4.1.0/refactoring/tools/verify_baseline.py": "fbf84483e26c55b31544bc376637deceaa65daf414546159ccb1f38d77efeee6",
-    "docs/releases/v4.1.0/refactoring/tools/verify_handoff.py": "0517380d32970f82c728347fdcadb43efa755ea35356e8e54d35b29e907d6b66",
-    "docs/releases/v4.1.0/refactoring/tools/verify_sha_scope.py": "95648bca063f5ce0da41fbd074a8246c21e27c596843dd537e305d3407d8d00b"
+    "docs/releases/v4.1.0/refactoring/tools/verify_handoff.py": "dc5b031c61761eb081d1cd3a948d7f3b96e8836d4b57691762accd0aa61ea525",
+    "docs/releases/v4.1.0/refactoring/tools/verify_sha_scope.py": "95648bca063f5ce0da41fbd074a8246c21e27c596843dd537e305d3407d8d00b",
+    "docs/refactor/v4.1.0-c/takeover/BASELINE_FREEZE.json": "235571241da6949a661a230c4cff279fbbdcdf3cc31977ba3f03e31991b44a2e",
+    "docs/refactor/v4.1.0-c/README.md": "f63a07aa7b108594dd41cf209af5a6239e7e73e8794cfb51e2f55a556fe1da1a"
   },
-  "file_count": 300,
+  "file_count": 305,
   "manifest_self_hash": "External sha256sum; excluded to avoid recursion",
   "exclusions": [
-    "10_HANDOFF_MANIFEST.json",
-    "validation.json",
-    "PUBLICATION_RECEIPT.json"
+    "docs/refactor/v4.1.0-c/handoff/10_HANDOFF_MANIFEST.json",
+    "docs/refactor/v4.1.0-c/handoff/validation.json",
+    "docs/refactor/v4.1.0-c/handoff/PUBLICATION_RECEIPT.json"
   ]
 }
