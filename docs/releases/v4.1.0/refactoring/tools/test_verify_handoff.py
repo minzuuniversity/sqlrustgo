@@ -65,6 +65,7 @@ ADR011_SRC_REL = ("docs/releases/v4.1.0/refactoring/runtime-contract/20261120-pr
 ADR011_README_REL = ("docs/releases/v4.1.0/refactoring/runtime-contract/20261120-pr5915/"
                      "00_DECISION_README.md")
 ADR011_DST_REL = "docs/releases/v4.1.0/refactoring/adrs/ADR-410-011.md"
+ADR_INDEX_REL = "docs/releases/v4.1.0/refactoring/ADR_INDEX.md"
 
 # The `Status:` line each ADR in the shipped corpus carries.  Task 4 wrote the
 # owner's tiers into the ADR bodies (ADR-DECISION-RECORD.md:35-47): the fixture
@@ -444,11 +445,11 @@ def main() -> int:
         # hard-codes a count nor accepts a catalogue that drifted away from
         # the record.
         def unmerge_adr_011(repo: Path) -> None:
-            """Undo the O7 merge: move ADR-410-011 back and repair the link.
+            """Undo the O7 merge: move ADR-410-011 back and repair the links.
 
-            The relocation also has to repair the link the runtime contract's
-            README carries to the ADR -- the gate checks markdown links, so a
-            merge that leaves a dangling link is not a merge that passes.
+            The relocation also has to repair the links that point at the ADR
+            -- the gate checks markdown links, so a merge that leaves a
+            dangling link is not a merge that passes.
             """
             src = Path(repo) / ADR011_DST_REL
             dst = Path(repo) / ADR011_SRC_REL
@@ -458,6 +459,9 @@ def main() -> int:
             text = readme.read_text()
             readme.write_text(text.replace("](../../adrs/ADR-410-011.md)",
                                             "](ADR-410-011-UNIFIED_RUNTIME_CONTRACT.md)"))
+            index = Path(repo) / ADR_INDEX_REL
+            lines = index.read_text().splitlines(keepends=True)
+            index.write_text("".join(l for l in lines if "adrs/ADR-410-011.md" not in l))
         probe_red(shared, pristine, "把 011 移出 adrs/ 再重签 ⇒ 判红（期望钉在 freeze 记录里）",
                   "expects", unmerge_adr_011)
 
