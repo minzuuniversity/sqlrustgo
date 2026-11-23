@@ -24,6 +24,18 @@ Six assertions:
       identity (`test_fn`, `package_or_target`, `source_sha256`, `rc`,
       `attribution`)
 
+The corpus of M4 is the *id column* of the two registry documents: an
+invariant id is the first cell of a table row.  A token that only occurs in
+prose is not an id -- `ADR-010`, which the storage capability contract
+mentions in a sentence, must not pass for an invariant, and neither must a
+model name in a provenance header.
+
+An identity that cannot be completed is not silently dropped: it carries an
+explicit `identity_gap` next to the element it cannot supply, so the hole is
+visible in the matrix and auditable, rather than invisible behind a missing
+key.  M6 accepts a declared gap only for a case that is not itself KNOWN_FAIL
+(a KNOWN_FAIL must be able to be judged, so it must be complete).
+
 Two properties are load-bearing and are asserted explicitly:
 
   * a deliberate RED is not a failure.  `FAILED_RED` / `COVERED_RED` map onto
@@ -66,11 +78,17 @@ RED_VOCABULARY = ("FAILED_RED", "COVERED_RED")
 
 RED_IDENTITY_FIELDS = ("test_fn", "package_or_target", "source_sha256",
                        "rc", "attribution")
+# The key a RED identity uses to declare that one of its elements could not be
+# recovered.  A declared gap is auditable; a missing element is not.
+GAP_FIELD = "identity_gap"
 
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-# An id-shaped token: two to four capitals, a dash, an optional capital and one
-# to three digits (INV-01, TF-I09, SC-12).
-ID_TOKEN_RE = re.compile(r"\b[A-Z]{2,4}-[A-Z]?\d{1,3}\b")
+# An invariant id: the id cell of a registry table -- two to four capitals, a
+# dash, an optional capital and one to three digits (INV-01, TF-I09, SC-12).
+# A token that only occurs in prose is not an id: `ADR-010` in the storage
+# contract's prose, or a model name in a provenance header, must not pass for
+# an invariant.
+ID_CELL_RE = re.compile(r"^[A-Z]{2,4}-[A-Z]?\d{1,3}$")
 
 SKIPPED: list[str] = []
 NOTES: list[str] = []
@@ -117,15 +135,22 @@ def cases_of(matrix):
 def declared_ids(path):
     """The invariant ids a document declares.
 
-    Only the body of the document is read: the blockquoted header carries the
-    provenance of the text (author, model, evidence hash), not the registry,
-    and scanning it would pick up model names as if they were invariant ids.
+    A registry declares its ids in the id column of a table, so the ids are
+    the first cells of the table rows.  Everything else -- prose mentions
+    (`ADR-010` in the storage contract's prose), the blockquoted provenance
+    header (author, model, evidence hash) -- is not part of the registry and
+    must not be read as an invariant.
     """
     ids = set()
     for line in path.read_text().splitlines():
-        if line.lstrip().startswith(">"):
+        stripped = line.strip()
+        if not stripped.startswith("|"):
             continue
-        ids.update(ID_TOKEN_RE.findall(line))
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        if not cells:
+            continue
+        if ID_CELL_RE.match(cells[0]):
+            ids.add(cells[0])
     return ids
 
 
@@ -137,7 +162,11 @@ def corpus():
         if not path.is_file():
             skip("M4/registry", f"{rel} does not exist")
             continue
-        for iid in declared_ids(path):
+        ids = declared_ids(path)
+        if not ids:
+            note(f"{rel} declares no invariant id -- the corpus is the id "
+                 f"column of the other registry")
+        for iid in ids:
             found.setdefault(iid, rel)
     return found
 
@@ -238,6 +267,53 @@ def m5(matrix):
             f"on KNOWN_FAIL")
 
 
+def identity_state(identity):
+    """(state, problems) for a RED identity.
+
+    `complete` -- all five elements are present and non-empty, the digest is a
+    sha256, the exit code is an integer, and nothing is declared missing.
+
+    `gap` -- all five elements are present, but `source_sha256` is null and an
+    `identity_gap` says which element is missing and why.  A declared gap is
+    auditable: the reader sees the hole instead of inferring it.
+
+    `broken` -- anything else: a missing element, a malformed digest, an
+    undeclared null.
+    """
+    if not isinstance(identity, dict):
+        return "broken", ["no red_identity object"]
+    problems = []
+    gap = identity.get(GAP_FIELD)
+    gap_ok = isinstance(gap, str) and bool(gap.strip())
+    if gap is not None and not gap_ok:
+        problems.append("identity_gap is present but empty")
+    for field in RED_IDENTITY_FIELDS:
+        value = identity.get(field)
+        if value is None:
+            if field == "source_sha256" and gap_ok:
+                # The one element a declared gap may leave null: the hole is
+                # declared, so it is visible instead of silently missing.
+                continue
+            problems.append(f"{field} is missing")
+        elif isinstance(value, str) and not value.strip():
+            problems.append(f"{field} is empty")
+    digest = identity.get("source_sha256")
+    if isinstance(digest, str) and digest.strip() and not SHA256_RE.match(digest):
+        problems.append("source_sha256 is not a 64-character sha256")
+    rc = identity.get("rc")
+    if rc is not None and not isinstance(rc, int):
+        problems.append("rc is not an integer exit code")
+    if problems:
+        return "broken", problems
+    if digest is None:
+        if not gap_ok:
+            return "broken", ["source_sha256 is null and no identity_gap declares the gap"]
+        return "gap", []
+    if gap is not None:
+        return "broken", ["identity_gap is declared but source_sha256 is present"]
+    return "complete", []
+
+
 def m6(matrix):
     cases = cases_of(matrix)
     reds = [c for c in cases
@@ -247,28 +323,30 @@ def m6(matrix):
             "no case is KNOWN_FAIL; the RED identity check would be vacuous")
     broken = []
     for case in reds:
-        identity = case.get("red_identity")
-        problems = []
-        if not isinstance(identity, dict):
-            problems.append("no red_identity object")
-        else:
-            for field in RED_IDENTITY_FIELDS:
-                value = identity.get(field)
-                if value is None:
-                    problems.append(f"{field} is missing")
-                elif isinstance(value, str) and not value.strip():
-                    problems.append(f"{field} is empty")
-            digest = identity.get("source_sha256")
-            if isinstance(digest, str) and digest.strip() \
-                    and not SHA256_RE.match(digest):
-                problems.append("source_sha256 is not a 64-character sha256")
-            if not isinstance(identity.get("rc"), int):
-                problems.append("rc is not an integer exit code")
-        if problems:
-            broken.append((case.get("case_id"), problems))
+        state, problems = identity_state(case.get("red_identity"))
+        if state != "complete":
+            broken.append((case.get("case_id"), state, problems))
     require(not broken,
             f"{len(broken)} KNOWN_FAIL case(s) carry no complete RED identity: "
             f"{broken[:3]}")
+    # A case that carries an identity but is not a KNOWN_FAIL may carry a
+    # declared gap -- but the gap must be visible.  A half-written identity
+    # that silently omits an element is not acceptable: it reads like a
+    # complete one.
+    red_ids = {c.get("case_id") for c in reds}
+    malformed = []
+    for case in cases:
+        if case.get("case_id") in red_ids:
+            continue
+        identity = case.get("red_identity")
+        if identity is None:
+            continue
+        state, problems = identity_state(identity)
+        if state == "broken":
+            malformed.append((case.get("case_id"), problems))
+    require(not malformed,
+            f"{len(malformed)} case(s) carry a malformed RED identity: "
+            f"{malformed[:3]}")
     return (f"{len(reds)} KNOWN_FAIL case(s), every one carries the "
             f"five-element RED identity")
 

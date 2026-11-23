@@ -15,23 +15,33 @@ What the adapter refuses to do
     keeps the refusal: a case whose test was not seen is `NOT_RUN`, never
     `PASS`.  The matrix's `cargo test --list` snapshot is 242 commits older
     than the baseline, so "the test still exists" cannot be assumed.
-  * It never collapses a deliberate RED into a plain `FAIL`.  The pilot's
-    `FAILED_RED` / `COVERED_RED` map onto `KNOWN_FAIL`, and a `KNOWN_FAIL`
-    must carry the five-element RED identity (`test_fn`, `package_or_target`,
-    `source_sha256`, `rc`, `attribution`).  A case that is registered as a RED
-    but carries no identity cannot be judged, so it is reported `INFRA_ERROR`
-    instead of being silently passed or silently failed.
-  * It does not assume a scenario's test still exists, and it does not assume
-    the probe of a bespoke scenario can be run: the three bespoke probes
-    (kill-9 crash recovery, checkpoint torn write, ODKU rollback no-op) are
-    reported `NOT_RUN` with the reason, never `PASS`.
+  * It never collapses a deliberate RED into a plain `FAIL`.  Two independent
+    signals say a case is a deliberate RED -- the matrix's own registration
+    (`source.claimed_status == "KNOWN_FAIL"`) and the pilot's rerun record
+    (`FAILED_RED` / `COVERED_RED`, which map onto `KNOWN_FAIL`).  Either one
+    is enough: a missing or stale external record must not be able to turn a
+    registered RED into a plain `FAIL`, so a selected case with no pilot
+    record aborts the slice instead of being judged.  A `KNOWN_FAIL` must
+    carry the five-element RED identity (`test_fn`, `package_or_target`,
+    `source_sha256`, `rc`, `attribution`); a registered RED that carries no
+    identity cannot be judged, so it is reported `INFRA_ERROR` instead of
+    being silently passed or silently failed.
+  * It does not assume a scenario's test still exists.  A bespoke probe
+    (kill-9 crash recovery, checkpoint torn write, ODKU rollback no-op) is
+    reported `NOT_RUN` with the reason *until it is migrated*: a migrated
+    probe is looked up in the probe registry (or by the convention that its
+    source carries the label's slug) and is then executed like any other
+    test.  A bespoke RED without the five-element identity may only be
+    reported `NOT_RUN`.
 
 The vocabulary
 --------------
 The matrix carries the mapping from the pilot's vocabulary onto the
 seven-word contract vocabulary of `05_TEST_FACTORY_CONTRACT.json` in its
-top-level `status_vocabulary_mapping` block.  The adapter reads that block
-rather than keeping a second copy of it: the matrix is the contract.
+top-level `status_vocabulary_mapping` block.  The adapter reads that block,
+and refuses to run when it differs from the copy the adapter ships with: a
+drift between the two would let the matrix launder a RED (`FAILED_RED`
+mapping onto `FAIL`), so the two must not diverge.
 
 Usage
 -----
@@ -41,7 +51,11 @@ Usage
 The command line is a thin wrapper over `run_slice()`; it does not repeat any
 of the logic.  It exits 0 only when every case in the slice is `PASS` -- the
 same convention as the factory it drives -- so a slice that still carries a
-known RED or a case that did not run is a blocking state, not a pass.
+known RED or a case that did not run is a blocking state, not a pass.  Note
+that this is a statement about the *slice*, not about the matrix: while
+`required_for_certification` is 75/75 `false` (that is the owner's stage-exit
+criterion), a slice with a registered RED always exits non-zero.  Consumers
+such as Task 6 read the per-case verdicts, not the exit code.
 """
 from __future__ import annotations
 
@@ -71,10 +85,16 @@ RED_VOCABULARY = ("FAILED_RED", "COVERED_RED")
 # The five elements of a RED identity.
 RED_IDENTITY_FIELDS = ("test_fn", "package_or_target", "source_sha256",
                        "rc", "attribution")
+# The key a RED identity uses to declare that one of its elements could not
+# be recovered.
+GAP_FIELD = "identity_gap"
+# The fixed shape of a verdict: these five keys are what a consumer (Task 6)
+# writes back into the matrix.
+VERDICT_KEYS = ("case_id", "execution_status", "actual", "artifact_sha256",
+                "red_identity")
 
-# The reference copy of the mapping.  The adapter reads the matrix's own
-# block and fails closed when it is absent; this copy documents the mapping
-# the matrix is expected to carry and is what the fixtures assert against.
+# The adapter's own copy of the mapping.  The matrix carries the same block;
+# the two must not diverge, and the adapter refuses to run when they do.
 DEFAULT_STATUS_MAPPING = {
     "PASS": "PASS",
     "COVERED_PASS": "PASS",
@@ -107,7 +127,18 @@ def load_matrix(path: pathlib.Path) -> dict:
 
 
 def status_mapping(matrix: dict) -> dict:
-    """The pilot -> contract vocabulary map, read from the matrix."""
+    """The pilot -> contract vocabulary map, read from the matrix.
+
+    The matrix's block must be the map the adapter ships with.  Two things
+    are asserted, and both exist to stop a RED being laundered:
+
+      * the pilot's RED words must map onto `KNOWN_FAIL` -- a corrupted
+        matrix that sent `FAILED_RED` to `FAIL` would turn every deliberate
+        RED into an ordinary failure;
+      * the matrix's block and the adapter's own copy must not diverge -- a
+        silent drift between the two would let the matrix decide on its own
+        what a RED means.
+    """
     mapping = matrix.get("status_vocabulary_mapping")
     if not isinstance(mapping, dict) or not mapping:
         raise DriverError(
@@ -117,7 +148,33 @@ def status_mapping(matrix: dict) -> dict:
     if bad:
         raise DriverError(f"the vocabulary mapping targets {bad}, which are "
                           f"not contract vocabulary")
+    laundered = [word for word in RED_VOCABULARY
+                 if mapping.get(word) != "KNOWN_FAIL"]
+    if laundered:
+        raise DriverError(f"the vocabulary mapping sends {laundered} to "
+                          f"{[mapping.get(w) for w in laundered]}; a deliberate "
+                          f"RED must map onto KNOWN_FAIL")
+    if mapping != DEFAULT_STATUS_MAPPING:
+        raise DriverError(
+            f"the matrix's status_vocabulary_mapping differs from the "
+            f"adapter's own copy: {sorted(set(mapping) ^ set(DEFAULT_STATUS_MAPPING))} "
+            f"differ in membership, "
+            f"{sorted(k for k in set(mapping) & set(DEFAULT_STATUS_MAPPING) if mapping[k] != DEFAULT_STATUS_MAPPING[k])} "
+            f"differ in value; the two must not diverge")
     return mapping
+
+
+def is_registered_red(case: dict, declared) -> bool:
+    """Whether a case is registered as a deliberate RED.
+
+    Two independent signals: the matrix's own registration
+    (`source.claimed_status == "KNOWN_FAIL"`) and the pilot's rerun record
+    (mapped onto `KNOWN_FAIL`).  Either one is enough -- an external record
+    that is missing or out of date must not be able to turn a registered RED
+    into a plain `FAIL`.
+    """
+    claimed = (case.get("source") or {}).get("claimed_status")
+    return claimed == "KNOWN_FAIL" or declared == "KNOWN_FAIL"
 
 
 def map_status(status, mapping: dict):
@@ -356,6 +413,63 @@ def resolve_target(repo: pathlib.Path, test_name: str):
 
 
 # --------------------------------------------------------------------------
+# bespoke probes
+# --------------------------------------------------------------------------
+
+def load_probe_registry(matrix: dict) -> dict:
+    """{label: binding} for the bespoke probes that have been migrated.
+
+    The bindings live in the matrix's own `probe_registry` block, next to the
+    vocabulary mapping: they are part of the scenario catalogue, and the
+    matrix is hash-covered by the handoff manifest.
+    """
+    registry = matrix.get("probe_registry")
+    if registry is None:
+        return {}
+    if not isinstance(registry, dict):
+        raise DriverError("the matrix's probe_registry is not an object")
+    probes = registry.get("probes")
+    if probes is None:
+        return {}
+    if not isinstance(probes, dict):
+        raise DriverError("the matrix's probe_registry carries no probes object")
+    return probes
+
+
+def probe_slug(label: str) -> str:
+    """The source stem a migrated probe of `label` would carry."""
+    return re.sub(r"[^0-9A-Za-z]+", "_", label.strip().strip("()")).strip("_").lower()
+
+
+def resolve_probe(matrix: dict, repo: pathlib.Path, label: str):
+    """(package, target, filter, note) for a bespoke probe label.
+
+    A bespoke probe is migrated as a cargo test target.  It is found either
+    through the probe registry, which binds a label to a target explicitly,
+    or by convention: the source whose stem is the label with its punctuation
+    folded to underscores (`(crash-recovery-kill-9)` -> `crash_recovery_kill_9`).
+    `package` is None when no probe has been migrated; `note` then says why.
+    """
+    registry = load_probe_registry(matrix)
+    key = label.strip().strip("()")
+    binding = registry.get(key) or registry.get(label)
+    if isinstance(binding, dict) and binding.get("package"):
+        return (binding["package"], binding.get("target"),
+                binding.get("filter") or probe_slug(key), "")
+    if binding is not None and not isinstance(binding, dict):
+        raise DriverError(f"the probe registry binds {key!r} to {binding!r}, "
+                          f"which is not an object")
+    slug = probe_slug(key)
+    for package, path, target in test_sources(repo):
+        if path.stem.lower() == slug:
+            return package, target, slug, ""
+    return None, None, None, (
+        f"no migrated probe for the label {label}: the matrix's probe_registry "
+        f"binds no target for it and the baseline holds no test source named "
+        f"{slug}")
+
+
+# --------------------------------------------------------------------------
 # the factory
 # --------------------------------------------------------------------------
 
@@ -442,8 +556,15 @@ def coverage_source(case: dict, pilot_record) -> str:
 
 
 def complete_identity(identity) -> bool:
-    """Whether a RED identity carries all five elements, non-empty."""
+    """Whether a RED identity carries all five elements, non-empty.
+
+    An identity that declares a gap (`identity_gap`) is not complete: the
+    element it cannot supply is still missing, and the reader is told which
+    one it is.
+    """
     if not isinstance(identity, dict):
+        return False
+    if identity.get(GAP_FIELD):
         return False
     for field in RED_IDENTITY_FIELDS:
         value = identity.get(field)
@@ -454,17 +575,43 @@ def complete_identity(identity) -> bool:
     return True
 
 
+def identity_gap(identity) -> str:
+    """The declared gap of a RED identity ("" when there is none)."""
+    if not isinstance(identity, dict):
+        return ""
+    gap = identity.get(GAP_FIELD)
+    return gap if isinstance(gap, str) else ""
+
+
+def find_test(tests, expected: str):
+    """The factory's test entry for `expected`, or None.
+
+    An exact name wins; a substring match is only accepted when it is
+    unambiguous, because the factory filters by substring and a filter that
+    matches several tests cannot be attributed to one case.
+    """
+    exact = [t for t in tests if t.get("name") == expected]
+    if exact:
+        return exact[0]
+    partial = [t for t in tests if expected in (t.get("name") or "")]
+    return partial[0] if len(partial) == 1 else None
+
+
 def evaluate_case(case: dict, index, pilot_record, mapping: dict,
-                  factory_result=None, artifact=None, note: str = "") -> dict:
+                  factory_result=None, artifact=None, note: str = "",
+                  expected_name: str = None, probe: bool = False) -> dict:
     """The verdict for one case.
 
     `factory_result` is the factory's structured result for the group the
     case belongs to; None means the case was not executed at all.
+    `expected_name` is the name the factory knows the case by (the matrix's
+    test name for a cargo test, the probe's filter for a bespoke probe).
     """
     pilot_status = (pilot_record or {}).get("rerun_status")
     declared = map_status(pilot_status, mapping)
     identity = case.get("red_identity")
     test_name = (case.get("source") or {}).get("test_name", "")
+    expected = expected_name or test_name
     artifact = artifact or {}
     entry = {
         "case_id": case.get("case_id"),
@@ -502,61 +649,77 @@ def evaluate_case(case: dict, index, pilot_record, mapping: dict,
                             f"{factory_result.get('note') or 'the run could not be judged'}")
         return entry
 
-    found = None
-    for test in factory_result.get("tests") or []:
-        if test.get("name") == test_name:
-            found = test
-            break
+    found = find_test(factory_result.get("tests") or [], expected)
 
     if found is None:
         entry["execution_status"] = "NOT_RUN"
         if factory_class == "NOT_RUN":
             entry["actual"] = (f"{command} → the factory parsed no test line "
-                               f"(zero tests); {test_name} did not run")
+                               f"(zero tests); {expected} did not run")
         else:
-            entry["actual"] = (f"{command} → {test_name} was not among the "
+            entry["actual"] = (f"{command} → {expected} was not among the "
                                f"tests the factory saw; the test may no longer "
                                f"exist")
         return entry
 
     test_class = found.get("class")
-    if declared == "KNOWN_FAIL":
+    if is_registered_red(case, declared):
         # A registered RED keeps its identity whether it reproduces or not:
         # a red that turned green is not a discharge, it is a trigger for
         # independent re-verification (02_TEST_EXECUTION_CONTRACT.md, step 8).
         if not complete_identity(identity):
+            if probe:
+                # A bespoke RED may only be reported NOT_RUN until its
+                # identity is complete: the probe is not a cargo test, so
+                # there is no other way to report what happened.
+                entry["execution_status"] = "NOT_RUN"
+                gap = identity_gap(identity) or "the case carries no RED identity"
+                entry["actual"] = (f"{command} → {expected} is a registered RED "
+                                   f"({pilot_status}) and {gap}; the case may "
+                                   f"only be reported NOT_RUN")
+                return entry
             entry["execution_status"] = "INFRA_ERROR"
-            entry["actual"] = (f"{command} → {test_name} is a registered RED "
+            entry["actual"] = (f"{command} → {expected} is a registered RED "
                                f"({pilot_status}) but the case carries no "
                                f"complete RED identity; the verdict cannot be "
                                f"judged")
             return entry
         entry["execution_status"] = "KNOWN_FAIL"
         if test_class == "PASS":
-            entry["actual"] = (f"{command} → {test_name} ... ok — "
+            entry["actual"] = (f"{command} → {expected} ... ok — "
                                f"UNEXPECTED_GREEN: the case is a registered RED "
                                f"({pilot_status}); it may only be closed by "
                                f"independent re-verification")
         else:
-            entry["actual"] = (f"{command} → {test_name} ... FAILED — the "
+            entry["actual"] = (f"{command} → {expected} ... FAILED — the "
                                f"registered RED ({pilot_status}) reproduced")
         return entry
 
     if test_class == "PASS":
         entry["execution_status"] = "PASS"
-        entry["actual"] = f"{command} → {test_name} ... ok"
+        entry["actual"] = f"{command} → {expected} ... ok"
     elif test_class == "FAIL":
         entry["execution_status"] = "FAIL"
-        entry["actual"] = f"{command} → {test_name} ... FAILED"
+        entry["actual"] = f"{command} → {expected} ... FAILED"
     elif test_class == "KNOWN_FAIL":
+        # The factory classified the test as a known fail.  That is still a
+        # deliberate RED, so it carries the same identity gate: a KNOWN_FAIL
+        # without the five elements cannot be judged, and it must not reach
+        # the consumer as if it could.
+        if not complete_identity(identity):
+            entry["execution_status"] = "INFRA_ERROR"
+            entry["actual"] = (f"{command} → {expected} was classified as a "
+                               f"known fail but the case carries no complete "
+                               f"RED identity; the verdict cannot be judged")
+            return entry
         entry["execution_status"] = "KNOWN_FAIL"
-        entry["actual"] = f"{command} → {test_name} ... FAILED (known fail)"
+        entry["actual"] = f"{command} → {expected} ... FAILED (known fail)"
     elif test_class == "UNSUPPORTED":
         entry["execution_status"] = "UNSUPPORTED"
-        entry["actual"] = f"{command} → {test_name} ... ignored"
+        entry["actual"] = f"{command} → {expected} ... ignored"
     else:
         entry["execution_status"] = "NOT_RUN"
-        entry["actual"] = (f"{command} → {test_name} was not judged "
+        entry["actual"] = (f"{command} → {expected} was not judged "
                            f"(class {test_class!r})")
     return entry
 
@@ -587,30 +750,44 @@ def run_slice(repo: pathlib.Path, matrix: pathlib.Path, cases: list,
     groups: dict = {}
     for index in indices:
         case = matrix_cases[index]
+        record = pilot.get(index)
+        if record is None:
+            # The pilot's rerun record is one of the two signals that say a
+            # case is a deliberate RED.  A selected case without a record is
+            # a broken input, not a case without a RED: judging it would let
+            # a missing file turn a registered RED into a plain FAIL.
+            raise DriverError(
+                f"matrix index {index} ({case.get('case_id')}) has no record "
+                f"in {CASE_MAPPING_REL}; the pilot's rerun status is the RED "
+                f"signal, and a missing record must not silently change a "
+                f"registered RED into a FAIL")
         test_name = (case.get("source") or {}).get("test_name", "")
         if test_name.startswith("("):
-            verdicts[index] = evaluate_case(
-                case, index, pilot.get(index), mapping, None, None,
-                note=(f"{test_name} is a bespoke probe, not a cargo test; the "
-                      f"probe was not migrated into the baseline, so the case "
-                      f"was not executed"))
+            package, target, probe_filter, note = resolve_probe(data, repo, test_name)
+            if package is None:
+                verdicts[index] = evaluate_case(
+                    case, index, record, mapping, None, None, note=note)
+                continue
+            groups.setdefault((package, target), []).append(
+                (index, probe_filter, True))
             continue
         package, target, note = resolve_target(repo, test_name)
         if package is None:
             verdicts[index] = evaluate_case(
-                case, index, pilot.get(index), mapping, None, None, note=note)
+                case, index, record, mapping, None, None, note=note)
             continue
-        groups.setdefault((package, target), []).append(index)
+        groups.setdefault((package, target), []).append((index, test_name, False))
 
     for (package, target), group in groups.items():
         suite = "MATRIX-" + package + ("-" + target if target else "-lib")
-        filters = [matrix_cases[i]["source"]["test_name"] for i in group]
+        filters = [item[1] for item in group]
         result, artifact = run_factory(repo, package, target, filters, suite,
                                        out_dir)
-        for index in group:
+        for index, expected, is_probe in group:
             verdicts[index] = evaluate_case(matrix_cases[index], index,
                                             pilot.get(index), mapping, result,
-                                            artifact)
+                                            artifact, expected_name=expected,
+                                            probe=is_probe)
 
     results = [verdicts[index] for index in indices]
     stamp = time.strftime("%Y%m%dT%H%M%S")

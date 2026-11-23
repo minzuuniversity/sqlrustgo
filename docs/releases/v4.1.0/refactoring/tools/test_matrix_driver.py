@@ -19,6 +19,18 @@ WHY（2026-11-23）
   D8  未知状态词              → DriverError（不得静默降级成 PASS）
   D9  命令行入口              → 与 run_slice 同结论（薄包装）
 
+评审第一轮补的用例（每一条都对应一条「评审指出的洞」）：
+
+  H   选中的 index 没有 pilot 记录 → DriverError（不得把 RED 判成 FAIL）
+  I   矩阵自己登记 KNOWN_FAIL、pilot 记录说别的 → 矩阵的信号算数，不是 FAIL
+  J   矩阵的 status_vocabulary_mapping 被改坏（FAILED_RED→FAIL）→ DriverError
+  K   矩阵的映射块与适配层自带副本不一致 → DriverError（不得漂移）
+  L   case 引用 ADR-010 → M4 判红（ADR 引用不是不变量）
+  M   bespoke 探针已迁入仓内 → 适配层去跑它，而不是印一句「未迁入」
+  N   PILOT-T5-101 的身份：四个元素在、source_sha256 显式为 null、缺口标记在
+  O   适配层输出的固定形状：五个键一个不少
+  P   工厂把测试判成 KNOWN_FAIL 但 case 没有完整身份 → INFRA_ERROR
+
 所有用例都在临时目录里做，不碰工作仓库。
 
 用法：python3 docs/releases/v4.1.0/refactoring/tools/test_matrix_driver.py
@@ -37,6 +49,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 
 import matrix_driver as md  # noqa: E402
+import verify_matrix as vm  # noqa: E402
 
 FAILURES: list[str] = []
 
@@ -59,7 +72,8 @@ def check(name: str, cond: bool, detail: str = "") -> None:
         FAILURES.append(name)
 
 
-def case(case_id: str, test_name: str, *, identity=None) -> dict:
+def case(case_id: str, test_name: str, *, identity=None,
+         claimed_status: str = "PASS") -> dict:
     return {
         "case_id": case_id,
         "feature": "T4",
@@ -68,7 +82,7 @@ def case(case_id: str, test_name: str, *, identity=None) -> dict:
         "source": {"kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
                    "test_name": test_name,
                    "declared_source": "cargo test --list @ e9ff21fc",
-                   "claimed_status": "KNOWN_FAIL",
+                   "claimed_status": claimed_status,
                    "declared_invariant": "后端能力契约"},
         "execution_status": "NOT_RUN",
         "actual": None,
@@ -90,7 +104,7 @@ def factory_result(class_: str, tests) -> dict:
 def d1_d2_failed_red() -> None:
     print("A. pilot 词汇 FAILED_RED")
     subject = case("PILOT-T4-101", "tf_t4_01_scan_after_insert_sees_rows",
-                   identity=RED_IDENTITY)
+                   identity=RED_IDENTITY, claimed_status="KNOWN_FAIL")
     pilot = {"rerun_status": "FAILED_RED", "evidence": "evidence/D001.log",
              "note": "D-001 桩静默成功 RED (CARGO_EXIT=101)"}
     result = factory_result("FAIL", [{"name": "tf_t4_01_scan_after_insert_sees_rows",
@@ -201,7 +215,8 @@ def d5_bespoke() -> None:
 
 def d6_missing_identity() -> None:
     print("E. KNOWN_FAIL 缺 RED 身份")
-    subject = case("PILOT-T4-101", "tf_t4_01_scan_after_insert_sees_rows")
+    subject = case("PILOT-T4-101", "tf_t4_01_scan_after_insert_sees_rows",
+                   claimed_status="KNOWN_FAIL")
     pilot = {"rerun_status": "FAILED_RED", "evidence": "evidence/D001.log"}
     result = factory_result("FAIL", [{"name": "tf_t4_01_scan_after_insert_sees_rows",
                                        "class": "FAIL", "raw_status": "FAILED"}])
@@ -226,7 +241,7 @@ FAKE_CASES = [
 ]
 
 
-def build_fake_repo(root: pathlib.Path) -> pathlib.Path:
+def build_fake_repo(root: pathlib.Path, *, drop_indices=()) -> pathlib.Path:
     repo = root / "repo"
     (repo / "crates/fake/src").mkdir(parents=True)
     (repo / "crates/fake/tests").mkdir(parents=True)
@@ -247,6 +262,8 @@ def build_fake_repo(root: pathlib.Path) -> pathlib.Path:
         "#[test]\nfn fake_root_case() {}\n", encoding="utf-8")
     records = []
     for index, (case_id, test_name, status) in enumerate(FAKE_CASES):
+        if index in drop_indices:
+            continue
         records.append({"case_id": case_id, "matrix_index": index,
                         "test_name": test_name, "rerun_status": status,
                         "evidence": f"evidence/fake-{index}.log"})
@@ -255,14 +272,21 @@ def build_fake_repo(root: pathlib.Path) -> pathlib.Path:
     return repo
 
 
-def build_fake_matrix(path: pathlib.Path) -> None:
+def build_fake_matrix(path: pathlib.Path, *, with_probe_registry: bool = False) -> None:
     matrix = {
         "version": "C-TF-0.1-PLAN",
         "status_vocabulary_mapping": dict(md.DEFAULT_STATUS_MAPPING),
         "cases": [],
     }
+    if with_probe_registry:
+        matrix["probe_registry"] = {
+            "probes": {"bespoke-probe": {"package": "fake-lib",
+                                         "target": "fake_target",
+                                         "filter": "fake_target_case"}}}
     for case_id, test_name, _status in FAKE_CASES:
-        subject = case(case_id, test_name)
+        subject = case(case_id, test_name,
+                        claimed_status="KNOWN_FAIL" if case_id == "CASE-RED"
+                        else "PASS")
         if case_id == "CASE-RED":
             subject["red_identity"] = RED_IDENTITY
         matrix["cases"].append(subject)
@@ -332,6 +356,26 @@ def d7_d9_end_to_end() -> None:
               == [c[0] for c in FAKE_CASES],
               str([entry["case_id"] for entry in results]))
 
+        # 输出的固定形状：Task 6 依赖这五个键。
+        for key in md.VERDICT_KEYS:
+            check(f"O ⇒ 每条结论都带 {key}",
+                  all(key in entry for entry in results),
+                  str(sorted(set(md.VERDICT_KEYS) - set(results[0]))))
+        check("O ⇒ case_id 与矩阵一致",
+              all(entry["case_id"] in {c[0] for c in FAKE_CASES}
+                  for entry in results))
+        check("O ⇒ execution_status 是契约词汇",
+              all(entry["execution_status"] in md.CONTRACT_VOCABULARY
+                  for entry in results),
+              str([e["execution_status"] for e in results]))
+        check("O ⇒ actual 非空",
+              all(isinstance(entry["actual"], str) and entry["actual"].strip()
+                  for entry in results))
+        check("O ⇒ artifact_sha256 是 64 位或 null",
+              all(entry["artifact_sha256"] is None
+                  or len(entry["artifact_sha256"]) == 64
+                  for entry in results))
+
         packages = sorted({call["package"] for call in slice_calls})
         check("D7 ⇒ 按 (package, target) 聚合调用",
               packages == ["fake-lib"], str(slice_calls))
@@ -387,6 +431,265 @@ def d8_unknown_status() -> None:
           and md.map_status("COVERED_RED", MAPPING) == "KNOWN_FAIL")
 
 
+# --------------------------------------------------------------------------
+# H —— 选中的 index 没有 pilot 记录 ⇒ 必须 fail closed
+# --------------------------------------------------------------------------
+
+def h_missing_pilot_record() -> None:
+    print("H. 选中的 index 没有 pilot 记录")
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        root = pathlib.Path(tmp)
+        # index 3（CASE-RED）没有 pilot 记录。
+        repo = build_fake_repo(root, drop_indices=(3,))
+        matrix_path = root / "matrix.json"
+        build_fake_matrix(matrix_path)
+        try:
+            md.run_slice(repo, matrix_path, ["0", "1", "2", "3"], root / "out")
+        except md.DriverError as exc:
+            check("H ⇒ 抛 DriverError", True)
+            check("H ⇒ 理由点名缺失的记录", "no record" in str(exc), str(exc))
+            check("H ⇒ 理由说明不得把 RED 变成 FAIL",
+                  "FAIL" in str(exc), str(exc))
+        else:
+            check("H ⇒ 抛 DriverError", False, "no exception raised")
+
+    # 反向：记录齐的时候同一条 slice 正常返回，且 RED 仍然是 KNOWN_FAIL。
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        root = pathlib.Path(tmp)
+        repo = build_fake_repo(root)
+        matrix_path = root / "matrix.json"
+        build_fake_matrix(matrix_path)
+
+        def fake_run_factory(_repo, _package, _target, filters, _suite, _out,
+                             timeout=1800):
+            tests = [{"name": name, "class": "FAIL", "raw_status": "FAILED"}
+                     for name in filters]
+            return factory_result("FAIL", tests), \
+                {"command": "cargo test", "sha256": None, "path": None}
+
+        original = md.run_factory
+        md.run_factory = fake_run_factory
+        try:
+            results = md.run_slice(repo, matrix_path, ["3"], root / "out")
+        finally:
+            md.run_factory = original
+        check("H ⇒ 记录齐时 RED 仍是 KNOWN_FAIL",
+              results[0]["execution_status"] == "KNOWN_FAIL",
+              results[0]["execution_status"])
+
+
+# --------------------------------------------------------------------------
+# I —— 矩阵自己登记的 KNOWN_FAIL 不依赖 pilot 记录
+# --------------------------------------------------------------------------
+
+def i_matrix_signal_wins() -> None:
+    print("I. 矩阵的 RED 登记与 pilot 记录不一致")
+    subject = case("PILOT-T4-101", "tf_t4_01_scan_after_insert_sees_rows",
+                   identity=RED_IDENTITY, claimed_status="KNOWN_FAIL")
+    # pilot 记录说 PASS，矩阵说 KNOWN_FAIL：矩阵的信号必须算数。
+    pilot = {"rerun_status": "PASS", "evidence": "evidence/stale.log"}
+    result = factory_result("FAIL", [{"name": "tf_t4_01_scan_after_insert_sees_rows",
+                                       "class": "FAIL", "raw_status": "FAILED"}])
+    verdict = md.evaluate_case(subject, 0, pilot, MAPPING, result,
+                               {"command": "cargo test", "sha256": None})
+    check("I ⇒ 不是普通 FAIL", verdict["execution_status"] != "FAIL",
+          verdict["execution_status"])
+    check("I ⇒ 落成 KNOWN_FAIL",
+          verdict["execution_status"] == "KNOWN_FAIL",
+          verdict["execution_status"])
+    check("I ⇒ 带完整 RED 五元组",
+          md.complete_identity(verdict["red_identity"]))
+
+
+# --------------------------------------------------------------------------
+# J / K —— 映射表被改坏 / 与适配层副本漂移
+# --------------------------------------------------------------------------
+
+def j_k_mapping_guards() -> None:
+    print("J. 映射表被改坏")
+    laundered = dict(MAPPING)
+    laundered["FAILED_RED"] = "FAIL"
+    try:
+        md.status_mapping({"status_vocabulary_mapping": laundered})
+    except md.DriverError as exc:
+        check("J ⇒ 抛 DriverError", True)
+        check("J ⇒ 理由点名 KNOWN_FAIL", "KNOWN_FAIL" in str(exc), str(exc))
+    else:
+        check("J ⇒ 抛 DriverError", False, "no exception raised")
+
+    print("K. 映射表与适配层副本漂移")
+    drifted = dict(MAPPING)
+    drifted["KNOWN_FAIL"] = "KNOWN_FAIL"  # 值合法，但多出一个键
+    try:
+        md.status_mapping({"status_vocabulary_mapping": drifted})
+    except md.DriverError as exc:
+        check("K ⇒ 抛 DriverError", True)
+        check("K ⇒ 理由点名漂移", "diverge" in str(exc), str(exc))
+    else:
+        check("K ⇒ 抛 DriverError", False, "no exception raised")
+
+    # 自带副本与基线矩阵的块必须一致 —— 这一条直接读仓内矩阵。
+    baseline = md.load_matrix(md.ROOT / md.MATRIX_REL)
+    try:
+        md.status_mapping(baseline)
+        check("K ⇒ 基线矩阵的映射块与适配层副本一致", True)
+    except md.DriverError as exc:
+        check("K ⇒ 基线矩阵的映射块与适配层副本一致", False, str(exc))
+
+
+# --------------------------------------------------------------------------
+# L —— ADR 引用不是不变量
+# --------------------------------------------------------------------------
+
+def l_adr_is_not_an_invariant() -> None:
+    print("L. ADR 引用不能冒充不变量")
+    corpus = vm.corpus()
+    check("L ⇒ 语料里没有 ADR-010", "ADR-010" not in corpus,
+          str(sorted(corpus)[:5]))
+    check("L ⇒ 语料里没有 ADR-410-006", "ADR-410-006" not in corpus)
+    check("L ⇒ 语料就是那 18 条不变量",
+          sorted(corpus) == [f"INV-{n:02d}" for n in range(1, 19)],
+          str(sorted(corpus)))
+
+    # 语料必须是**结构上**取自登记表的 id 列，而不是「正碰巧被一个宽正则扫到」。
+    # 把一句散文里的 ADR 引用塞进存储契约的副本：它不得进语料。
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        copy_path = pathlib.Path(tmp) / "STORAGE_CAPABILITY_CONTRACT.md"
+        original = (md.ROOT / vm.STORAGE_REL).read_text(encoding="utf-8")
+        copy_path.write_text(original + "\n格式细节见 ADR-010 的决定。\n",
+                             encoding="utf-8")
+        ids = vm.declared_ids(copy_path)
+        check("L ⇒ 散文里的 ADR 引用不进语料", "ADR-010" not in ids,
+              str(sorted(ids)))
+        check("L ⇒ 散文副本不产生任何 id（存储契约没有 id 列）",
+              ids == set(), str(sorted(ids)))
+
+    cases = []
+    for index in range(vm.EXPECTED_CASES):
+        ids = ["ADR-010"] if index == 7 else ["INV-01"]
+        cases.append({"case_id": f"C{index:03d}", "invariant_ids": ids})
+    matrix = {"cases": cases}
+    try:
+        vm.m4(matrix)
+    except vm.MatrixError as exc:
+        check("L ⇒ M4 判红", True)
+        check("L ⇒ 理由点名 ADR-010", "ADR-010" in str(exc), str(exc))
+    else:
+        check("L ⇒ M4 判红", False, "no exception raised")
+
+
+# --------------------------------------------------------------------------
+# M —— bespoke 探针已迁入 ⇒ 适配层必须去跑它
+# --------------------------------------------------------------------------
+
+def m_migrated_probe_runs() -> None:
+    print("M. bespoke 探针已迁入仓内")
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        root = pathlib.Path(tmp)
+        repo = build_fake_repo(root)
+        matrix_path = root / "matrix.json"
+        build_fake_matrix(matrix_path, with_probe_registry=True)
+        calls = []
+
+        def fake_run_factory(_repo, package, target, filters, suite, _out, timeout=1800):
+            calls.append({"package": package, "target": target,
+                          "filters": list(filters)})
+            tests = [{"name": name, "class": "PASS", "raw_status": "ok"}
+                     for name in filters]
+            return factory_result("PASS", tests), \
+                {"command": "cargo test", "sha256": "34" * 32, "path": None}
+
+        original = md.run_factory
+        md.run_factory = fake_run_factory
+        try:
+            results = md.run_slice(repo, matrix_path, ["2"], root / "out")
+        finally:
+            md.run_factory = original
+
+        verdict = results[0]
+        check("M ⇒ 探针被执行了（工厂被调用）", bool(calls), str(calls))
+        check("M ⇒ 探针的过滤器是注册表里的那个",
+              calls and calls[0]["filters"] == ["fake_target_case"], str(calls))
+        check("M ⇒ 结论不是「未迁入」的 NOT_RUN",
+              "not migrated" not in verdict["actual"], verdict["actual"])
+        check("M ⇒ 结论是 PASS",
+              verdict["execution_status"] == "PASS", verdict["execution_status"])
+
+    # 反向：没有注册表 ⇒ NOT_RUN，且理由说的是「没有迁入的探针」。
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        root = pathlib.Path(tmp)
+        repo = build_fake_repo(root)
+        matrix_path = root / "matrix.json"
+        build_fake_matrix(matrix_path)
+        results = md.run_slice(repo, matrix_path, ["2"], root / "out")
+        verdict = results[0]
+        check("M ⇒ 未迁入 ⇒ NOT_RUN",
+              verdict["execution_status"] == "NOT_RUN", verdict["execution_status"])
+        check("M ⇒ 未迁入的理由点名注册表",
+              "probe_registry" in verdict["actual"], verdict["actual"])
+
+
+# --------------------------------------------------------------------------
+# N —— PILOT-T5-101 的身份：四个元素在、sha256 显式为 null、缺口标记在
+# --------------------------------------------------------------------------
+
+def n_odku_identity() -> None:
+    print("N. PILOT-T5-101 携带的身份")
+    matrix = md.load_matrix(md.ROOT / md.MATRIX_REL)
+    subject = next((c for c in matrix["cases"]
+                    if c["case_id"] == "PILOT-T5-101"), None)
+    check("N ⇒ 矩阵里有这条", subject is not None)
+    if subject is None:
+        return
+    identity = subject.get("red_identity")
+    check("N ⇒ 带了 red_identity", isinstance(identity, dict), repr(identity))
+    if not isinstance(identity, dict):
+        return
+    for field in ("test_fn", "package_or_target", "rc", "attribution"):
+        check(f"N ⇒ {field} 在且非空",
+              bool(identity.get(field)) and str(identity.get(field)).strip(),
+              repr(identity.get(field)))
+    check("N ⇒ source_sha256 显式为 null",
+          "source_sha256" in identity and identity["source_sha256"] is None,
+          repr(identity.get("source_sha256")))
+    check("N ⇒ 缺口标记在且非空",
+          bool(identity.get(md.GAP_FIELD)), repr(identity.get(md.GAP_FIELD)))
+    state, problems = vm.identity_state(identity)
+    check("N ⇒ M6 认得这是一个声明过的缺口", state == "gap", f"{state} {problems}")
+    check("N ⇒ 缺口让身份不算完整（适配层因此只报 NOT_RUN）",
+          not md.complete_identity(identity))
+    check("N ⇒ 缺口里点名了不可复原的原因",
+          "unrecoverable" in str(identity.get(md.GAP_FIELD)).lower()
+          or "no digest" in str(identity.get(md.GAP_FIELD)).lower(),
+          str(identity.get(md.GAP_FIELD))[:200])
+
+
+# --------------------------------------------------------------------------
+# P —— 工厂判成 KNOWN_FAIL 但没有完整身份 ⇒ 必须 fail closed
+# --------------------------------------------------------------------------
+
+def p_factory_known_fail_without_identity() -> None:
+    print("P. 工厂判成 KNOWN_FAIL 但身份不全")
+    subject = case("PILOT-T9-001", "some::test", claimed_status="PASS")
+    pilot = {"rerun_status": "PASS", "evidence": "evidence/x.log"}
+    result = factory_result("FAIL", [{"name": "some::test", "class": "KNOWN_FAIL",
+                                       "raw_status": "FAILED"}])
+    verdict = md.evaluate_case(subject, 0, pilot, MAPPING, result,
+                               {"command": "cargo test", "sha256": None})
+    check("P ⇒ 落成 INFRA_ERROR",
+          verdict["execution_status"] == "INFRA_ERROR", verdict["execution_status"])
+    check("P ⇒ 不得 PASS", verdict["execution_status"] != "PASS")
+
+    # 身份齐的时候，工厂判的 KNOWN_FAIL 才是 KNOWN_FAIL。
+    subject = case("PILOT-T9-001", "some::test", identity=RED_IDENTITY,
+                   claimed_status="PASS")
+    verdict = md.evaluate_case(subject, 0, pilot, MAPPING, result,
+                               {"command": "cargo test", "sha256": None})
+    check("P ⇒ 身份齐 ⇒ KNOWN_FAIL",
+          verdict["execution_status"] == "KNOWN_FAIL",
+          verdict["execution_status"])
+
+
 def main() -> int:
     d1_d2_failed_red()
     d3_covered_pass()
@@ -395,6 +698,13 @@ def main() -> int:
     d6_missing_identity()
     d7_d9_end_to_end()
     d8_unknown_status()
+    h_missing_pilot_record()
+    i_matrix_signal_wins()
+    j_k_mapping_guards()
+    l_adr_is_not_an_invariant()
+    m_migrated_probe_runs()
+    n_odku_identity()
+    p_factory_known_fail_without_identity()
     print()
     if FAILURES:
         print(f"FAILED ({len(FAILURES)}): {', '.join(FAILURES)}")

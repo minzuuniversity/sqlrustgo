@@ -2311,6 +2311,14 @@
         "claimed_status": "NOT_RUN",
         "declared_invariant": "ODKU 回滚不空转"
       },
+      "red_identity": {
+        "test_fn": "p2c1id_odku_rollback_restores_the_old_value",
+        "package_or_target": "sqlrustgo / p2c0_undo_proto",
+        "source_sha256": null,
+        "rc": 101,
+        "attribution": "ON DUPLICATE KEY UPDATE was not undone (assertion 'left == right' failed at tests/p2c0_undo_proto.rs:497:5) — D-002 ODKU 回滚无效撤销 (#5905/#5906/#5908/#5909 族); probe source taken from branch d794b83a43 (tests/p2c0_undo_proto.rs) and adapted for the baseline e9ff21fca3 by dropping the p2c0_d5 case that needs the branch-only undo_all API; evidence docs/refactor/v4.1.0-c/takeover/dsh-b/artifacts/d002-base-adapted-20261120T170609.log, rc=101 per docs/refactor/v4.1.0-c/takeover/dsh-b/RED-IDENTITY-RECONCILIATION.md",
+        "identity_gap": "source_sha256 is unrecoverable: the probe source that actually ran lived in an ephemeral worktree (/private/tmp/srg-d002-base) and its adapted bytes no longer exist, so no digest identifies them (test-factory-design/06_RED_IDENTITY_MAPPING.jsonl records source_sha256: null for this case as well). The other four elements come from d002-base-adapted-20261120T170609.log and RED-IDENTITY-RECONCILIATION.md. This case is registered NOT_RUN in the matrix while the pilot's rerun record says COVERED_RED: the divergence is an owner decision, and the probe was not migrated."
+      },
       "seed": "N/A",
       "backend": "FileStorage",
       "assembly": "UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY",
@@ -2338,6 +2346,10 @@
     "INFRA_ERROR": "INFRA_ERROR",
     "UNSUPPORTED": "UNSUPPORTED",
     "DIALECT_DIFFERENCE": "DIALECT_DIFFERENCE"
+  },
+  "probe_registry": {
+    "comment": "Binds the bespoke probe labels of the cases to the cargo test targets that implement them. The key is the label without its parentheses (crash-recovery-kill-9); the value names the cargo package, the cargo test target and the filter that selects the probe's test. A label with no binding has not been migrated into the baseline: the adapter reports such a case NOT_RUN and names the gap. Binding a label is an owner decision.",
+    "probes": {}
   },
   "hara_families": [
     {
