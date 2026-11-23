@@ -37,12 +37,11 @@ DELETED_FILE = "docs/releases/v4.1.0/refactoring/audit/HARA-410/evidence/MANIFES
 MOVED_FILE = ("docs/releases/v4.1.0/refactoring/audit/HARA-410/evidence/"
               "MANIFEST-relocated.json")
 # The one imported path a downstream task relocates.  Task 4 already moved
-# ADR-410-011 out of runtime-contract/20261120-pr5915/ into refactoring/adrs/
-# as ADR-410-011.md and rewrote its Status / Approvals lines, so neither the
-# old path nor the frozen blob survives.  The relocation is tolerated by the
-# RELOCATABLE registry -- but deleting the relocated file must still be red.
-RELOCATABLE_FILE = ("docs/releases/v4.1.0/refactoring/runtime-contract/"
-                    "20261120-pr5915/ADR-410-011-UNIFIED_RUNTIME_CONTRACT.md")
+# ADR-410-011 out of runtime-contract/20261120-pr5915/ADR-410-011-UNIFIED_RUNTIME_CONTRACT.md
+# into refactoring/adrs/ as ADR-410-011.md and rewrote its Status / Approvals
+# lines, so neither the old path nor the frozen blob survives.  The relocation
+# is tolerated by the RELOCATABLE registry -- but deleting the relocated file
+# must still be red.
 RELOCATED_ADR = "docs/releases/v4.1.0/refactoring/adrs/ADR-410-011.md"
 
 FAILURES: list[str] = []
