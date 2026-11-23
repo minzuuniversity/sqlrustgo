@@ -1,6 +1,6 @@
 {
   "kind": "HASH_BOUND_REFERENCE_NOT_SECOND_DAG",
   "path": "docs/releases/v4.1.0/refactoring/REFACTOR_TASK_DAG.json",
-  "sha256": "82f89b04f731343a7c102a5caa8548d50dc0a023ad0834cafb76bb6f65684fd7",
+  "sha256": "6fb352eaacf4988c40e54b05c0f12af80e12c24ff0b0c9257b16b63933fb7ff0",
   "dispatch_allowed": false
 }
