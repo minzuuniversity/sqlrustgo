@@ -209,6 +209,15 @@ def main() -> int:
             # verifier instead.
             shutil.copyfile(under_test, Path(shared) / VERIFIER_REL)
             commit_all(shared, "probe: the verifier under test")
+            # Re-sign with the verifier under test, so the clone's manifest
+            # matches its own verifier.  Otherwise every probe would trip the
+            # manifest's digest of the verifier file and the probe would be
+            # testing the wrong thing.
+            fin = run_verifier(shared, "--finalize")
+            if fin.returncode == 0:
+                commit_all(shared, "probe: re-signed with the verifier under test")
+            else:
+                print(f"  [WARN] 被测校验器无法重签：{fin.stdout.strip()[-300:]}")
         pristine = git_out(shared, "rev-parse", "HEAD")
 
         print("A. 干净树")
