@@ -273,6 +273,19 @@ def finalize():
     dump(HAND/"10_HANDOFF_MANIFEST.json",{"version":"C-HANDOFF-1","source_agent":"Codex GPT-6.1 Sol","source_run":bindings["source_run"],"timestamp":stamp,"base_sha":base,"source_uri":"http://192.168.0.252:3000/openclaw/sqlrustgo","conflict_resolution":"Owner approval and live DSH policy required","status":"CANDIDATE_NOT_AUTHORIZED","files":files,"file_count":len(files),"manifest_self_hash":"External sha256sum; excluded to avoid recursion","exclusions":["10_HANDOFF_MANIFEST.json","validation.json","PUBLICATION_RECEIPT.json"]})
     return len(files)
 
+def rejection_reason(exc):
+    """A one-line reason why a mutation was rejected.
+
+    Only the first line of the exception is kept: a jsonschema failure quotes
+    the whole schema, and a summary that carries it is unreadable.
+    """
+    detail=" ".join(str(exc).strip().splitlines()[:1]).strip()
+    if not detail:
+        return type(exc).__name__
+    if len(detail)>240:
+        detail=detail[:237]+"..."
+    return f"{type(exc).__name__}: {detail}"
+
 def check():
     dag,native=load_tasks()
     record=freeze_record()
@@ -295,8 +308,7 @@ def check():
         try:validate(d,n,tiers,base)
         except Exception as exc:
             rejected.append(name)
-            detail=str(exc).strip()
-            reasons[name]=f"{type(exc).__name__}: {detail}" if detail else type(exc).__name__
+            reasons[name]=rejection_reason(exc)
         else:raise AssertionError("mutation accepted: "+name)
     a=PLAN/"audit/HARA-410";m=read(a/"evidence/MANIFEST.json")
     baseline=read(HAND/"01_ARCHITECTURE_BASELINE.json")
