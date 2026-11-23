@@ -128,6 +128,30 @@ def commit_tampering(repo: Path, path: str, extra: bytes, message: str):
     return repoint
 
 
+def commit_tampering_with_material_restored(repo: Path, path: str, extra: bytes, message: str):
+    """Tamper with a file while restoring the imported material to its 45da
+    content, so the only difference between the frozen parent and the new
+    base_sha is the tampered path.  Returns a record mutation re-pointing
+    `base_sha` at that commit."""
+    subprocess.run(["git", "checkout", "45da6968ae2baaade6a31206eeee5854a8514ee2", "--",
+                    "docs/releases/v4.1.0/refactoring", "docs/refactor/v4.1.0-c/handoff"],
+                   cwd=str(repo), check=True, capture_output=True)
+    target = Path(repo) / path
+    target.write_bytes(target.read_bytes() + extra)
+    subprocess.run(["git", "add", "-A"], cwd=str(repo), check=True, capture_output=True)
+    subprocess.run(["git", "-c", "user.name=probe", "-c", "user.email=probe@example.invalid",
+                    "commit", "--quiet", "-m", message],
+                   cwd=str(repo), check=True, capture_output=True)
+    head = git_out(repo, "rev-parse", "HEAD")
+    tree = git_out(repo, "rev-parse", "HEAD^{tree}")
+
+    def repoint(data):
+        data["base_sha"] = head
+        data["tree_sha"] = tree
+
+    return repoint
+
+
 def commit_tree_change(repo: Path, path: str, extra: bytes = b"", move_to: str | None = None,
                        message: str = "probe: tree change") -> None:
     """Change HEAD's tree without touching the frozen record."""
@@ -200,12 +224,21 @@ def main() -> int:
         subprocess.run(["git", "reset", "--hard", "--quiet", pristine], cwd=str(shared),
                        check=True, capture_output=True)
 
-        repoint = commit_tampering(shared, ALREADY_PRESENT_FILE, b"\n# tampered\n",
-                                   "probe: tampered already-present file")
+        repoint = commit_tampering_with_material_restored(
+            shared, ALREADY_PRESENT_FILE, b"\n# tampered\n",
+            "probe: tampered already-present file")
         expect_red(shared, "already-present 条目与冻结 parent 实际有差异",
                    "differs between the frozen parent and the baseline", repoint)
         subprocess.run(["git", "reset", "--hard", "--quiet", pristine], cwd=str(shared),
                        check=True, capture_output=True)
+
+        def points_at_different_commit(data):
+            # 一条 already-present 条目指向的提交，其路径在冻结 parent 上并不存在
+            entry_for(data, "9a61cf59c0")["sha"] = \
+                "45da6968ae2baaade6a31206eeee5854a8514ee2"
+
+        expect_red(shared, "already-present 条目指向与冻结 parent 不同的提交",
+                   "frozen parent", points_at_different_commit)
 
         print("D. 下游任务的合法改动不得判红；真正的删除必须判红")
         # Task 2 的形态：前向绑定被就地改写 ⇒ 路径还在、blob 变了
