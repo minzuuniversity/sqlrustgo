@@ -4,7 +4,7 @@
   "source_agent": "Codex",
   "source_run": "TF-DESIGN-20261121",
   "timestamp": "2026-11-21T07:07:39+08:00",
-  "base_sha": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+  "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
   "stage": "ALPHA",
   "adr_base_commit": "45da6968ae2baaade6a31206eeee5854a8514ee2",
   "adr_011_candidate_commit": "b681b74ca3",
