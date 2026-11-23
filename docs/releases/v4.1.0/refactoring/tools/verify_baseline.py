@@ -36,6 +36,12 @@ DEVELOP_REF = "origin/develop/v4.1.0"
 NOTES = []
 
 
+def note(message):
+    """Record a non-fatal remark, once per distinct message."""
+    if message not in NOTES:
+        NOTES.append(message)
+
+
 def git(*args):
     return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
 
@@ -78,7 +84,7 @@ def develop_base(parent):
     """The develop tip the 'already-present' commits are compared against."""
     if git_ok("rev-parse", "--verify", DEVELOP_REF):
         return DEVELOP_REF
-    NOTES.append(f"{DEVELOP_REF} unavailable locally; using the recorded parent {parent}")
+    note(f"{DEVELOP_REF} unavailable locally; using the recorded parent {parent}")
     return parent
 
 
@@ -124,12 +130,12 @@ def b3(record):
         assert material == set(changed_paths(MATERIAL_COMMIT)), \
             f"the imported material is not the file set of {MATERIAL_COMMIT[:10]}"
     else:
-        NOTES.append(f"{MATERIAL_COMMIT[:10]} not fetched; skipped the source-side cross-check")
+        note(f"{MATERIAL_COMMIT[:10]} not fetched; skipped the source-side cross-check")
     if have_commit(RUNTIME_COMMIT):
         assert runtime == set(tree_files(RUNTIME_COMMIT, path_import["path"])), \
             f"the imported runtime contract is not the file set of {RUNTIME_COMMIT[:10]}"
     else:
-        NOTES.append(f"{RUNTIME_COMMIT[:10]} not fetched; skipped the source-side cross-check")
+        note(f"{RUNTIME_COMMIT[:10]} not fetched; skipped the source-side cross-check")
     return (f"{len(material)} material file(s) + {len(runtime)} runtime-contract file(s) "
             f"imported over develop, all present in HEAD")
 
@@ -150,7 +156,7 @@ def b4(record):
         if entry["state"] != "applied":
             continue
         if not have_commit(entry["sha"]):
-            NOTES.append(f"{entry['sha'][:10]} not fetched; skipped the source-side cross-check")
+            note(f"{entry['sha'][:10]} not fetched; skipped the source-side cross-check")
             continue
         subject = git("log", "-1", "--format=%s", entry["sha"])
         assert subject in subjects, \
@@ -166,7 +172,7 @@ def b4(record):
         if entry["state"] != "already-present":
             continue
         if not have_commit(entry["sha"]):
-            NOTES.append(f"{entry['sha'][:10]} not fetched; skipped the source-side cross-check")
+            note(f"{entry['sha'][:10]} not fetched; skipped the source-side cross-check")
             continue
         paths = changed_paths(entry["sha"])
         assert paths, f"commit {entry['sha'][:10]} touches no file"
@@ -213,8 +219,8 @@ def main():
         else:
             passed += 1
             print(f"[{name}] PASS  {detail}")
-    for note in NOTES:
-        print(f"note: {note}")
+    for message in NOTES:
+        print(f"note: {message}")
     print(f"{passed}/{len(checks)} PASS")
     return 0 if passed == len(checks) else 1
 
