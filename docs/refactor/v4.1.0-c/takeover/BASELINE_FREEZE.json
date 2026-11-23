@@ -5,14 +5,19 @@
   "frozen_at": "2026-11-23T11:42:14.812504+00:00",
   "source_ref": "base/v4.1.0-frozen",
   "cherry_picked": [
-    {"sha": "45da6968ae2baaade6a31206eeee5854a8514ee2", "state": "applied"},
+    {"sha": "45da6968ae2baaade6a31206eeee5854a8514ee2", "state": "applied",
+     "cherry_pick": "ca8b1684ba2efe688a40769492186a61f1933909"},
     {"sha": "b681b74ca3c0373cb2b7c44ff2cb032cf1a1c540", "state": "path-import",
      "path": "docs/releases/v4.1.0/refactoring/runtime-contract/20261120-pr5915/",
      "files": 56},
-    {"sha": "cd8cefe623e148964fd0c4ce0ccfcc56eff762df", "state": "applied",
-     "conflict": "scripts/gate/check_g1_tpch_baseline.sh"},
-    {"sha": "9a61cf59c0756ecfba2987cc02a2b5994eff7d5b", "state": "already-present"},
-    {"sha": "cfd4306b7e6d6c8a7130d1fed7769ba834ed6de8", "state": "already-present"}
+    {"sha": "cd8cefe623e148964fd0c4ce0ccfcc56eff762df", "state": "already-present",
+     "net_delta": "empty",
+     "conflict_resolved": "scripts/gate/check_g1_tpch_baseline.sh",
+     "cherry_pick": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e"},
+    {"sha": "9a61cf59c0756ecfba2987cc02a2b5994eff7d5b", "state": "already-present",
+     "net_delta": "empty"},
+    {"sha": "cfd4306b7e6d6c8a7130d1fed7769ba834ed6de8", "state": "already-present",
+     "net_delta": "empty"}
   ],
   "material_import": {"from": "45da6968ae2baaade6a31206eeee5854a8514ee2", "files": 123}
 }
