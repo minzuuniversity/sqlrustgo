@@ -111,7 +111,10 @@
         "INPUT_HASH_BINDING",
         "REAL_EXECUTION"
       ],
-      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS",
+      "assertion_reviewed_by": "oracle-reviewer/task7/minimax-m3.1-flash",
+      "assertion_reviewed_at": "2026-11-23T16:13:18Z",
+      "assertion_source_sha256": "9024713a30c61b7ae839f246e468edad97f67b43e38004da42684e4c92997f88"
     },
     {
       "case_id": "PILOT-T1-004",
@@ -141,7 +144,10 @@
         "INPUT_HASH_BINDING",
         "REAL_EXECUTION"
       ],
-      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS",
+      "assertion_reviewed_by": "oracle-reviewer/task7/minimax-m3.1-flash",
+      "assertion_reviewed_at": "2026-11-23T16:13:18Z",
+      "assertion_source_sha256": "9024713a30c61b7ae839f246e468edad97f67b43e38004da42684e4c92997f88"
     },
     {
       "case_id": "PILOT-T1-005",
@@ -201,7 +207,10 @@
         "INPUT_HASH_BINDING",
         "REAL_EXECUTION"
       ],
-      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS",
+      "assertion_reviewed_by": "oracle-reviewer/task7/minimax-m3.1-flash",
+      "assertion_reviewed_at": "2026-11-23T16:13:18Z",
+      "assertion_source_sha256": "9024713a30c61b7ae839f246e468edad97f67b43e38004da42684e4c92997f88"
     },
     {
       "case_id": "PILOT-T1-007",
@@ -231,7 +240,10 @@
         "INPUT_HASH_BINDING",
         "REAL_EXECUTION"
       ],
-      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS",
+      "assertion_reviewed_by": "oracle-reviewer/task7/minimax-m3.1-flash",
+      "assertion_reviewed_at": "2026-11-23T16:13:18Z",
+      "assertion_source_sha256": "9024713a30c61b7ae839f246e468edad97f67b43e38004da42684e4c92997f88"
     },
     {
       "case_id": "PILOT-T1-008",
@@ -922,7 +934,10 @@
         "INPUT_HASH_BINDING",
         "REAL_EXECUTION"
       ],
-      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS",
+      "assertion_reviewed_by": "oracle-reviewer/task7/minimax-m3.1-flash",
+      "assertion_reviewed_at": "2026-11-23T16:13:18Z",
+      "assertion_source_sha256": "5642978df8f848fd737123346a17048d885dd9e28bcbe28614bd9e73fe6fe7c4"
     },
     {
       "case_id": "PILOT-T2-001",
@@ -952,7 +967,10 @@
         "INPUT_HASH_BINDING",
         "REAL_EXECUTION"
       ],
-      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS",
+      "assertion_reviewed_by": "oracle-reviewer/task7/minimax-m3.1-flash",
+      "assertion_reviewed_at": "2026-11-23T16:13:18Z",
+      "assertion_source_sha256": "092b96c0956042248ed070ee9bfc0668985a4c2a3514aaaa0682cd0d58678ccc"
     },
     {
       "case_id": "PILOT-T2-002",
@@ -1133,7 +1151,10 @@
         "INPUT_HASH_BINDING",
         "REAL_EXECUTION"
       ],
-      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS",
+      "assertion_reviewed_by": "oracle-reviewer/task7/minimax-m3.1-flash",
+      "assertion_reviewed_at": "2026-11-23T16:13:18Z",
+      "assertion_source_sha256": "9011e9b62ecc808f758768a3c7a1477f0081688251a747e975881085d75df24b"
     },
     {
       "case_id": "PILOT-T3-002",
@@ -1288,7 +1309,10 @@
         "INPUT_HASH_BINDING",
         "REAL_EXECUTION"
       ],
-      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS"
+      "note": "发现/清单不等于执行，claimed_status仅保留来源，不计本轮PASS",
+      "assertion_reviewed_by": "oracle-reviewer/task7/minimax-m3.1-flash",
+      "assertion_reviewed_at": "2026-11-23T16:13:18Z",
+      "assertion_source_sha256": "cc94ac900f39ce165558d0866f611f3cb551ff73f54af1da1f26de2b3700bbfa"
     },
     {
       "case_id": "PILOT-T3-007",
