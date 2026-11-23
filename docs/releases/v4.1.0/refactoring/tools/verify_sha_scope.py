@@ -203,6 +203,7 @@ def s5(base):
     require(files, "no historical binding file was found under audit/v4.1.0")
     if not have_commit(base):
         skip("S5/baseline-bytes", f"base_sha {base[:10]} is not a commit of this repository")
+        bytes_detail = "the byte comparison against the frozen baseline was skipped"
     else:
         for rel in files:
             frozen = git_blob(base, rel)
@@ -212,9 +213,13 @@ def s5(base):
             require(current == frozen,
                     f"historical record {rel} drifted away from the frozen baseline "
                     f"{base[:10]}; historical bindings must not be re-pointed")
+        bytes_detail = (f"{len(files)} historical record(s) byte-identical to the frozen "
+                        f"baseline {base[:10]}")
     compared = 0
     if not have_commit(HISTORICAL_COMMIT):
         skip("S5/historical-commit", f"{HISTORICAL_COMMIT[:10]} is not reachable")
+        binding_detail = (f"the frozen_commit comparison against {HISTORICAL_COMMIT[:10]} "
+                          f"was skipped")
     else:
         added = []
         for rel in files:
@@ -232,8 +237,9 @@ def s5(base):
             note(f"{len(added)} historical record(s) were added after "
                  f"{HISTORICAL_COMMIT[:10]}; their bytes are covered by the frozen-baseline "
                  f"comparison")
-    return (f"{len(files)} historical record(s) unchanged; {compared} frozen_commit "
-            f"binding(s) still equal to {HISTORICAL_COMMIT[:10]}")
+        binding_detail = (f"{compared} frozen_commit binding(s) compared against "
+                          f"{HISTORICAL_COMMIT[:10]}, all unchanged")
+    return f"{bytes_detail}; {binding_detail}"
 
 
 def s6():
@@ -268,7 +274,7 @@ def main():
         return 1
     try:
         base = json.loads(FREEZE.read_text())["base_sha"]
-    except (ValueError, KeyError) as exc:
+    except (ValueError, KeyError, TypeError) as exc:
         print(f"FAIL  {FREEZE_REL} does not carry a base_sha: {exc}")
         print("0/6 PASS")
         return 1
