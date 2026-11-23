@@ -13,7 +13,8 @@ differently:
 
 Six assertions:
 
-  S1  REFACTOR_TASK_DAG.json      18 x tasks[].base_sha  == BASE
+  S1  REFACTOR_TASK_DAG.json      18 x tasks[].base_sha  == BASE, while
+      artifact_context.source_code_base_sha keeps the pre-freeze base
   S2  TEST_COVERAGE_MATRIX.json   75 x cases[].base_sha  == BASE
   S3  03_TASK_MANIFEST.jsonl      18 x base_commit       == BASE, and the
       task_id order matches the DAG's task_id order one-to-one
@@ -21,24 +22,38 @@ Six assertions:
       adr_base_commit keeps the ADR text's own commit identity
   S5  audit/v4.1.0/commands_pin_*.yaml and audit/v4.1.0/runs/*/manifest.yaml
       keep their original bytes and their original frozen_commit bindings
-  S6  the pilot rerun summary still points at the pre-refactor base_sha
+  S6  the tracked pilot rerun summary still points at the pre-freeze base
 
 `BASE` is read from BASELINE_FREEZE.json rather than hardcoded here, so this
 gate follows the freeze record instead of keeping a second copy of it.
 
+S5 derives the historical set from the frozen baseline (`git ls-tree` at
+BASE), not from a working-tree glob: a glob would silently shrink when a
+historical record is deleted, and the shrunken set would then be reported as
+if it were the expected one.  The set is frozen -- a *new* audit run manifest
+must be added to the freeze record (or the gate must be re-ruled), it must
+not silently widen the set.
+
 S5 compares the historical records against the frozen baseline (which is an
 ancestor of HEAD and therefore holds the bytes as they stood before this
 re-point), and additionally compares every `frozen_commit` binding against the
-historical commit 45da6968ae.  The two references differ on purpose: a few run
-manifests were corrected *after* 45da6968ae without touching their
+commit the material was imported from.  The two references differ on purpose:
+a few run manifests were corrected *after* that commit without touching their
 `frozen_commit`, and six of them were added after it, so a byte comparison
-against 45da6968ae alone would report a false drift.
+against that commit alone would report a false drift.
+
+The verdict is bound to a commit: the checks read the working tree, so the
+working tree must be identical to HEAD.  A green run on a dirty worktree
+would be a statement about uncommitted bytes, not about the commit a receipt
+names (C5).  The tool therefore refuses to run on a worktree with pending
+edits -- that is the intended fail-closed behaviour, not a limitation.
 
 The invariants are raised explicitly instead of being written as `assert`
 statements, because `python -O` strips `assert` and would turn this gate into
 a no-op that prints "6/6 PASS" for anything.
 """
 import argparse
+import fnmatch
 import json
 import pathlib
 import re
@@ -54,15 +69,34 @@ MATRIX_REL = "docs/releases/v4.1.0/refactoring/TEST_COVERAGE_MATRIX.json"
 TASK_MANIFEST_REL = "docs/refactor/v4.1.0-c/handoff/03_TASK_MANIFEST.jsonl"
 HANDOFF_REL = "docs/releases/v4.1.0/refactoring/test-factory-design/14_HANDOFF_MANIFEST.json"
 
-HISTORICAL_COMMIT = "45da6968ae2baaade6a31206eeee5854a8514ee2"
-ADR_BASE_COMMIT = "45da6968ae2baaade6a31206eeee5854a8514ee2"
-PILOT_EVIDENCE = pathlib.Path(
-    "/Volumes/workspace/dev/srg-test-factory-pilot/evidence/rerun-summary-20261120.json")
-PILOT_BASE_SHA = "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0"
+# The commit the imported material came from -- and the commit the ADR texts
+# were authored in, so it doubles as the historical reference for the ADR
+# provenance binding (S4).
+MATERIAL_COMMIT = "45da6968ae2baaade6a31206eeee5854a8514ee2"
+
+# The base every historical binding still points at: the develop tip as it was
+# before the freeze.  S1 pins the test-factory package's provenance to it and
+# S6 pins the pilot rerun's base to it; re-pointing either is an
+# owner-ratified edit of this constant and of the field it guards.
+PRE_FREEZE_BASE_SHA = "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0"
+
+# S6's subject: the tracked, in-repo copy of the pilot rerun summary.  It is
+# the only copy every checkout has, so it is the copy that is asserted.
+PILOT_EVIDENCE_REL = "evidence/rerun-summary-20261120.json"
+# The pilot's own working copy, outside this repository.  It is a redundant
+# witness: when it is there it must be byte-identical to the tracked one;
+# when the pilot checkout does not exist at all the cross-check is reported as
+# skipped (never as verified); when the checkout exists but the file is gone
+# that is tampering and fails hard.
+PILOT_OUT_OF_REPO_ROOT = pathlib.Path("/Volumes/workspace/dev/srg-test-factory-pilot")
+PILOT_OUT_OF_REPO = PILOT_OUT_OF_REPO_ROOT / "evidence/rerun-summary-20261120.json"
 
 DAG_TASKS = 18
 MATRIX_CASES = 75
 TASK_MANIFEST_LINES = 18
+
+HISTORICAL_PATTERNS = ("audit/v4.1.0/commands_pin_*.yaml",
+                        "audit/v4.1.0/runs/*/manifest.yaml")
 
 FROZEN_COMMIT = re.compile(r'^\s*frozen_commit:\s*"?([0-9a-f]{40})"?\s*$', re.M)
 
@@ -91,6 +125,10 @@ def note(message):
         NOTES.append(message)
 
 
+def git_out(*args):
+    return subprocess.check_output(["git", *args], cwd=ROOT, text=True).strip()
+
+
 def git_ok(*args):
     return subprocess.run(
         ["git", *args], cwd=ROOT,
@@ -109,7 +147,14 @@ def git_blob(rev, rel):
     return proc.stdout if proc.returncode == 0 else None
 
 
+def dirty_paths():
+    """The paths whose working-tree state differs from HEAD."""
+    out = subprocess.check_output(["git", "status", "--porcelain"], cwd=ROOT, text=True)
+    return [line for line in out.splitlines() if line.strip()]
+
+
 def read_json(rel):
+    """Parse a JSON file from the working tree (== HEAD: the tree is clean)."""
     path = ROOT / rel
     require(path.is_file(), f"{rel} does not exist")
     try:
@@ -119,6 +164,7 @@ def read_json(rel):
 
 
 def read_jsonl(rel):
+    """Parse a JSON-lines file from the working tree (== HEAD: tree is clean)."""
     path = ROOT / rel
     require(path.is_file(), f"{rel} does not exist")
     records = []
@@ -137,12 +183,24 @@ def frozen_commit_values(text):
     return FROZEN_COMMIT.findall(text)
 
 
-def historical_files():
-    """The audit records that carry historical bindings, as repo-relative paths."""
-    audit = ROOT / "audit/v4.1.0"
-    files = sorted(str(p.relative_to(ROOT)) for p in audit.glob("commands_pin_*.yaml"))
-    files += sorted(str(p.relative_to(ROOT)) for p in (audit / "runs").glob("*/manifest.yaml"))
-    return files
+def matches_historical_pattern(rel):
+    return any(fnmatch.fnmatch(rel, pattern) for pattern in HISTORICAL_PATTERNS)
+
+
+def frozen_historical_paths(base):
+    """The historical record set as frozen in the baseline commit."""
+    listing = git_out("ls-tree", "-r", "--name-only", base, "--", "audit/v4.1.0")
+    return sorted(rel for rel in listing.splitlines() if matches_historical_pattern(rel))
+
+
+def worktree_historical_paths():
+    """The historical record set as it exists in the working tree."""
+    found = set()
+    for path in (ROOT / "audit/v4.1.0").rglob("*.yaml"):
+        rel = str(path.relative_to(ROOT))
+        if matches_historical_pattern(rel):
+            found.add(rel)
+    return sorted(found)
 
 
 def s1(base):
@@ -154,7 +212,15 @@ def s1(base):
     wrong = [t.get("task_id") for t in tasks if t.get("base_sha") != base]
     require(not wrong,
             f"{len(wrong)} task(s) do not point at the baseline {base[:10]}: {wrong[:5]}")
-    return f"{len(tasks)} task(s), all base_sha == {base[:10]}"
+    context = dag.get("artifact_context")
+    require(isinstance(context, dict), f"{DAG_REL} has no artifact_context object")
+    source_base = context.get("source_code_base_sha")
+    require(source_base == PRE_FREEZE_BASE_SHA,
+            f"{DAG_REL} artifact_context.source_code_base_sha is {source_base!r}, "
+            f"expected the pre-freeze base {PRE_FREEZE_BASE_SHA!r}; the provenance "
+            f"binding of the test-factory package must not be re-pointed")
+    return (f"{len(tasks)} task(s), all base_sha == {base[:10]}; "
+            f"artifact_context.source_code_base_sha == {PRE_FREEZE_BASE_SHA[:10]} (unchanged)")
 
 
 def s2(base):
@@ -192,69 +258,102 @@ def s4(base):
     require(handoff.get("base_sha") == base,
             f"{HANDOFF_REL} base_sha is {handoff.get('base_sha')!r}, expected {base!r}")
     adr = handoff.get("adr_base_commit")
-    require(adr == ADR_BASE_COMMIT,
+    require(adr == MATERIAL_COMMIT,
             f"{HANDOFF_REL} adr_base_commit is {adr!r}, expected the ADR text's own "
-            f"commit {ADR_BASE_COMMIT!r}")
-    return f"base_sha == {base[:10]}, adr_base_commit == {ADR_BASE_COMMIT[:10]} (unchanged)"
+            f"commit {MATERIAL_COMMIT!r}")
+    return f"base_sha == {base[:10]}, adr_base_commit == {MATERIAL_COMMIT[:10]} (unchanged)"
 
 
 def s5(base):
-    files = historical_files()
-    require(files, "no historical binding file was found under audit/v4.1.0")
-    if not have_commit(base):
-        skip("S5/baseline-bytes", f"base_sha {base[:10]} is not a commit of this repository")
-        bytes_detail = "the byte comparison against the frozen baseline was skipped"
-    else:
-        for rel in files:
-            frozen = git_blob(base, rel)
-            require(frozen is not None,
-                    f"historical record {rel} is absent from the frozen baseline {base[:10]}")
-            current = (ROOT / rel).read_bytes()
-            require(current == frozen,
-                    f"historical record {rel} drifted away from the frozen baseline "
-                    f"{base[:10]}; historical bindings must not be re-pointed")
-        bytes_detail = (f"{len(files)} historical record(s) byte-identical to the frozen "
-                        f"baseline {base[:10]}")
+    require(have_commit(base),
+            f"the frozen baseline {base[:10]} is not a commit of this repository; "
+            f"the historical record set cannot be derived")
+    expected = frozen_historical_paths(base)
+    require(expected, "the frozen baseline holds no historical record")
+    current = worktree_historical_paths()
+    missing = sorted(set(expected) - set(current))
+    extra = sorted(set(current) - set(expected))
+    require(not missing,
+            f"{len(missing)} historical record(s) are gone from the worktree: {missing[:5]}")
+    require(not extra,
+            f"{len(extra)} historical record(s) are not part of the frozen historical "
+            f"set: {extra[:5]}")
+
+    # The binding layer runs before the byte layer, and it may not pass
+    # vacuously: a comparison of two empty binding lists proves nothing.
+    bindings_now = {rel: frozen_commit_values((ROOT / rel).read_text()) for rel in expected}
+    total_now = sum(len(values) for values in bindings_now.values())
+    require(total_now > 0,
+            "no historical record declares a frozen_commit binding; the binding "
+            "comparison would be vacuous")
+
     compared = 0
-    if not have_commit(HISTORICAL_COMMIT):
-        skip("S5/historical-commit", f"{HISTORICAL_COMMIT[:10]} is not reachable")
-        binding_detail = (f"the frozen_commit comparison against {HISTORICAL_COMMIT[:10]} "
-                          f"was skipped")
+    total_then = 0
+    added = []
+    if not have_commit(MATERIAL_COMMIT):
+        skip("S5/historical-commit", f"{MATERIAL_COMMIT[:10]} is not reachable")
     else:
-        added = []
-        for rel in files:
-            original = git_blob(HISTORICAL_COMMIT, rel)
+        for rel in expected:
+            original = git_blob(MATERIAL_COMMIT, rel)
             if original is None:
                 added.append(rel)
                 continue
             compared += 1
             before = frozen_commit_values(original.decode())
-            after = frozen_commit_values((ROOT / rel).read_text())
-            require(before == after,
+            total_then += len(before)
+            require(before == bindings_now[rel],
                     f"historical record {rel} changed its frozen_commit binding: "
-                    f"{before} -> {after}")
+                    f"{before} -> {bindings_now[rel]}")
+        require(compared > 0,
+                f"no historical record could be compared against {MATERIAL_COMMIT[:10]}; "
+                f"the binding comparison would be vacuous")
+        require(total_now == total_then,
+                f"the historical records declare {total_now} frozen_commit binding(s) "
+                f"now but {total_then} at {MATERIAL_COMMIT[:10]}")
         if added:
             note(f"{len(added)} historical record(s) were added after "
-                 f"{HISTORICAL_COMMIT[:10]}; their bytes are covered by the frozen-baseline "
+                 f"{MATERIAL_COMMIT[:10]}; their bytes are covered by the frozen-baseline "
                  f"comparison")
-        binding_detail = (f"{compared} frozen_commit binding(s) compared against "
-                          f"{HISTORICAL_COMMIT[:10]}, all unchanged")
-    return f"{bytes_detail}; {binding_detail}"
+    for rel in expected:
+        frozen = git_blob(base, rel)
+        require(frozen is not None,
+                f"historical record {rel} is absent from the frozen baseline {base[:10]}")
+        require((ROOT / rel).read_bytes() == frozen,
+                f"historical record {rel} drifted away from the frozen baseline "
+                f"{base[:10]}; historical bindings must not be re-pointed")
+    return (f"{len(expected)} historical record(s) byte-identical to the frozen "
+            f"baseline {base[:10]}; {compared} frozen_commit binding(s) compared "
+            f"against {MATERIAL_COMMIT[:10]}, all unchanged")
 
 
 def s6():
-    if not PILOT_EVIDENCE.is_file():
-        skip("S6/pilot-evidence", f"{PILOT_EVIDENCE} does not exist")
-        return f"pilot rerun summary not present, the binding was not checked"
+    tracked = ROOT / PILOT_EVIDENCE_REL
+    require(tracked.is_file(),
+            f"{PILOT_EVIDENCE_REL} does not exist; the tracked pilot rerun summary "
+            f"is the only copy every checkout has")
     try:
-        summary = json.loads(PILOT_EVIDENCE.read_text())
+        summary = json.loads(tracked.read_text())
     except ValueError as exc:
-        raise ScopeError(f"{PILOT_EVIDENCE} is not valid JSON: {exc}") from exc
+        raise ScopeError(f"{PILOT_EVIDENCE_REL} is not valid JSON: {exc}") from exc
     pilot_base = summary.get("base_sha")
-    require(pilot_base == PILOT_BASE_SHA,
-            f"the pilot rerun summary points at {pilot_base!r}, expected the historical "
-            f"{PILOT_BASE_SHA!r}")
-    return f"pilot rerun summary still points at {PILOT_BASE_SHA[:10]}"
+    require(pilot_base == PRE_FREEZE_BASE_SHA,
+            f"{PILOT_EVIDENCE_REL} points at {pilot_base!r}, expected the historical "
+            f"{PRE_FREEZE_BASE_SHA!r}")
+    detail = f"the tracked {PILOT_EVIDENCE_REL} still points at {PRE_FREEZE_BASE_SHA[:10]}"
+    if PILOT_OUT_OF_REPO.is_file():
+        require(PILOT_OUT_OF_REPO.read_bytes() == tracked.read_bytes(),
+                f"the pilot's out-of-repo copy {PILOT_OUT_OF_REPO} differs from the "
+                f"tracked {PILOT_EVIDENCE_REL}")
+        detail += "; the out-of-repo pilot copy is byte-identical"
+    elif PILOT_OUT_OF_REPO_ROOT.is_dir():
+        raise ScopeError(
+            f"the pilot checkout {PILOT_OUT_OF_REPO_ROOT} is present but "
+            f"{PILOT_OUT_OF_REPO} is missing; the pilot evidence cannot have been deleted")
+    else:
+        skip("S6/pilot-out-of-repo",
+             f"there is no pilot checkout at {PILOT_OUT_OF_REPO_ROOT}; only the tracked "
+             f"copy was compared")
+    return detail
 
 
 def main():
@@ -280,6 +379,17 @@ def main():
         return 1
     if not re.fullmatch(r"[0-9a-f]{40}", str(base)):
         print(f"FAIL  {FREEZE_REL} base_sha is not a full 40-char sha: {base!r}")
+        print("0/6 PASS")
+        return 1
+
+    # The verdict must be about a commit, not about uncommitted bytes.
+    dirty = dirty_paths()
+    if dirty:
+        print("FAIL  the working tree is not clean; the verdict must be bound to a commit")
+        for line in dirty[:20]:
+            print(f"      {line}")
+        if len(dirty) > 20:
+            print(f"      ... and {len(dirty) - 20} more")
         print("0/6 PASS")
         return 1
 
