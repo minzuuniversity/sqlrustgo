@@ -576,8 +576,12 @@ def main():
         site=getattr(exc,"call_site",None)
         if site is None:
             frames=traceback.extract_tb(exc.__traceback__)
-            if frames:
-                frame=frames[-1]
+            # The deepest frame is often inside a library; the useful place is
+            # the last frame that is still inside this tool.
+            own=pathlib.Path(__file__).resolve()
+            ours=[f for f in frames if pathlib.Path(f.filename).resolve()==own]
+            frame=ours[-1] if ours else (frames[-1] if frames else None)
+            if frame:
                 site=f"{frame.filename}:{frame.lineno}: {(frame.line or '').strip()}"
         if site:
             head,_,rest=site.partition(":")
