@@ -33,6 +33,7 @@ import pathlib
 import re
 import subprocess
 import sys
+import traceback
 
 ROOT = pathlib.Path(__file__).resolve().parents[5]
 PLAN = ROOT / "docs/releases/v4.1.0/refactoring"
@@ -372,11 +373,19 @@ def main():
             print(f"re-signed the handoff manifests ({count} file(s) in the hash range)")
         if args.check:
             result=check();print(json.dumps(result,ensure_ascii=False,indent=2))
-    except HandoffError as exc:
-        print(f"FAIL  {exc}")
-        return 1
     except Exception as exc:
-        print(f"FAIL  {type(exc).__name__}: {exc}")
+        # Fail closed: print what went wrong instead of raising a traceback.
+        # The failing source line is named, because a bare `assert` carries no
+        # message of its own.
+        print(f"FAIL  {type(exc).__name__}: {exc}".rstrip())
+        frames=traceback.extract_tb(exc.__traceback__)
+        if frames:
+            frame=frames[-1]
+            try:
+                location=str(pathlib.Path(frame.filename).relative_to(ROOT))
+            except ValueError:
+                location=frame.filename
+            print(f"      at {location}:{frame.lineno}: {frame.line}")
         return 1
     return 0
 
