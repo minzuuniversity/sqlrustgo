@@ -3,7 +3,7 @@
   "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
   "tree": "72d378e8e58797eae18502ab474325015b8993d4",
   "source_run": "C-ALPHA-01-HANDOFF-20261120",
-  "timestamp": "2026-11-23T13:49:16.650372+00:00",
+  "timestamp": "2026-11-23T14:00:36.184091+00:00",
   "stage": "ALPHA",
   "hara_manifest": {
     "path": "docs/releases/v4.1.0/refactoring/audit/HARA-410/evidence/MANIFEST.json",
@@ -11,7 +11,7 @@
   },
   "source_bindings": {
     "path": "docs/releases/v4.1.0/refactoring/evidence/SOURCE_BINDINGS.json",
-    "sha256": "778d1514485e7904c6d3bf5b58a01948f57230fc1968fcbd4a2cf001c0e468b3"
+    "sha256": "24a38c3d8ed7943fde4d91bfe4b9733b8425bc6064e30eae7eb2c4602aaa0aa4"
   },
   "adrs": [
     {
@@ -19,70 +19,80 @@
       "path": "docs/releases/v4.1.0/refactoring/adrs/ADR-410-001.md",
       "sha256": "3a84ed54c50a3d36041c361dd19572c72023b0edb2dfa5d39c312c6180cb2de2",
       "status": "PROPOSED",
-      "approval_refs": []
+      "approval_refs": [],
+      "approvals_field": "EMPTY"
     },
     {
       "id": "ADR-410-002",
       "path": "docs/releases/v4.1.0/refactoring/adrs/ADR-410-002.md",
       "sha256": "fd9f207a1a96853973d6f154222120d0b0c42bdd6395ff83206fbb24ec14bcc5",
       "status": "PROPOSED",
-      "approval_refs": []
+      "approval_refs": [],
+      "approvals_field": "EMPTY"
     },
     {
       "id": "ADR-410-003",
       "path": "docs/releases/v4.1.0/refactoring/adrs/ADR-410-003.md",
       "sha256": "790aadc50a7cb6170ffb402af828eb752f10082d20a873a81d7b5d86bf4e3047",
       "status": "PROPOSED",
-      "approval_refs": []
+      "approval_refs": [],
+      "approvals_field": "EMPTY"
     },
     {
       "id": "ADR-410-004",
       "path": "docs/releases/v4.1.0/refactoring/adrs/ADR-410-004.md",
       "sha256": "3b7d803b0834b7600e0d33a9a40a34d6ca744b1a3396623639906611486dcc85",
       "status": "PROPOSED",
-      "approval_refs": []
+      "approval_refs": [],
+      "approvals_field": "EMPTY"
     },
     {
       "id": "ADR-410-005",
       "path": "docs/releases/v4.1.0/refactoring/adrs/ADR-410-005.md",
       "sha256": "ba6cc3397d0d11f85fccef734e39757f64373681a381eea72e97e6aa097d695a",
       "status": "PROPOSED",
-      "approval_refs": []
+      "approval_refs": [],
+      "approvals_field": "EMPTY"
     },
     {
       "id": "ADR-410-006",
       "path": "docs/releases/v4.1.0/refactoring/adrs/ADR-410-006.md",
       "sha256": "ce1765942cb76bc9ffa883cdb77ff4ed9113ead62d5d553c4bdf7c383a1bb4a0",
       "status": "PROPOSED",
-      "approval_refs": []
+      "approval_refs": [],
+      "approvals_field": "EMPTY"
     },
     {
       "id": "ADR-410-007",
       "path": "docs/releases/v4.1.0/refactoring/adrs/ADR-410-007.md",
       "sha256": "6d373dfa4771db58ecc761460dc13d7e3c35602d6e208c812b90ae3090a1d14f",
       "status": "PROPOSED",
-      "approval_refs": []
+      "approval_refs": [],
+      "approvals_field": "EMPTY"
     },
     {
       "id": "ADR-410-008",
       "path": "docs/releases/v4.1.0/refactoring/adrs/ADR-410-008.md",
       "sha256": "82b27ae26fd79b5959190075247d9e1504c8b337c2ec086ccbe469ec6f8498f6",
       "status": "PROPOSED",
-      "approval_refs": []
+      "approval_refs": [],
+      "approvals_field": "EMPTY"
     },
     {
       "id": "ADR-410-009",
       "path": "docs/releases/v4.1.0/refactoring/adrs/ADR-410-009.md",
       "sha256": "d05d7873f32d6b238eff8f97e9f64c31dbcf562ed02341f00c7c382d3f461535",
       "status": "PROPOSED",
-      "approval_refs": []
+      "approval_refs": [],
+      "approvals_field": "EMPTY"
     },
     {
       "id": "ADR-410-010",
       "path": "docs/releases/v4.1.0/refactoring/adrs/ADR-410-010.md",
       "sha256": "94ef4bbc51d4216be6303ee0d571224d0baaba376d0f5d2a6fc66ee3d625288b",
       "status": "PROPOSED",
-      "approval_refs": []
+      "approval_refs": [],
+      "approvals_field": "EMPTY"
     }
   ],
   "architecture_principle": "OWNER_ACCEPTED_C",

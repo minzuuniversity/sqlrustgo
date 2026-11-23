@@ -60,6 +60,14 @@ HARA_REL = "docs/releases/v4.1.0/refactoring/audit/HARA-410/evidence/MANIFEST.js
 HARA_ROOT = PLAN / "audit/HARA-410"
 DSH = pathlib.Path("/Users/liying/dev/workspaces/deepseek-schedule/deepseek-schedule")
 KOS = pathlib.Path("/Users/liying/dev/workspaces/kos/engineering-os-control")
+# The out-of-repo pilot files the handoff is bound to.  They are named here
+# so that a test fixture can tell whether this machine has them before it
+# decides to skip the probes that need a re-signed manifest.
+PILOT_SOURCES = (
+    pathlib.Path("/Volumes/workspace/dev/srg-test-factory-pilot/tools/test_factory.py"),
+    pathlib.Path("/Volumes/workspace/dev/srg-test-factory-pilot/tests/integration/test_factory/"
+                 "tf_t1_undo_invariants.rs"),
+)
 
 # The manifest's hash range: the delivered artefacts only.
 #
@@ -91,10 +99,12 @@ MANIFEST_EXCLUDED = (
     "docs/refactor/v4.1.0-c/handoff/PUBLICATION_RECEIPT.json",
 )
 
-# The working tree may only carry changes under these prefixes -- the same
-# roots as the manifest's hash range, so a change the manifest cannot see is
-# also a change the gate refuses.  `takeover/`'s top level is allowed (it is
-# the active workspace) but nothing outside these prefixes is.
+# The working tree may only carry changes under these prefixes, plus the
+# files listed in MANIFEST_EXTRA_FILES.  The prefixes are the manifest's hash
+# range; the extra files are covered by the manifest too, so refusing them
+# would refuse a change the manifest can see.  `takeover/`'s top level is
+# allowed but not hashed -- it is the active workspace, and its writes must
+# not make the manifest drift.
 ALLOWED_CHANGE_PREFIXES = (
     "docs/releases/v4.1.0/refactoring/",
     "docs/refactor/v4.1.0-c/handoff/",
@@ -113,23 +123,34 @@ ADR_TIER_BY_TOKEN = {
     "APPROVED_DIRECTION": "APPROVED_DIRECTION",
     "仅批准方向": "APPROVED_DIRECTION",
     "批准方向": "APPROVED_DIRECTION",
+    "实施另审": "APPROVED_DIRECTION",
     "CONDITIONALLY_APPROVED": "CONDITIONALLY_APPROVED",
     "条件批准": "CONDITIONALLY_APPROVED",
 }
+
+# How much authority a tier carries, most restrictive first.  A tier token
+# that appears next to a stronger one can only narrow the tier, never widen
+# it: "APPROVED（仅批准方向）" is direction-only, not unconditional.
+ADR_TIER_RESTRICTIVENESS = ("PROPOSED", "CONDITIONALLY_APPROVED", "APPROVED_DIRECTION", "APPROVED")
+
+# Tokens that deny approval outright.  Matched as whole tokens, so a phrase
+# that merely contains one of them is not a denial.
+ADR_NEGATIVE_TOKENS = ("未批准", "未通过", "不批准", "不通过", "被否决", "否决",
+                        "拒绝", "REJECTED", "NOT_APPROVED", "UNAPPROVED")
 
 # The tiers, most specific first.  "APPROVED" is a prefix of
 # "APPROVED_DIRECTION", so the tiers are tested most-specific first.
 ADR_TIERS = ("APPROVED_DIRECTION", "CONDITIONALLY_APPROVED", "APPROVED")
 
-# The ADR the "tier overreach" mutation arm points at.  The arm supplies its
-# own tier map, so it does not depend on what the ADR text currently says.
-# The owner's ruling on each ADR lives in
-# takeover/dsh-b/ADR-DECISION-RECORD.md; this gate points at that ledger
-# rather than keeping a second copy of it.
+# The ADR the two tier mutation arms point at.  Each arm supplies its own
+# tier map, so neither depends on what the ADR text currently says: the tiers
+# a real ADR carries are read from the ADR bodies, and the arms exercise the
+# rules against a map they pin themselves.
 TIER_OVERREACH_ADR = "ADR-410-003"
 
-# An ADR reference inside an `Approvals:` element.
-ADR_REF_RE = re.compile(r"ADR-410-\d{3}")
+# An ADR id, and the `Approvals:` field of an ADR body.
+ADR_ID_RE = re.compile(r"ADR-410-\d{3}")
+APPROVALS_FIELD_RE = re.compile(r"Approvals\s*:\s*([^\n]*)")
 
 
 class HandoffError(Exception):
@@ -208,38 +229,62 @@ def body_lines(text):
     return lines
 
 def tier_of(status_value):
-    """The tier of a `Status:` value, matched on the whole token.
+    """The tier of a `Status:` value, matched on whole tokens.
 
-    The value is cut at the first sentence stop and at any parenthesis, then
-    its first delimited token is looked up in the vocabulary.  Anything that
-    is not in the vocabulary -- including "NOT APPROVED" and a sentence that
-    merely mentions APPROVED -- is PROPOSED.
+    The value is cut at the first sentence stop and split into tokens.  The
+    leading token decides the tier; a token that is not in the vocabulary
+    leaves the ADR PROPOSED -- an unknown word never grants approval, so
+    "NOT APPROVED" and "UNAPPROVED" are PROPOSED, and a sentence that merely
+    mentions APPROVED is PROPOSED too.
+
+    A tier token anywhere else -- typically inside a parenthesis, which is
+    where this corpus puts its qualifiers -- can only narrow the tier:
+    "APPROVED（仅批准方向，实施另审）" is direction-only, not unconditional.
     """
-    head=re.split(r"[。；;（(]",status_value)[0]
-    tokens=re.split(r"[\s/、,，]+",head.strip())
-    token=tokens[0].strip("：:。．.、*`_") if tokens and tokens[0] else ""
-    return ADR_TIER_BY_TOKEN.get(token,"PROPOSED")
+    head=re.split(r"[。；;]",status_value)[0]
+    tokens=[token.strip("：:。．.、*`_") for token in re.split(r"[\s/、,，()（）]+",head)]
+    tokens=[token for token in tokens if token]
+    if not tokens:
+        return "PROPOSED"
+    tier=ADR_TIER_BY_TOKEN.get(tokens[0],"PROPOSED")
+    for token in tokens[1:]:
+        if token in ADR_NEGATIVE_TOKENS:
+            return "PROPOSED"
+        if token in ADR_TIER_BY_TOKEN:
+            tier=min((tier,ADR_TIER_BY_TOKEN[token]),key=ADR_TIER_RESTRICTIVENESS.index)
+    return tier
 
 def split_approvals(value):
-    """The elements of an `Approvals:` field."""
+    """The elements of an `Approvals:` field.
+
+    The list is split on every delimiter that can separate two entries --
+    whitespace included -- so that a mixed entry cannot hide a token.
+    """
     value=value.strip()
     if value.startswith("["):
         value=value[1:]
     if value.endswith("]"):
         value=value[:-1]
-    return [element.strip() for element in re.split(r"[,，;；]",value) if element.strip()]
+    return [element.strip(" \t\"'“”‘’") for element in re.split(r"[\s,，;；、]+",value)
+            if element.strip(" \t\"'“”‘’")]
 
 def parse_adr_status(path, real_ids):
-    """(tier, approval refs) parsed out of an ADR's own Status/Approvals line.
+    """(tier, approval refs, approvals field state) parsed out of an ADR body.
 
     The ADR text is the authority: the catalogue in
     01_ARCHITECTURE_BASELINE.json is a projection of it, never a second source
     of truth.
 
-    Every element of the `Approvals:` field must name a real ADR.  An element
-    that names no ADR at all, or names one that does not exist, is rejected --
-    never silently dropped, because a dropped element is an approval the
-    catalogue no longer accounts for.
+    Every element of the `Approvals:` field must be exactly an ADR id that
+    exists.  An element that names no ADR, names one that does not exist, or
+    mixes an ADR with something else is rejected -- never silently dropped,
+    because a dropped element is an approval the catalogue no longer accounts
+    for.
+
+    The field is looked for wherever the body carries it -- on the `Status:`
+    line, on a bullet, inline -- so that a field the body really has is never
+    silently missed.  The state says which of the three it was: absent, empty
+    (an explicit `[]`) or parsed.
     """
     lines=body_lines(path.read_text())
     status_lines=[line for line in lines if line.lstrip().startswith("Status:")]
@@ -249,35 +294,44 @@ def parse_adr_status(path, real_ids):
     status_line=status_lines[0]
     status_value=status_line.split("Status:",1)[1]
     tier=tier_of(status_value)
-    approvals=None
-    if "Approvals:" in status_line:
-        approvals=status_line.split("Approvals:",1)[1]
-    else:
-        for line in lines:
-            if line.lstrip().startswith("Approvals:"):
-                approvals=line.split("Approvals:",1)[1]
-                break
+    field=None
+    for line in lines:
+        match=APPROVALS_FIELD_RE.search(line)
+        if match:
+            field=match.group(1)
+            break
     refs=[]
-    if approvals is not None:
-        for element in split_approvals(re.split(r"[。；;]",approvals)[0]):
-            found=ADR_REF_RE.findall(element)
-            require(found,
-                    f"{path.name}: the Approvals field names {element!r}, which is not an ADR "
+    if field is None:
+        state="ABSENT"
+    else:
+        value=re.split(r"[。；;]",field)[0].strip()
+        if value in ("[]",""):
+            # An empty field is an honest "no approvals recorded yet"; a field
+            # that carries something unparseable is not.
+            require(value=="[]",
+                    f"{path.name}: the Approvals field is present but carries no ADR "
                     f"reference -- the field may only name ADRs")
-            for ref in found:
-                require(ref in real_ids,
-                        f"{path.name}: the Approvals field names {ref}, which is not a real ADR id")
-                refs.append(ref)
-    return tier,sorted(set(refs))
+            state="EMPTY"
+        else:
+            state="PARSED"
+            for element in split_approvals(value):
+                require(ADR_ID_RE.fullmatch(element),
+                        f"{path.name}: the Approvals field names {element!r}, which is not "
+                        f"exactly an ADR id -- the field may only name ADRs")
+                require(element in real_ids,
+                        f"{path.name}: the Approvals field names {element}, which is not a "
+                        f"real ADR id")
+                refs.append(element)
+    return tier,sorted(set(refs)),state
 
 def adr_catalogue():
-    """{ADR id: {"tier":…, "approval_refs":…}} for every ADR file in `adrs/`."""
+    """{ADR id: {"tier":…, "approval_refs":…, "approvals_field":…}} per ADR file."""
     paths=sorted((PLAN/"adrs").glob("*.md"))
     ids={path.stem for path in paths}
     catalogue={}
     for path in paths:
-        tier,refs=parse_adr_status(path,ids)
-        catalogue[path.stem]={"tier":tier,"approval_refs":refs}
+        tier,refs,state=parse_adr_status(path,ids)
+        catalogue[path.stem]={"tier":tier,"approval_refs":refs,"approvals_field":state}
     return catalogue
 
 def adr_tiers():
@@ -393,7 +447,7 @@ def finalize():
     names=["contracts/task.schema.json","contracts/result.schema.json","contracts/receipt.schema.json","contracts/handoff.schema.json","scheduler/router.py","scheduler/gatekeeper.py","scheduler/state_machine.py","adapters/opencode.py","adapters/omp_strata.py","config/routing.json","config/policies.json","docs/test-factory/TEST_CORPUS_MANIFEST.json","docs/test-factory/hold/LOCAL_ONLY_ATTESTATION.md","docs/test-factory/hold/LOCAL-ONLY-FAIL-CLOSED-TESTS.md","docs/test-factory/hold/EXECUTION-MODE-CONTRACT.md"]
     for n in names:sources[str(DSH/n)]=sha(DSH/n)
     for n in ["docs/EVIDENCE-CONTRACT.md","docs/STATE-TRUTH.md","orchestration/task_state.py"]:sources[str(KOS/n)]=sha(KOS/n)
-    for p in [pathlib.Path("/Volumes/workspace/dev/srg-test-factory-pilot/tools/test_factory.py"),pathlib.Path("/Volumes/workspace/dev/srg-test-factory-pilot/tests/integration/test_factory/tf_t1_undo_invariants.rs")]:sources[str(p)]=sha(p)
+    for p in PILOT_SOURCES:sources[str(p)]=sha(p)
     record=freeze_record()
     base=record["base_sha"]
     stamp=datetime.datetime.now(datetime.timezone.utc).isoformat()
@@ -405,7 +459,8 @@ def finalize():
         path=PLAN/"adrs"/f"{adr_id}.md"
         adrs.append({"id":adr_id,"path":str(path.relative_to(ROOT)),"sha256":sha(path),
                      "status":catalogue[adr_id]["tier"],
-                     "approval_refs":catalogue[adr_id]["approval_refs"]})
+                     "approval_refs":catalogue[adr_id]["approval_refs"],
+                     "approvals_field":catalogue[adr_id]["approvals_field"]})
     dump(HAND/"01_ARCHITECTURE_BASELINE.json",{"version":"C-HANDOFF-1","base_sha":base,"tree":record["tree_sha"],"source_run":bindings["source_run"],"timestamp":stamp,"stage":"ALPHA","hara_manifest":{"path":HARA_REL,"sha256":sha(ROOT/HARA_REL)},"source_bindings":{"path":str((PLAN/"evidence/SOURCE_BINDINGS.json").relative_to(ROOT)),"sha256":sha(PLAN/"evidence/SOURCE_BINDINGS.json")},"adrs":adrs,"architecture_principle":"OWNER_ACCEPTED_C","adr_approval":aggregate_adr_approval(adrs),"dispatch_allowed":False,"pending_owner_decisions":["DSH takeover","18-task budget","LOCAL_ONLY enforcement","ADR digests","isolation/product scope","format/sidecar","resource windows","independent reviewer"]})
     dump(HAND/"04_TASK_DEPENDENCY_DAG.json",{"kind":"HASH_BOUND_REFERENCE_NOT_SECOND_DAG","path":str((PLAN/"REFACTOR_TASK_DAG.json").relative_to(ROOT)),"sha256":sha(PLAN/"REFACTOR_TASK_DAG.json"),"dispatch_allowed":False})
     files={}
@@ -462,10 +517,15 @@ def check():
     rejected=[]
     reasons={}
     mutations=[]
-    # Each arm is validated against the tier map it is named for.  The "tier
-    # overreach" arm supplies its own map, so it exercises the rule it is
-    # named for no matter what the ADR texts currently say.
-    arm_tiers={"tier_overreach":{**tiers,TIER_OVERREACH_ADR:"APPROVED_DIRECTION"}}
+    # Each arm is validated against the tier map it is named for, and every
+    # arm pins its own map.  No arm may take its expected outcome from live
+    # corpus state: the next task writes the owner's tiers into the ADR
+    # bodies, and an arm that read the corpus would silently stop being
+    # rejected the day that lands.
+    arm_tiers={
+        "tier_overreach":{**tiers,TIER_OVERREACH_ADR:"APPROVED_DIRECTION"},
+        "unapproved_adr_still_proposed":{**tiers,TIER_OVERREACH_ADR:"PROPOSED"},
+    }
     d=copy.deepcopy(dag);d["tasks"][0]["dependencies"]=["C01-18"];mutations.append(("cycle",d,native))
     d=copy.deepcopy(dag);d["tasks"][0]["dependencies"]=["MISSING"];mutations.append(("missing",d,native))
     d=copy.deepcopy(dag);d["tasks"][0]["dispatch_allowed"]=True;mutations.append(("unapproved_dispatch",d,native))
@@ -522,6 +582,10 @@ def check():
                 f"the catalogue records {entry['id']}'s approvals as "
                 f"{entry['approval_refs']}, but the ADR's own Approvals field reads "
                 f"{catalogue[entry['id']]['approval_refs']}")
+        require(entry.get("approvals_field")==catalogue[entry["id"]]["approvals_field"],
+                f"the catalogue records {entry['id']}'s Approvals field as "
+                f"{entry.get('approvals_field')}, but the ADR's own body says "
+                f"{catalogue[entry['id']]['approvals_field']}")
         require(not entry["approval_refs"] or set(entry["approval_refs"])<=set(catalogue),
                 f"{entry['id']} cites approval references that are not real ADR ids: "
                 f"{sorted(set(entry['approval_refs'])-set(catalogue))}")
@@ -535,7 +599,8 @@ def check():
                     assert (p.parent/link.split("#")[0]).exists(),str(p)+":"+link
                     links+=1
     changed=git(ROOT,"diff","HEAD","--name-only").splitlines()
-    require(all(p.startswith(ALLOWED_CHANGE_PREFIXES) for p in changed),changed)
+    extra={str(p.relative_to(ROOT)) for p in MANIFEST_EXTRA_FILES}
+    require(all(p.startswith(ALLOWED_CHANGE_PREFIXES) or p in extra for p in changed),changed)
     pending=[t["task_id"] for t in dag["tasks"] if not t["approved_adr_refs"]]
     tier_counts={tier:sum(1 for v in tiers.values() if v==tier) for tier in list(ADR_TIERS)+["PROPOSED"]}
     # The catalogue aggregate says how far the owner's ADR decision got; the
