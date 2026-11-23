@@ -82,9 +82,14 @@ def clone_shared(dest: Path, branch: str) -> None:
                    check=True, capture_output=True)
 
 
-def run_verifier(repo: Path, *args: str, python_flags: list[str] | None = None):
+def run_verifier(repo: Path, *args: str, python_flags: list[str] | None = None,
+                 env: dict[str, str] | None = None):
     cmd = [sys.executable, *(python_flags or []), str(Path(repo) / VERIFIER_REL), *args]
-    return subprocess.run(cmd, cwd=str(repo), capture_output=True, text=True)
+    environment = dict(os.environ)
+    if env:
+        environment.update(env)
+    return subprocess.run(cmd, cwd=str(repo), capture_output=True, text=True,
+                          env=environment)
 
 
 def git_reset(repo: Path, pristine: str) -> None:
@@ -125,6 +130,26 @@ def probe_green(repo: Path, pristine: str, name: str, mutate) -> None:
         git_reset(repo, pristine)
     check(f"{name} ⇒ 退出码 0", proc.returncode == 0, proc.stdout.strip()[-400:])
     check(f"{name} ⇒ 判定行 6/6 PASS", "6/6 PASS" in proc.stdout, proc.stdout.strip()[-400:])
+
+
+def probe_red_with_env(repo: Path, name: str, expect_in_output: str,
+                       env: dict[str, str]) -> None:
+    """A run under a given environment must turn the verifier red."""
+    proc = run_verifier(repo, env=env)
+    check(f"{name} ⇒ 退出码非 0", proc.returncode != 0, f"got {proc.returncode}")
+    check(f"{name} ⇒ 报出原因", expect_in_output in proc.stdout,
+          f"stdout={proc.stdout.strip()[-400:]}")
+
+
+def probe_skip_with_env(repo: Path, name: str, expect_in_output: str,
+                        env: dict[str, str]) -> None:
+    """A run that cannot check something must say so -- never report it as verified."""
+    proc = run_verifier(repo, env=env)
+    check(f"{name} ⇒ 退出码 0", proc.returncode == 0, proc.stdout.strip()[-400:])
+    check(f"{name} ⇒ 报出原因", expect_in_output in proc.stdout,
+          f"stdout={proc.stdout.strip()[-400:]}")
+    proc = run_verifier(repo, "--strict", env=env)
+    check(f"{name} ⇒ --strict 退出码非 0", proc.returncode != 0, f"got {proc.returncode}")
 
 
 def edit_json(repo: Path, rel: str, mutate) -> None:
@@ -285,6 +310,25 @@ def main() -> int:
         check("退出码非 0", proc.returncode != 0, f"got {proc.returncode}")
         check("不打印 6/6 PASS", "6/6 PASS" not in proc.stdout, proc.stdout.strip()[-400:])
         check("说明拒绝原因", "python -O" in proc.stdout, proc.stdout.strip()[-400:])
+
+        print("G. 仓外 pilot 副本的三个分支")
+        fake_missing = tmp / "fake-pilot-missing"
+        (fake_missing / "evidence").mkdir(parents=True, exist_ok=True)
+        probe_red_with_env(shared, "pilot checkout 在但文件没了 ⇒ 硬失败",
+                           "cannot have been deleted",
+                           {"SQLRUSTGO_PILOT_ROOT": str(fake_missing)})
+
+        fake_divergent = tmp / "fake-pilot-divergent"
+        (fake_divergent / "evidence").mkdir(parents=True, exist_ok=True)
+        (fake_divergent / "evidence/rerun-summary-20261120.json").write_text(
+            json.dumps({"base_sha": "0" * 40}, ensure_ascii=False, indent=2) + "\n")
+        probe_red_with_env(shared, "仓外 pilot 副本与仓内不一致 ⇒ 判红",
+                           "differs from the tracked",
+                           {"SQLRUSTGO_PILOT_ROOT": str(fake_divergent)})
+
+        probe_skip_with_env(shared, "整台机器没有 pilot checkout ⇒ 显式记为未核",
+                            "cross-check(s) skipped",
+                            {"SQLRUSTGO_PILOT_ROOT": str(tmp / "fake-pilot-absent")})
 
     print()
     if FAILURES:

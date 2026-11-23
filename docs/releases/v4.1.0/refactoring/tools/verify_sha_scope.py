@@ -55,6 +55,7 @@ a no-op that prints "6/6 PASS" for anything.
 import argparse
 import fnmatch
 import json
+import os
 import pathlib
 import re
 import subprocess
@@ -88,7 +89,12 @@ PILOT_EVIDENCE_REL = "evidence/rerun-summary-20261120.json"
 # when the pilot checkout does not exist at all the cross-check is reported as
 # skipped (never as verified); when the checkout exists but the file is gone
 # that is tampering and fails hard.
-PILOT_OUT_OF_REPO_ROOT = pathlib.Path("/Volumes/workspace/dev/srg-test-factory-pilot")
+#
+# SQLRUSTGO_PILOT_ROOT overrides the checkout location so the three branches
+# can be exercised by tools/test_verify_sha_scope.py.  It only ever weakens
+# the redundant witness: the tracked copy above is asserted unconditionally.
+PILOT_OUT_OF_REPO_ROOT = pathlib.Path(
+    os.environ.get("SQLRUSTGO_PILOT_ROOT", "/Volumes/workspace/dev/srg-test-factory-pilot"))
 PILOT_OUT_OF_REPO = PILOT_OUT_OF_REPO_ROOT / "evidence/rerun-summary-20261120.json"
 
 DAG_TASKS = 18
