@@ -307,9 +307,14 @@ def s5(base):
         require(compared > 0,
                 f"no historical record could be compared against {MATERIAL_COMMIT[:10]}; "
                 f"the binding comparison would be vacuous")
-        require(total_now == total_then,
-                f"the historical records declare {total_now} frozen_commit binding(s) "
-                f"now but {total_then} at {MATERIAL_COMMIT[:10]}")
+        # The same file set on both sides: the records added after
+        # MATERIAL_COMMIT have no counterpart there.
+        total_now_compared = sum(len(bindings_now[rel]) for rel in expected
+                                 if rel not in added)
+        require(total_now_compared == total_then,
+                f"the compared historical records declare {total_now_compared} "
+                f"frozen_commit binding(s) now but {total_then} at "
+                f"{MATERIAL_COMMIT[:10]}")
         if added:
             note(f"{len(added)} historical record(s) were added after "
                  f"{MATERIAL_COMMIT[:10]}; their bytes are covered by the frozen-baseline "
