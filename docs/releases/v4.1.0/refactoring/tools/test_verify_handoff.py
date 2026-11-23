@@ -305,19 +305,23 @@ def main() -> int:
                            "Approvals: [ADR-410-002]。")
         probe_green(shared, pristine, "Approvals 含真实 ADR-410-002 ⇒ 合法", mutate_real_approval)
         # The catalogue must carry the parsed reference -- not an empty list.
-        set_adr_status(shared, "Status: APPROVED（依 ADR-DECISION-RECORD.md:35-47，2026-11-21）。"
-                                "Approvals: [ADR-410-002]。")
-        commit_all(shared, "probe: approvals parsed")
-        try:
-            run_verifier(shared, "--finalize")
-            baseline = json.loads((Path(shared) / BASELINE_REL).read_text())
-            entry = next((e for e in baseline["adrs"] if e["id"] == "ADR-410-001"), {})
-            check("目录里 ADR-410-001 的 approval_refs 真的被解析出来",
-                  entry.get("approval_refs") == ["ADR-410-002"], f"got {entry.get('approval_refs')}")
-            check("目录里 ADR-410-001 的 approvals_field 记为 PARSED",
-                  entry.get("approvals_field") == "PARSED", f"got {entry.get('approvals_field')}")
-        finally:
-            git_reset(shared, pristine)
+        if not CAN_FINALIZE:
+            skip("目录里 ADR-410-001 的 approval_refs 真的被解析出来",
+                 f"这台机器无法重签（{FINALIZE_DETAIL}）")
+        else:
+            set_adr_status(shared, "Status: APPROVED（依 ADR-DECISION-RECORD.md:35-47，2026-11-21）。"
+                                    "Approvals: [ADR-410-002]。")
+            commit_all(shared, "probe: approvals parsed")
+            try:
+                run_verifier(shared, "--finalize")
+                baseline = json.loads((Path(shared) / BASELINE_REL).read_text())
+                entry = next((e for e in baseline["adrs"] if e["id"] == "ADR-410-001"), {})
+                check("目录里 ADR-410-001 的 approval_refs 真的被解析出来",
+                      entry.get("approval_refs") == ["ADR-410-002"], f"got {entry.get('approval_refs')}")
+                check("目录里 ADR-410-001 的 approvals_field 记为 PARSED",
+                      entry.get("approvals_field") == "PARSED", f"got {entry.get('approvals_field')}")
+            finally:
+                git_reset(shared, pristine)
 
         print("E. Approvals 字段在项目符号行上也不能被当成空")
         def mutate_bullet_approvals(repo: Path) -> None:
