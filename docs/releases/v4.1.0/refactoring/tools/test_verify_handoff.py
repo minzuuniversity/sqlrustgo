@@ -52,6 +52,8 @@ BASELINE_REL = "docs/refactor/v4.1.0-c/handoff/01_ARCHITECTURE_BASELINE.json"
 MANIFEST_REL = "docs/refactor/v4.1.0-c/handoff/10_HANDOFF_MANIFEST.json"
 ADR011_SRC_REL = ("docs/releases/v4.1.0/refactoring/runtime-contract/20261120-pr5915/"
                   "ADR-410-011-UNIFIED_RUNTIME_CONTRACT.md")
+ADR011_README_REL = ("docs/releases/v4.1.0/refactoring/runtime-contract/20261120-pr5915/"
+                     "00_DECISION_README.md")
 ADR011_DST_REL = "docs/releases/v4.1.0/refactoring/adrs/ADR-410-011.md"
 
 # The `Status:` line every ADR in the shipped corpus carries.
@@ -312,11 +314,20 @@ def main() -> int:
 
         print("G. ADR 目录的期望状态必须钉死")
         def merge_adr_011(repo: Path) -> None:
-            """Simulate the O7 merge: relocate ADR-410-011 and record it."""
+            """Simulate the O7 merge: relocate ADR-410-011 and record it.
+
+            The relocation also has to repair the link the runtime contract's
+            README carries to the ADR -- the gate checks markdown links, so a
+            merge that leaves a dangling link is not a merge that passes.
+            """
             src = Path(repo) / ADR011_SRC_REL
             dst = Path(repo) / ADR011_DST_REL
             dst.write_text(src.read_text())
             src.unlink()
+            readme = Path(repo) / ADR011_README_REL
+            text = readme.read_text()
+            readme.write_text(text.replace("](ADR-410-011-UNIFIED_RUNTIME_CONTRACT.md)",
+                                            "](../../adrs/ADR-410-011.md)"))
             def mutate(data):
                 expectation = data["adr_catalogue"]
                 expectation["expected_ids"] = sorted(

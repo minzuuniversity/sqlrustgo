@@ -557,11 +557,11 @@ def main():
     parser.add_argument("--finalize",action="store_true",help="re-sign the handoff manifests")
     parser.add_argument("--check",action="store_true",help="validate the handoff package")
     args=parser.parse_args()
-    if not (args.check or args.finalize):
-        parser.error("nothing to do: pass --check and/or --finalize")
     if sys.flags.optimize:
         print("refusing to run under python -O: assert statements are stripped, this gate would be a no-op")
         return 2
+    if not (args.check or args.finalize):
+        parser.error("nothing to do: pass --check and/or --finalize")
     try:
         if args.finalize:
             count=finalize()
