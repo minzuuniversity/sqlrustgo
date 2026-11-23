@@ -321,9 +321,10 @@ T3 声明的不变量：`buffer/flush：页可见性与写回时机` → `INV-07
 ## 7. 声明
 
 - 本人在判定过程中**没有读取**被测函数的实现代码；
-- **没有读取**任何执行日志（`L1-RERUN-fd849ae20541.json`、`L1-DIFF-fd849ae20541.md`、`L1-BINDING-fd849ae20541.json`、cargo 原始日志）；
-- 矩阵里 `actual` 与 `artifact_sha256` 两个字段在判定期间**未被用于任何判定**。
-  **如实披露两处边界**：
+- **执行日志一份都没有打开过**：`L1-RERUN-fd849ae20541.json`、`L1-DIFF-fd849ae20541.md`、
+  `L1-BINDING-fd849ae20541.json`、cargo 原始日志，全部未打开。
+  矩阵里的 `actual` 与 `artifact_sha256` 两个字段**未被用于任何判定**。
+  **但这一条有两处边界必须如实登记，不作无条件声明**：
   1. **开工时为了摸清矩阵结构，打印过 `PILOT-T1-001` 与 `PILOT-T1-002` 两条的完整 case 对象**，
      当时的输出里带有这两条的 `actual`（`… transaction_lifecycle ... ok` 一行）与 `artifact_sha256`。
      这发生在建立「不打印 `actual`/`artifact_sha256`」规则之前。这两条的判定结果都是
