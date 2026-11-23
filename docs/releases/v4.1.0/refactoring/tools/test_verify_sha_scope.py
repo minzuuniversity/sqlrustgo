@@ -296,7 +296,27 @@ def main() -> int:
         probe_red(shared, pristine, "frozen_commit 绑定键被改名（不得空过）",
                   "the binding comparison would be vacuous", binding_key_renamed)
 
-        print("E. 工作树必须干净（判定绑定到提交）")
+        print("E. 下游任务的合法改动不得判红")
+
+        def matrix_case_rewritten(repo: Path) -> None:
+            # Task 5 会重写矩阵用例的判定字段 —— 本门禁只管 SHA，不该拦。
+            def mutate(data):
+                data["cases"][0]["note"] = "Task 5 rewrote this case"
+            edit_json(repo, MATRIX_REL, mutate)
+
+        probe_green(shared, pristine, "矩阵用例的非 SHA 字段被合法改写（Task 5 形态）",
+                    matrix_case_rewritten)
+
+        def adr_refs_filled(repo: Path) -> None:
+            # Task 4 会把 ADR 批准填进 tasks[].approved_adr_refs。
+            def mutate(data):
+                data["tasks"][0]["approved_adr_refs"] = ["ADR-410-001"]
+            edit_json(repo, DAG_REL, mutate)
+
+        probe_green(shared, pristine, "DAG 里填了 approved_adr_refs（Task 4 形态）",
+                    adr_refs_filled)
+
+        print("F. 工作树必须干净（判定绑定到提交）")
 
         def dirty_tree(repo: Path) -> None:
             path = Path(repo) / UNRELATED_REL
@@ -305,13 +325,13 @@ def main() -> int:
         probe_red(shared, pristine, "工作树有未提交改动",
                   "the working tree is not clean", dirty_tree, commit=False)
 
-        print("F. python -O 必须拒绝运行")
+        print("G. python -O 必须拒绝运行")
         proc = run_verifier(shared, python_flags=["-O"])
         check("退出码非 0", proc.returncode != 0, f"got {proc.returncode}")
         check("不打印 6/6 PASS", "6/6 PASS" not in proc.stdout, proc.stdout.strip()[-400:])
         check("说明拒绝原因", "python -O" in proc.stdout, proc.stdout.strip()[-400:])
 
-        print("G. 仓外 pilot 副本的三个分支")
+        print("H. 仓外 pilot 副本的三个分支")
         fake_missing = tmp / "fake-pilot-missing"
         (fake_missing / "evidence").mkdir(parents=True, exist_ok=True)
         probe_red_with_env(shared, "pilot checkout 在但文件没了 ⇒ 硬失败",
