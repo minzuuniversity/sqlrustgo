@@ -1,0 +1,17 @@
+=== PR Body 5-类文档 Section Check (issue #5458) ===
+  source_agent: codex
+  source_run:   RUNTIME-5915-20261120
+  timestamp:    2026-11-20T14:46:40Z
+
+[PASS] section:SPEC
+[PASS] section:TEST_PLAN
+[PASS] section:TEST_DESIGN
+[PASS] section:REVIEW
+[PASS] section:ACCEPTANCE
+
+--- Summary ---
+  required sections: 5
+  present:           5
+  missing:           0
+
+✅ PASS: all 5 required sections are present.

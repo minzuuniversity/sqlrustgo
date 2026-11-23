@@ -1,0 +1,123 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "RUNTIME-5915-20261120",
+  "conflict_resolution": "Source-bound recommendation; Owner approval pending; no core changes or workers",
+  "timestamp": "2026-11-20T14:25:48.138237+00:00",
+  "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/issues/5908",
+  "http_status": 200,
+  "data": {
+    "id": 10590,
+    "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/issues/5908",
+    "html_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5908",
+    "number": 5908,
+    "user": {
+      "id": 1,
+      "login": "openclaw",
+      "type": "User",
+      "login_name": "",
+      "source_id": 0,
+      "full_name": "",
+      "email": "1+openclaw@noreply.192.168.0.252",
+      "avatar_url": "http://192.168.0.252:3000/avatars/b5ad8ef56d54a99ca3133efd201841aabc6a069fc055eb72eb67395547685052",
+      "html_url": "http://192.168.0.252:3000/openclaw",
+      "language": "",
+      "is_admin": false,
+      "last_login": "0001-01-01T00:00:00Z",
+      "created": "2026-04-28T14:39:45Z",
+      "restricted": false,
+      "active": false,
+      "prohibit_login": false,
+      "location": "",
+      "website": "",
+      "description": "",
+      "visibility": "public",
+      "followers_count": 0,
+      "following_count": 0,
+      "starred_repos_count": 0,
+      "username": "openclaw"
+    },
+    "original_author": "",
+    "original_author_id": 0,
+    "title": "[v4.1.0][P0][引擎/数据完整性] 无主键表里有完全相同的两行时，按值恢复无法定位被删的那一行 ⇒ 回滚后净少一行（#5905 修复的确定性反例）",
+    "body": "## 现象（确定性反例，非罕见场景）\n\n一张**没有主键**的表里有两行**内容完全相同**的记录。事务内删除其中一行，随后 ROLLBACK：\n\n- 期望：两行都还在（被删的那行被恢复）；\n- 实测（#5905 修复所采用的「按原行全值删除、再插回原行」）：全值过滤命中**两行**并全部移除，再插回一行 ⇒ **净少一行**。\n\n这是**不可恢复的数据丢失**，不是显示问题。\n\n## 为什么这不是「罕见场景可以放行」\n\n外部评审明确指出：不得依赖「重复行罕见」放行。根因是结构性的 —— 引擎层的 undo 记录（UndoRecord）**只携带行值**（`old_value`）与主键值（`key`），**没有稳定的行身份**：\n\n- 有主键时，主键唯一 ⇒ 行身份确定；\n- 无主键时，两行内容相同 ⇒ **无法区分**「我删掉的那一行」与「本来就存在的那一行」。\n\n存储层自己的 undo 日志（UndoOp::DeleteRow）**是精确的** —— 它记 `row_idx`（行下标），回放时 `data.rows.insert(idx, original)` 按位置还原 ⇒ 引擎层的按值恢复才是那个「不精确」的一方。\n\n## 两种可能的正解（尚未择一）\n\n1. **给引擎层 undo 记录补稳定行身份**：主键列**下标** + 主键值（而不是只给主键值）；无主键表需要稳定的行身份机制（内部行号或行 id 列），不能用全值匹配代替。附带收益：主键过滤当前是**按列位置**匹配的（`filters[i]` 对 `row[i]`），在主键非首列的表上会命中错误的行 —— 带列下标的结构化谓词可一并消除这个隐患。\n2. **顶层 ROLLBACK 只保留一个恢复责任层**：顶层回滚只由「具备完整撤销能力的那一层」执行，引擎层只负责 SAVEPOINT 的部分回滚（SAVEPOINT 本来就只有引擎层能做）。评审建议：对 FileStorage、MemoryStorage **分别证明覆盖面之后**再切换，不要现在直接按后端类型切换回滚路径。\n\n## 现状与本线立场\n\n- #5905 的修复（PR #5903，引擎回放幂等化）**已经解决**了有主键表上的重复行问题，并在合并态被门禁锁住（9/10 变异 ⇒ 变红）；\n- 但它**不是通用终局修复** —— 上面这个反例成立。因此本 issue 单独登记，**不得**因为 #5905 已修就认为本条已关闭；\n- 本线**不擅自改动**：正解 1 涉及存储层 API 与行身份机制（改动面大），正解 2 涉及回滚责任划分（架构决策），两者都需先有覆盖面证明，且属主域。\n\n## 外部评审留痕\n\n评审（本轮仅 chatGPT-web 单血统，deepseek-web 因 PoW 会话过期不可用，缺口已公开登记）裁定原文要点：\n\n- 「全值替换不具备普遍的幂等语义……不得依赖『重复行罕见』放行」；\n- 「最小修复：主键表使用列下标明确的唯一行定位；无主键表需要稳定行身份，或者由唯一的 undo 责任层恢复被删除的具体行」；\n- 「优先建立顶层 ROLLBACK 的单一恢复责任，不建议直接修改 DeleteRow 为按值幂等」；\n- 「两个独立 undo 层均可修改同一事务的数据，但尚未证明其组合满足精确一次恢复的语义」。\n\n该架构级风险另立 #5909 跟踪（双层 undo 的精确一次恢复语义未证明）。\n",
+    "ref": "",
+    "assets": [],
+    "labels": [
+      {
+        "id": 106,
+        "name": "GA-blocker",
+        "exclusive": false,
+        "is_archived": false,
+        "color": "d93f0b",
+        "description": "V312-RC-GA: must be fixed before GA cut (per docs/releases/v3.12.0/RC_GA_TRIAGE_AND_GATE_PLAN_2026-09-03.md §3)",
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/labels/106"
+      },
+      {
+        "id": 87,
+        "name": "blocked-ga",
+        "exclusive": false,
+        "is_archived": false,
+        "color": "e11d21",
+        "description": "Blocked on user/owner action (not local Z440)",
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/labels/87"
+      },
+      {
+        "id": 151,
+        "name": "cap/architecture",
+        "exclusive": false,
+        "is_archived": false,
+        "color": "1d76db",
+        "description": "",
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/labels/151"
+      },
+      {
+        "id": 156,
+        "name": "cost/t2",
+        "exclusive": false,
+        "is_archived": false,
+        "color": "0e8a16",
+        "description": "",
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/labels/156"
+      },
+      {
+        "id": 39,
+        "name": "priority/p0",
+        "exclusive": false,
+        "is_archived": false,
+        "color": "d93f0b",
+        "description": "P0 critical issue",
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/labels/39"
+      },
+      {
+        "id": 159,
+        "name": "state/in-review",
+        "exclusive": false,
+        "is_archived": false,
+        "color": "fbca04",
+        "description": "",
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/labels/159"
+      }
+    ],
+    "milestone": null,
+    "projects": null,
+    "assignee": null,
+    "assignees": null,
+    "state": "open",
+    "is_locked": false,
+    "comments": 2,
+    "created_at": "2026-11-19T17:46:31Z",
+    "updated_at": "2026-11-20T11:52:44Z",
+    "closed_at": null,
+    "due_date": null,
+    "time_estimate": 0,
+    "pull_request": null,
+    "repository": {
+      "id": 10,
+      "name": "sqlrustgo",
+      "owner": "openclaw",
+      "full_name": "openclaw/sqlrustgo"
+    },
+    "pin_order": 0,
+    "content_version": 0
+  }
+}

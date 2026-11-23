@@ -1,0 +1,711 @@
+{
+  "version": "ADR-410-011-ACCEPTANCE-v1",
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "RUNTIME-5915-20261120",
+  "timestamp": "2026-11-20T14:35:10.759Z",
+  "status": "OWNER_REVIEW_PENDING_NO_WORKER_DISPATCH",
+  "baseline_summary": {
+    "tests_run": 6,
+    "passed": 2,
+    "failed": 4,
+    "ignored": 0,
+    "cargo_exit": 101,
+    "detector_execution_is_not_product_PASS": true
+  },
+  "evidence_classification": {
+    "INV07b": "VERIFIED_RUN_NORMAL_REOPEN",
+    "INV07b_process_crash": "NOT_RUN",
+    "INV07b_wal_recovery": "NOT_RUN",
+    "INV07b_power_loss": "NOT_RUN"
+  },
+  "baseline_cases": [
+    {
+      "id": "PR5915-INV01a",
+      "test": "inv01a_rollback_restores_exact_multiset",
+      "invariants": [
+        "INV-01"
+      ],
+      "issues": [
+        5909
+      ],
+      "target": "ca01_file_undo",
+      "expected": "3行原多重集",
+      "actual": "6行；(1,10)四次、(2,20)两次",
+      "status": "FAIL",
+      "claim": "rollback多重集失败",
+      "limits": "不直接证明每Mutation的回放计数",
+      "fault": "NONE_RUNTIME",
+      "source_commit": "56cfa222f1450975d3b3adc6ab9c36a4d258a5f6",
+      "production_commit": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "assembly": "ExecutionEngine<FileStorage>; FileStorage::new; no WAL/Mvcc wrapper",
+      "evidence_status": "VERIFIED-RUN",
+      "evidence": "evidence/independent-pr5915.raw.json",
+      "process_crash_observed": false,
+      "wal_replay_observed": false,
+      "power_loss_observed": false,
+      "owner_gate_for_future_core_changes": true,
+      "evidence_encoding": "base64 lossless; decoded hash bound by independent-pr5915.json"
+    },
+    {
+      "id": "PR5915-INV01b",
+      "test": "inv01b_mutation_revoked_exactly_once",
+      "invariants": [
+        "INV-01"
+      ],
+      "issues": [
+        5909
+      ],
+      "target": "ca01_file_undo",
+      "expected": "一行v=7",
+      "actual": "一行v=7",
+      "status": "PASS",
+      "claim": "该最终值对照正常",
+      "limits": "不能证明内部exactly-once或所有组合",
+      "fault": "NONE_RUNTIME",
+      "source_commit": "56cfa222f1450975d3b3adc6ab9c36a4d258a5f6",
+      "production_commit": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "assembly": "ExecutionEngine<FileStorage>; FileStorage::new; no WAL/Mvcc wrapper",
+      "evidence_status": "VERIFIED-RUN",
+      "evidence": "evidence/independent-pr5915.raw.json",
+      "process_crash_observed": false,
+      "wal_replay_observed": false,
+      "power_loss_observed": false,
+      "owner_gate_for_future_core_changes": true,
+      "evidence_encoding": "base64 lossless; decoded hash bound by independent-pr5915.json"
+    },
+    {
+      "id": "PR5915-INV02",
+      "test": "inv02_identical_rows_have_independent_rowids",
+      "invariants": [
+        "INV-02"
+      ],
+      "issues": [
+        5908,
+        5909
+      ],
+      "target": "ca01_file_undo",
+      "expected": "2行",
+      "actual": "4行",
+      "status": "FAIL",
+      "claim": "行数恢复失败",
+      "limits": "SQL删除两条匹配行；未直接观测RowId；不是#5908一条删除2到1原例",
+      "fault": "NONE_RUNTIME",
+      "source_commit": "56cfa222f1450975d3b3adc6ab9c36a4d258a5f6",
+      "production_commit": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "assembly": "ExecutionEngine<FileStorage>; FileStorage::new; no WAL/Mvcc wrapper",
+      "evidence_status": "VERIFIED-RUN",
+      "evidence": "evidence/independent-pr5915.raw.json",
+      "process_crash_observed": false,
+      "wal_replay_observed": false,
+      "power_loss_observed": false,
+      "owner_gate_for_future_core_changes": true,
+      "evidence_encoding": "base64 lossless; decoded hash bound by independent-pr5915.json"
+    },
+    {
+      "id": "PR5915-INV07a",
+      "test": "inv07a_uncommitted_invisible_to_other_engine",
+      "invariants": [
+        "INV-07"
+      ],
+      "issues": [
+        5909
+      ],
+      "target": "ca01_snapshot_reopen",
+      "expected": "B看到1行",
+      "actual": "B看到2行",
+      "status": "FAIL",
+      "claim": "同Arc<FileStorage>双Engine未提交可见",
+      "limits": "同进程/非wire；后续COMMIT和47行提交后断言未执行",
+      "fault": "NONE_RUNTIME",
+      "source_commit": "56cfa222f1450975d3b3adc6ab9c36a4d258a5f6",
+      "production_commit": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "assembly": "ExecutionEngine<FileStorage>; FileStorage::new; no WAL/Mvcc wrapper",
+      "evidence_status": "VERIFIED-RUN",
+      "evidence": "evidence/independent-pr5915.raw.json",
+      "process_crash_observed": false,
+      "wal_replay_observed": false,
+      "power_loss_observed": false,
+      "owner_gate_for_future_core_changes": true,
+      "evidence_encoding": "base64 lossless; decoded hash bound by independent-pr5915.json"
+    },
+    {
+      "id": "PR5915-INV07b",
+      "test": "inv07b_reopen_baseline_excludes_uncommitted",
+      "invariants": [
+        "INV-07"
+      ],
+      "issues": [
+        5909,
+        5910
+      ],
+      "target": "ca01_snapshot_reopen",
+      "expected": "只(1,10)",
+      "actual": "(1,10)和未提交(2,20)",
+      "status": "FAIL",
+      "claim": "flush后正常重开可读到pending",
+      "limits": "没有子进程、kill、WAL、RecoveryEngine、fsync或断电证明",
+      "fault": "CLEAN_OBJECT_DROP_AND_REOPEN",
+      "source_commit": "56cfa222f1450975d3b3adc6ab9c36a4d258a5f6",
+      "production_commit": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "assembly": "ExecutionEngine<FileStorage>; FileStorage::new; no WAL/Mvcc wrapper",
+      "evidence_status": "VERIFIED-RUN",
+      "evidence": "evidence/independent-pr5915.raw.json",
+      "process_crash_observed": false,
+      "wal_replay_observed": false,
+      "power_loss_observed": false,
+      "owner_gate_for_future_core_changes": true,
+      "evidence_encoding": "base64 lossless; decoded hash bound by independent-pr5915.json"
+    },
+    {
+      "id": "PR5915-INV07c",
+      "test": "inv07c_rollback_then_reopen_is_clean",
+      "invariants": [
+        "INV-07"
+      ],
+      "issues": [
+        5909
+      ],
+      "target": "ca01_snapshot_reopen",
+      "expected": "只(1,10)",
+      "actual": "只(1,10)",
+      "status": "PASS",
+      "claim": "显式rollback+flush+重开对照正常",
+      "limits": "不是crash recovery认证",
+      "fault": "CLEAN_OBJECT_DROP_AND_REOPEN",
+      "source_commit": "56cfa222f1450975d3b3adc6ab9c36a4d258a5f6",
+      "production_commit": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+      "assembly": "ExecutionEngine<FileStorage>; FileStorage::new; no WAL/Mvcc wrapper",
+      "evidence_status": "VERIFIED-RUN",
+      "evidence": "evidence/independent-pr5915.raw.json",
+      "process_crash_observed": false,
+      "wal_replay_observed": false,
+      "power_loss_observed": false,
+      "owner_gate_for_future_core_changes": true,
+      "evidence_encoding": "base64 lossless; decoded hash bound by independent-pr5915.json"
+    }
+  ],
+  "planned_cases": [
+    {
+      "id": "RID-ONE-OF-DUP",
+      "invariants": [
+        "INV-02"
+      ],
+      "trigger": "RowId定点删一条同值行→undo",
+      "expected": "验证同一RowId恢复，另一个ID/值/版本不变；bag=2",
+      "failure_model": "IDENTITY_WHITEBOX",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "RID-PK-CHANGE",
+      "invariants": [
+        "INV-02"
+      ],
+      "trigger": "UPDATE主键→undo及重开",
+      "expected": "RowId不变，旧/新PK索引一致；按新协议跨重启",
+      "failure_model": "NORMAL_REOPEN",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "RID-ABA",
+      "invariants": [
+        "INV-02"
+      ],
+      "trigger": "删除/slot复用/迟到undo",
+      "expected": "旧generation不能命中新行，ID引用退役前不复用",
+      "failure_model": "RUNTIME_FAULT",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "RID-MOVE",
+      "invariants": [
+        "INV-02"
+      ],
+      "trigger": "自身/peer/阈值flush与压缩",
+      "expected": "RowLoc变，RowId和恢复目标不变",
+      "failure_model": "RUNTIME_CONCURRENCY",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "RID-NAMESPACE",
+      "invariants": [
+        "INV-02",
+        "INV-03"
+      ],
+      "trigger": "跨DB同名表/drop-recreate",
+      "expected": "stable table incarnation封闭；重建不命中旧undo",
+      "failure_model": "RUNTIME_CONCURRENCY",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "UNDO-FULLSET",
+      "invariants": [
+        "INV-01",
+        "INV-07"
+      ],
+      "trigger": "重放#5910原配置/路径",
+      "expected": "日志覆盖tables+自己的buffer/workspace所有RowId；不覆盖peer",
+      "failure_model": "PATH_SPECIFIC_NO_PRESET_RED",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "UNDO-SAVEPOINT",
+      "invariants": [
+        "INV-04"
+      ],
+      "trigger": "SAVEPOINT→ROLLBACK TO→再写→顶层abort",
+      "expected": "同一journal/cursor，无二次恢复或丢身份",
+      "failure_model": "RUNTIME_FAULT",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "UNDO-FAIL-N",
+      "invariants": [
+        "INV-06"
+      ],
+      "trigger": "第N条逆操作失败/重复重试",
+      "expected": "保留cursor，拒commit，无重复应用；其他事务不可见损坏",
+      "failure_model": "RUNTIME_FAULT",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "UNDO-PEER-COMMIT",
+      "invariants": [
+        "INV-01",
+        "INV-03"
+      ],
+      "trigger": "A rollback期间B commit",
+      "expected": "只撤A workspace，不能整表快照覆盖B",
+      "failure_model": "RUNTIME_CONCURRENCY",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "BATCH-DML-FAIL",
+      "invariants": [
+        "INV-05"
+      ],
+      "trigger": "REPLACE/ODKU/多表/Trigger第N变更失败",
+      "expected": "statement batch原子性、undo完整、索引同步",
+      "failure_model": "RUNTIME_FAULT",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "NO-STEAL-ALL-FLUSH",
+      "invariants": [
+        "INV-07"
+      ],
+      "trigger": "private/peer/后台/容量spool flush",
+      "expected": "committed snapshot/loader/备份均不含pending",
+      "failure_model": "NORMAL_REOPEN",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "VIS-JOINT",
+      "invariants": [
+        "INV-13",
+        "INV-15"
+      ],
+      "trigger": "default file/parallel/Memory联合oracle",
+      "expected": "SQL bag、RowId→值/版本、committed base/索引一致；隔离按Owner承诺",
+      "failure_model": "LIVE_CLIENT_BARRIER",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "ACK-EVERY-PATHS",
+      "invariants": [
+        "INV-08"
+      ],
+      "trigger": "两COMMIT入口Every/GroupCommit",
+      "expected": "实际sync证据+同stream durable_lsn>=commit_lsn+发布后ACK",
+      "failure_model": "SYSCALL_TRACE",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "ACK-WEAK-MODES",
+      "invariants": [
+        "INV-08"
+      ],
+      "trigger": "Batch/Off分级ACK",
+      "expected": "收据明确弱保证；不谎称Every durability",
+      "failure_model": "MODE_CONTRACT",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "ACK-FSYNC-ERR",
+      "invariants": [
+        "INV-09"
+      ],
+      "trigger": "sync报错及结果查询/重试",
+      "expected": "OutcomeUnknown不自动重试新事务；最终结果唯一",
+      "failure_model": "IO_FAULT",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "ACK-PUBLISH-ERR",
+      "invariants": [
+        "INV-09"
+      ],
+      "trigger": "durable决定后publish失败",
+      "expected": "不是Aborted，WAL保留、结果可查询、恢复完成发布",
+      "failure_model": "RUNTIME_FAULT",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "CP-PUBLISH-GAP",
+      "invariants": [
+        "INV-10"
+      ],
+      "trigger": "乱序publish与checkpoint",
+      "expected": "CP只越过完整发布连续frontier，不能按最大LSN跨缺口",
+      "failure_model": "RUNTIME_CONCURRENCY",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "CP-CONSUMER-FLOOR",
+      "invariants": [
+        "INV-11"
+      ],
+      "trigger": "active/replica/PITR占用日志",
+      "expected": "reclaim不越floor；阻塞容量策略不偷偷回收",
+      "failure_model": "IO_FAULT",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "CRASH-LOSER",
+      "invariants": [
+        "INV-07"
+      ],
+      "trigger": "flush私有写后父进程handshake强杀",
+      "expected": "子PID确实因指定SIGKILL终止；重启调用真实Recovery，pending不可见",
+      "failure_model": "PROCESS_SIGKILL",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": true,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "CRASH-ACK",
+      "invariants": [
+        "INV-08"
+      ],
+      "trigger": "同步ACK后立即强杀再恢复",
+      "expected": "所有已确认durable事务在恢复bag/ID中，loser不可见",
+      "failure_model": "PROCESS_SIGKILL",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": true,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "CRASH-ABORT",
+      "invariants": [
+        "INV-06",
+        "INV-07"
+      ],
+      "trigger": "abort第N步强杀",
+      "expected": "只丢私有workspace；committed主账/peer不变",
+      "failure_model": "PROCESS_SIGKILL",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": true,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "CRASH-SNAPSHOT",
+      "invariants": [
+        "INV-10"
+      ],
+      "trigger": "数据/manifest/目录同步边界强杀",
+      "expected": "至少一个可信generation可恢复，旧代不先丢",
+      "failure_model": "PROCESS_SIGKILL",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": true,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "CRASH-RECLAIM",
+      "invariants": [
+        "INV-11"
+      ],
+      "trigger": "WAL segment代切换中断",
+      "expected": "required redo和consumer日志仍可用，不能先清空原WAL",
+      "failure_model": "PROCESS_SIGKILL",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": true,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "REC-IDEMP-DUP",
+      "invariants": [
+        "INV-16"
+      ],
+      "trigger": "同值多行+已flush+重复redo两次",
+      "expected": "按RowId/MutationId幂等，不能按值去重；bag不变",
+      "failure_model": "WAL_REPLAY",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "REC-FAIL-RETRY",
+      "invariants": [
+        "INV-12"
+      ],
+      "trigger": "recover第一次Err后第二次",
+      "expected": "不能空成功，状态/错误/结果可诊断",
+      "failure_model": "IO_FAULT",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "REC-LEGACY-DIRTY",
+      "invariants": [
+        "INV-07",
+        "INV-16"
+      ],
+      "trigger": "缺commit provenance的旧snapshot/截断WAL",
+      "expected": "拒自动发布、隔离/可信备份；不得猜行已提交或删不明行",
+      "failure_model": "LEGACY_MIGRATION",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": false,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    },
+    {
+      "id": "POWER-LOSS",
+      "invariants": [
+        "INV-08",
+        "INV-10"
+      ],
+      "trigger": "独立VM/块设备断电或torn write",
+      "expected": "在批准故障模型内durable ACK不丢、未提交不被提升",
+      "failure_model": "POWER_LOSS_OR_TORN_WRITE",
+      "execution_status": "NOT_RUN",
+      "evidence_status": "PROPOSED",
+      "actual": null,
+      "artifact_sha256": null,
+      "assembly": "Owner-approved capability matrix; raw File/default file/parallel/Memory separately",
+      "owner_approval_required": true,
+      "resource_approval_required": true,
+      "reproducer_kind": "SPECIFICATION_NOT_EXISTING_COMMAND",
+      "forced_baseline_RED": false,
+      "oracle": "bag + RowId/value/version + committed generation + WAL/visibility; only approved public guarantees"
+    }
+  ],
+  "required_acceptance": "Each required case must satisfy its approved invariant on exact assembly/fault model; NOT_RUN/FAIL/unapproved UNSUPPORTED cannot count PASS",
+  "owner_gate": true
+}

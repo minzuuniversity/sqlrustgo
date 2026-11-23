@@ -1,0 +1,25 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "RUNTIME-5915-20261120",
+  "timestamp": "2026-11-20T15:00:30.691905+00:00",
+  "document_validation_only": true,
+  "bound_files": 53,
+  "native_handoffs": 2,
+  "strict14_envelopes": 2,
+  "baseline_tests": 6,
+  "product_failed": 4,
+  "product_passed": 2,
+  "inv07b_crash_evidence": "NOT_RUN",
+  "negative_checks_rejected": [
+    "dispatch_requested",
+    "core_implementation_authorized",
+    "false_crash_claim",
+    "controller_source_payload"
+  ],
+  "old_manifest_unchanged": true,
+  "core_changes": 0,
+  "workers_dispatched": 0,
+  "owner_approval": "PENDING",
+  "manifest_sha256": "dd968b0c2b7acc208cad37deb662610ed02b9f4eb3424594e173bfa5da6ce4b6",
+  "adr_sha256": "9e9d566aa2174a2950c895654f9b74b16b7c43f000c89b9ca2c53f54810d93a3"
+}

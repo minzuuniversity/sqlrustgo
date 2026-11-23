@@ -1,0 +1,27 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "RUNTIME-5915-20261120",
+  "conflict_resolution": "Source-bound recommendation; Owner approval pending; no core changes or workers",
+  "started_at": "2026-11-20T14:23:53.014024+00:00",
+  "timestamp": "2026-11-20T14:26:13.097793+00:00",
+  "cwd": "/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-pr5915-verification",
+  "argv": [
+    "env",
+    "CARGO_TARGET_DIR=/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-pr5915-verification/target-codex-review",
+    "CARGO_BUILD_JOBS=2",
+    "cargo",
+    "test",
+    "--offline",
+    "--test",
+    "ca01_file_undo",
+    "--test",
+    "ca01_snapshot_reopen",
+    "--no-fail-fast",
+    "--",
+    "--test-threads=1",
+    "--nocapture"
+  ],
+  "exit_code": 101,
+  "raw_log": "independent-pr5915.log",
+  "evidence_hash": "sha256:40198a6c10a4c183924d94a8f645203f2e71b167179a52d94c3fb40e38925e7f"
+}

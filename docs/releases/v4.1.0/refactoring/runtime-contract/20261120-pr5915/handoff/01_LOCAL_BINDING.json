@@ -1,0 +1,49 @@
+{
+  "version": "RUNTIME-5915-v1",
+  "message_kind": "ARCHITECTURE_REVIEW_NOTICE",
+  "owner_approval": "PENDING",
+  "dispatch_requested": false,
+  "core_implementation_authorized": false,
+  "source_commit": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+  "test_commit": "56cfa222f1450975d3b3adc6ab9c36a4d258a5f6",
+  "document_parent": "45da6968ae2baaade6a31206eeee5854a8514ee2",
+  "bindings": [
+    {
+      "task_id": "ARCH-5915-DSHA",
+      "recipient": "DSH-A",
+      "message_kind": "ARCHITECTURE_REVIEW_NOTICE_NOT_EXECUTION_TASK",
+      "objective": "# DSH-A材料接收请求\n\nsource_agent=Codex GPT-6.1 Sol；source_run=RUNTIME-5915-20261120；timestamp=2026-11-20 Asia/Shanghai；evidence_hash=sha256:57fe60174b4642317a534de402027e42603ba976601a8ed1ff4916cb9fb7df2a；conflict_resolution=正式交付待审材料，不授予核心实施或Worker派发权限。\n\n请登记ADR-410-011统一架构裁决材料及本包manifest，提交Owner Decision Queue，当前只作材料接收/哈希和协议核验。不要将本消息当Task enqueue、Permit或Worker派发请求，不修改任何核心实现/资源/阶段。\n\n必须绑定产品e9ff21fca3、测试PR #5915@56cfa222f1、历史设计包45da6968ae和本包已发布文档commit，不能用latest分支替代。只传14字段最小元数据；内容审查与Owner/本地授权边界分开，不能把摘要格式验证当批准。\n\nOwner待批：稳定持久RowId/格式方向、TxStore唯一Undo+私有workspace、提交/durable frontier/恢复、隔离/功能范围、迁移风险与独立验收安排。请仅回传材料签收及未决项，不从本请求扩展任何执行权限。\n",
+      "acceptance": [
+        "核对材料SHA与本地来源；不把格式验证视为批准",
+        "登记Owner待批与INV-07b证据等级，保留原RED",
+        "不新增Worker/队列/核心实现或扩大现有授权"
+      ],
+      "objective_digest": "7c52dd5e07e5a2ada29e5cfa0034e133fb0330a10b62314f574155eadc7a9b91",
+      "acceptance_digest": "e4bc5543aea4b80bb233e1efa901082f705fa84020f5ecfabfa4f6344e663234",
+      "digest_canonicalization": "UTF-8 objective exact bytes; acceptance joined by LF with no final LF",
+      "owner_approval_refs": [],
+      "owner_gate": true,
+      "worker_dispatch_requested": false,
+      "core_implementation_authorized": false
+    },
+    {
+      "task_id": "ARCH-5915-DSHB",
+      "recipient": "DSH-B",
+      "message_kind": "ARCHITECTURE_REVIEW_NOTICE_NOT_EXECUTION_TASK",
+      "objective": "# DSH-B材料接收请求\n\nsource_agent=Codex GPT-6.1 Sol；source_run=RUNTIME-5915-20261120；timestamp=2026-11-20 Asia/Shanghai；evidence_hash=sha256:57fe60174b4642317a534de402027e42603ba976601a8ed1ff4916cb9fb7df2a；conflict_resolution=正式交付待审材料，不授予核心实施或Worker派发权限。\n\n请接收ADR-410-011、独立复跑及反例矩阵，保留PR #5915的4 FAIL/2 PASS，不弱化断言。INV-07b只证实同进程flush/正常释放对象/重开文件基线可读到pending，未构造独立数据库子进程、SIGKILL、WAL或RecoveryEngine；不得继续将该测试本身标为Crash Recovery已验证。\n\nINV-02的DELETE匹配两条重复行，count失败不等于直接验证了RowId；#5908删一条后净少一行、#5910单层buffer快照原配置须保留各自复现，不用2→4替代。未来身份级/崩溃级用例仅是待批验收规格，不是本消息派发。\n\n本统一方案等待Owner批准。请只登记材料定位/摘要和待审事项，不改核心协议、不启动新Worker、不把材料送达视为M0或阶段准入。正常已授权日常流程不因本材料获得新权限；遇方案冲突走既有架构升级协议。\n",
+      "acceptance": [
+        "核对材料SHA与本地来源；不把格式验证视为批准",
+        "登记Owner待批与INV-07b证据等级，保留原RED",
+        "不新增Worker/队列/核心实现或扩大现有授权"
+      ],
+      "objective_digest": "8fa386718816bca257b6146610c4e8e2d6167cda89ae7ca74c17f93b0a096e4d",
+      "acceptance_digest": "e4bc5543aea4b80bb233e1efa901082f705fa84020f5ecfabfa4f6344e663234",
+      "digest_canonicalization": "UTF-8 objective exact bytes; acceptance joined by LF with no final LF",
+      "owner_approval_refs": [],
+      "owner_gate": true,
+      "worker_dispatch_requested": false,
+      "core_implementation_authorized": false
+    }
+  ],
+  "metadata_metrics": "file_count/line_stats cover MANIFEST content files, not core implementation scope or a dispatch permit"
+}

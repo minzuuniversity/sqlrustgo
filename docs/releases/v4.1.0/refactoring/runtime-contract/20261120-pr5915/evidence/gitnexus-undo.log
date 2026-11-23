@@ -1,0 +1,52 @@
+{
+  "status": "found",
+  "symbol": {
+    "uid": "Function:crates/storage/src/file_storage.rs:FileStorage.undo_transaction_in_place",
+    "name": "undo_transaction_in_place",
+    "kind": "Function",
+    "filePath": "crates/storage/src/file_storage.rs",
+    "startLine": 5271,
+    "endLine": 5380
+  },
+  "incoming": {
+    "calls": [
+      {
+        "uid": "Function:crates/storage/src/file_storage.rs:FileStorage.rollback_transaction_lockfree_for",
+        "name": "rollback_transaction_lockfree_for",
+        "filePath": "crates/storage/src/file_storage.rs"
+      },
+      {
+        "uid": "Function:crates/storage/src/file_storage.rs:FileStorage.rollback_transaction_for",
+        "name": "rollback_transaction_for",
+        "filePath": "crates/storage/src/file_storage.rs"
+      }
+    ]
+  },
+  "outgoing": {
+    "calls": [
+      {
+        "uid": "Function:crates/storage/src/engine.rs:scoped_key",
+        "name": "scoped_key",
+        "filePath": "crates/storage/src/engine.rs"
+      }
+    ],
+    "accesses": [
+      {
+        "uid": "Property:crates/storage/src/file_storage.rs:WriteState.tables",
+        "name": "tables",
+        "filePath": "crates/storage/src/file_storage.rs"
+      },
+      {
+        "uid": "Property:crates/storage/src/file_storage.rs:WriteState.insert_buffer",
+        "name": "insert_buffer",
+        "filePath": "crates/storage/src/file_storage.rs"
+      },
+      {
+        "uid": "Property:crates/storage/src/file_storage.rs:WriteState.tx_undo_log",
+        "name": "tx_undo_log",
+        "filePath": "crates/storage/src/file_storage.rs"
+      }
+    ]
+  },
+  "processes": []
+}

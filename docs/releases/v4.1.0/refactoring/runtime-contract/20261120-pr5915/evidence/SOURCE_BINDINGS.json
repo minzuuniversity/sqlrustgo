@@ -1,0 +1,33 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "RUNTIME-5915-20261120",
+  "timestamp": "2026-11-20T14:58:45.999785+00:00",
+  "product_base": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+  "test_head": "56cfa222f1450975d3b3adc6ab9c36a4d258a5f6",
+  "document_parent": "45da6968ae2baaade6a31206eeee5854a8514ee2",
+  "source_sha256": {
+    "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0:src/execution_engine_methods.rs": "3615c94b8d185ccde83c1645033bd78c010062877765b415a47b5bbd7d49d92f",
+    "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0:src/engine_builder.rs": "f7b188b33ab0992ee47f20894c1a6a70ac6354dafafecab0c6aa436eb5260ace",
+    "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0:crates/storage/src/file_storage.rs": "2c51db8e065cafa547ebb83c3927b67184597ead05e945d55ae53b74c240eaf0",
+    "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0:crates/storage/src/wal_storage.rs": "0a818b5dcd2d86bafa0e8bbdc14392e15b30b9f1b7b90dca698572dbabf58bd8",
+    "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0:crates/storage/src/recovery_engine.rs": "0ed313bed0349eecc7ed1bc073db834fa97c9ba2645fec9e5c0bd2fb71779532",
+    "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0:crates/storage/src/mvcc_storage.rs": "6aad63bfbc02a07ed34afe25e8e040e0e5862629db525946041ccef589696f12",
+    "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0:crates/transaction/src/transaction_manager.rs": "5792da1d5c35f88be27e8c9dc9f01f39ea257ed989248a35579e3d610a5711ff",
+    "/Volumes/workspace/dev/srg-handover-p2a/ARR_410_ARCHITECTURE_REVIEW.md": "019ab6f184736d2a176c159987fde22c062bcc7c03a01ca782fbb5064ce47aa8",
+    "/Volumes/workspace/dev/srg-handover-p2a/ARR_410_REVIEW_RESPONSE.md": "adf03113e90ecb15dba82e4e85094bacc63fbd7004b826a36ff077c2f180fd14",
+    "/Volumes/workspace/dev/srg-handover-p2a/ARR_410_B_EXTENDED_ARCHITECTURE_REVIEW.md": "2d3887b50550251d1fdc3b7e770d8bd0255f0806341b10c4d51cd981ccb7321f",
+    "/Volumes/workspace/dev/srg-handover-p2a/ARR_B1_TRANSACTION_RECOVERY.md": "a1a077a60764f15a681afdd432b2a0cbf3e5b2b845c4460b16f7670bb3770633",
+    "/Volumes/workspace/dev/srg-handover-p2a/ARR_B2_STORAGE_IDENTITY.md": "ba426f11f7a9844890dfa6c7ac11dad3ff698666e773fc8c367151fdc53da12d",
+    "/Volumes/workspace/dev/srg-handover-p2a/ARR_B3_DML_COVERAGE.md": "73156091df70a92cbd18df52bb01ff749319069de8cc389a65e0fbe24656e8b7",
+    "/Volumes/workspace/dev/srg-handover-p2a/M_PRE2_EVIDENCE.md": "4fff02db5c9c54c0472de5270fb25998c949190cd6545e5da50e40c1814ec44f",
+    "/Volumes/workspace/dev/srg-handover-p2a/RSC_CRASH_CONTRACT.md": "79d8821adcc0b9d118b5af03568db484bc03c06bca7ac276d413766ef3015de7",
+    "/Volumes/workspace/dev/srg-handover-p2a/SLOT_LIFECYCLE_ASSESSMENT.md": "ab366c476be7b646a4a0eaea7f053d5d50f83079dc9fd2806ed27c1344259497",
+    "evidence/inputs/ca01_snapshot_reopen.rs": "0e18a9feb959f62cf8e3fdd7590922c813e21d7e6fab64519f8428344f5895ec",
+    "evidence/inputs/dsh_handoff.py": "aaa3e613258fc87abcc497d9f9d23fe9da9dd17e15d90eba372d68a578b4cfea",
+    "evidence/inputs/dshb-c0105.log": "3f041f09b4d25cc36cdcf1dcd4d48a17bd5fd664560c93f2e88a67ae9b6317bd",
+    "evidence/inputs/dshb-c0106.log": "83c0b8119d47b9dd661c248b9f507c6688ac5e89ceec624354347d99797937f6",
+    "evidence/inputs/dsh-handoff.schema.json": "7a3758c858b9c3e6b72fade2dca8900dfe4ace7edf980fee4c2ef2637fb39342",
+    "evidence/inputs/ca01_file_undo.rs": "51e7c175d448f529c3db788b08394810b3d2454de249d22c30f3747bb4a07290"
+  },
+  "conflict_resolution": "Source-bound proposal, Owner pending; no core changes or dispatch"
+}
