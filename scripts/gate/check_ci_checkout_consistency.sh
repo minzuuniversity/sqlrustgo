@@ -153,7 +153,13 @@ CANONICAL_EOF
 # `ci.yml` and `gate.yml` are the two workflows that decide whether a
 # change may be merged or released.  They must check out **the commit the
 # run was created for**, and they must not reach out to GitHub to do it.
-GATED_WORKFLOWS=(ci.yml gate.yml ci-trusted-baseline.yml)
+#
+# `ci-alpha-stage.yml` (added by the v4.1.0 readiness plan, Task 8) is the
+# ALPHA stage execution point.  It is gated rather than exempt because it
+# embeds the canonical checkout body: an execution point that judges a
+# release line must judge **the commit it was dispatched for**, exactly like
+# the pipeline does.
+GATED_WORKFLOWS=(ci.yml gate.yml ci-trusted-baseline.yml ci-alpha-stage.yml)
 
 # Workflows that are allowed to use a different checkout, each with the
 # reason.  A reason is mandatory (rule C4): the soak workflows deliberately
