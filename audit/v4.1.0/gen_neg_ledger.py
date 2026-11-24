@@ -218,9 +218,23 @@ for gate, (attempt, reason) in sorted(UNF.items()):
                  "falsification_attempt": NEG + attempt,
                  "evidence_run": RUN, "evidence_log": LOG_FX, "cost": "static"})
 
+# Pending gates that already HAVE a fixture script trying to close them.  The
+# row still says kind=pending-fixture (the property is not established), but
+# the script is registered so a reader can find it -- and so the lane knows
+# which script to run and what to expect of it.
+PEND_FIXTURE = {
+ "scripts/gate/check_coverage_v312.sh": ("fx18-coverage-v312-crate-coverage-below-threshold.sh",
+   "fx18-coverage-v312-crate-coverage-below-threshold"),
+}
+
 for gate, (cost, target) in sorted(PEND.items()):
-    rows.append({"gate": gate, "stages": cat[gate].get("stages") or [], "class": cat[gate]["class"],
-                 "kind": "pending-fixture", "target": target, "close_run": ISSUE, "cost": cost})
+    row = {"gate": gate, "stages": cat[gate].get("stages") or [], "class": cat[gate]["class"],
+           "kind": "pending-fixture", "target": target, "close_run": ISSUE, "cost": cost}
+    if gate in PEND_FIXTURE:
+        fx, fid = PEND_FIXTURE[gate]
+        row["fixture"] = NEG + fx
+        row["fixture_id"] = fid
+    rows.append(row)
 
 for gate, (cost, target) in sorted(EXTRA.items()):
     rows.append({"gate": gate, "stages": [], "class": cat[gate]["class"],

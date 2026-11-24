@@ -10,7 +10,15 @@
 
   check            对账台账本身（结构 + 语义 + 证据落盘）。
   fixtures         在**临时 scratch 工作树**里注入缺陷、跑真实门禁，
-                   看门禁的判定会不会真的变。fixture 的期望写在脚本头部。
+                   看门禁的判定会不会真的变。fixture 的期望写在脚本头部，
+                   取值是下面四种之一（每个 fx*.sh 都必须声明，否则报
+                   UNDECLARED-EXPECT）：
+                     red                   门禁必须变红（夹具退出码 0）
+                     green-characterization 门禁必须仍然绿（夹具退出码 0）
+                     selftest-red          致残门禁自带的检测器，由 selftests 泳道判
+                     inconclusive          本树里这条性质无法确立（夹具退出码 4，
+                                            且必须说清为什么；用来登记「门禁本来就红、
+                                            注入的缺陷不可归因」这类情形）
   mutation-selftest 在台账的临时副本上制造缺陷，断言 check 会变红。
 
 它不新增门禁、不改门禁清单/阈值/跳过开关（分母仍 168），
@@ -221,6 +229,16 @@ def cmd_fixtures(argv: list[str]) -> int:
             want = 0
         elif expect == "green-characterization":
             want = 0
+        elif expect == "inconclusive":
+            # The fixture declares that its property CANNOT be established in
+            # this tree -- e.g. the gate it targets is already red for an
+            # unrelated reason, so the injected defect cannot be attributed to
+            # the red.  The fixture must then reach exactly that conclusion
+            # (exit 4 = INCONCLUSIVE) and say why.  This is a declared
+            # expectation that the lane CHECKS, not a way to skip a fixture:
+            # a fixture that exits 0 or 3 here is a failure, and a fixture
+            # that does not declare its expectation at all is still an error.
+            want = 4
         else:
             want = None
         if want is None:

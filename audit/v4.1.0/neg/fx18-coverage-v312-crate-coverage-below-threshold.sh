@@ -2,7 +2,28 @@
 # fx18-coverage-v312-crate-coverage-below-threshold.sh — negative fixture for
 # scripts/gate/check_coverage_v312.sh
 # fixture-id: fx18-coverage-v312-crate-coverage-below-threshold
-# expect: red
+# expect: inconclusive
+#
+# WHY "inconclusive" AND NOT "red"
+# ---------------------------------
+# This fixture cannot establish its property in this tree, and saying so is the
+# honest outcome (R50/R58): the coverage gate is ALREADY RED on the intact
+# tree -- `sqlrustgo-storage` produces no coverage table at all because the
+# RED characterisation tests imported by the readiness plan's earlier tasks
+# (crates/storage/tests/tf_t4_ai_candidate_v1.rs, tf_t4_stub_silent_success.rs)
+# fail BY DESIGN, so `cargo llvm-cov` exits 101 and the L1_8 sample is 7 of 8.
+# The gate's red therefore exists before this fixture injects anything, and the
+# red cannot be attributed to the injection.
+#
+# The fixture still does its job as far as it can: it measures the mutated
+# crate's coverage table (93.31% -> 20.42%, i.e. the defect DOES replace the
+# table with a below-threshold value), it runs the gate, and it proves the
+# attribution is impossible.  Then it reports INCONCLUSIVE (exit 4) instead of
+# claiming a red it cannot attribute.
+#
+# The ledger row of this gate therefore stays kind=pending-fixture and carries
+# no `effect.catches` claim: nobody may say "this gate catches a below-threshold
+# coverage table" until a run can actually show it.
 # fault: replace one crate's coverage table with a value below the threshold
 #        — sqlrustgo-transaction's measured line coverage is driven down by
 #        adding code that no test ever executes, so its coverage table reads
