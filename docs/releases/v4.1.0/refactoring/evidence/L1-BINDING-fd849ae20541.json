@@ -130,7 +130,7 @@
       "difference_table": {
         "path": "docs/releases/v4.1.0/refactoring/evidence/L1-DIFF-fd849ae20541.md",
         "sha256": "cf2e88bd63bbb88f483d55573e22e9c9c200ff3bd977c4854ac2e81a45f6a660",
-        "matches_file_on_disk": false
+        "matches_file_on_disk": true
       },
       "artifact_raw_log": {
         "path": "docs/releases/v4.1.0/refactoring/evidence/MATRIX-sqlrustgo-storage-lib-20261123T232756.log",
@@ -145,7 +145,7 @@
       "input_matrix": {
         "path": "docs/releases/v4.1.0/refactoring/TEST_COVERAGE_MATRIX.json",
         "sha256": "fce4fde0b19181227f21d83936a874a4201b09ccbcec2799ce7fa42ec0641bed",
-        "matches_file_on_disk": false
+        "matches_file_on_disk": true
       },
       "input_driver": {
         "path": "docs/releases/v4.1.0/refactoring/tools/matrix_driver.py",
@@ -204,9 +204,12 @@
       "artifact_packed_result",
       "artifact_raw_log",
       "base_freeze_record",
+      "difference_table",
       "input_driver",
       "input_factory",
+      "input_matrix",
       "receipt"
-    ]
+    ],
+    "flag_correction": "本记录第一次写入时，digest 变了的两项（input_matrix、difference_table）曾把 matches_file_on_disk 写成 false —— 那是按**旧** digest 比对得出的标志，在 digest 被重算之后已经不成立。第二次写入按**已存储的** digest 重新比对了全部 8 项，现全部为 true；`verification.command` 可原样复核。"
   }
 }
