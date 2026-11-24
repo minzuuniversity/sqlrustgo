@@ -26,16 +26,15 @@
     {
       "case_id": "PILOT-T1-001",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "该测试只断言事务标志（in_transaction）与事务号（begin 的返回值、current_tx_id 的回显）的生命周期，全程没有数据写入、没有回滚前后的状态比较，因此不对应 INV-01「rollback 精确恢复原多重集」；登记表的 18 条不变量里没有一条以事务标志复位为主体。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "append_only_storage::tests::transaction_lifecycle",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "事务标志与事务号：begin_transaction() 返回 tx id > 0 且 in_transaction() 为 true；commit 与 rollback 之后 in_transaction() 为 false；set_current_tx_id(42) 之后 current_tx_id 回显 42。全程无数据写入，也无回滚前后的状态比较。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -63,16 +62,15 @@
     {
       "case_id": "PILOT-T1-002",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言比较的是 buffer pool 的 pages_visited 计数在回滚前后不变，而该测试自身的注释写明被回滚事务插入的页仍留在缓存里（BufferPool 没有事务性排空）；它既不比较行内容，也不触及 INV-07 的「未提交态不得进入 committed 可见基线」，按其字面反而与 INV-15「cache 与同一 committed RowStore 发布/撤销一致」相反。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "engine::memory_storage_rollback_after_bufferpool_insert_does_not_change_pages_visited",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "回滚不排空 buffer pool：事务内 insert 之后记下 pages_visited(mid)，rollback_transaction() 之后 pages_visited(after) 与 mid 相等。被比较的量是缓存访问计数，不是行的可见性。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -104,12 +102,13 @@
         "INV-01"
       ],
       "invariant_mapping_status": "MAPPED",
+      "invariant_mapping_basis": "回滚前后比较的是同一指标：事务内 6、回滚后 5，「没撤销」或「撤销两次」都会让这条断言变红，符合 INV-01「rollback 精确恢复原多重集」；覆盖面限于基数，未钉住行身份。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "engine::tests::rollback_actually_undoes_an_insert_4948",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "事务内 insert 之后 scan() 的可见行数由 5 变 6；rollback_transaction() 之后 scan() 的可见行数回到 5。被比较的量是回滚前后的同一指标（行数基数），未钉住被撤销行的身份。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -140,12 +139,13 @@
         "INV-01"
       ],
       "invariant_mapping_status": "MAPPED",
+      "invariant_mapping_basis": "回滚后逐行内容与事务前完全一致，且未被改动的 [1,99] 行没有被二次撤销，直接对应 INV-01 的两个分句「rollback 精确恢复原多重集」与「每个 mutation 只撤销一次」。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "engine::tests::rollback_of_update_restores_only_the_changed_row_5072",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "事务内 UPDATE ... WHERE v=1 之后 scan() 全等 [[1,99],[1,99]]；rollback_transaction() 之后 scan() 全等 [[1,1],[1,99]] —— 逐行内容级比较，且只撤销被改的那一行。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -172,16 +172,15 @@
     {
       "case_id": "PILOT-T1-005",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "唯一的断言是嵌套 begin 返回 Err，主体是「嵌套事务的准入」，而 INV-01 的主体是回滚后的多重集恢复；登记表中没有以嵌套事务准入为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "engine::tests::test_nested_transaction_returns_error",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "嵌套事务被显式拒绝：已有事务时再次调用 begin_transaction() 返回 Err。不涉及任何数据写入，也不涉及回滚后的状态比较。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -213,12 +212,13 @@
         "INV-01"
       ],
       "invariant_mapping_status": "MAPPED",
+      "invariant_mapping_basis": "回滚后同时钉住行数（回到事务前的 1）与幸存行的内容（[Integer(0)]），回滚前后是同一指标、被比较量明确且可证伪，对应 INV-01「rollback 精确恢复原多重集」。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "engine::tests::test_rollback_removes_inserted_rows",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "事务内 insert 之后 scan() 的行数由 1 变 2；rollback_transaction() 之后 scan() 的行数回到 1，且幸存行内容全等 [Value::Integer(0)]，与事务前完全一致。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -249,12 +249,13 @@
         "INV-01"
       ],
       "invariant_mapping_status": "MAPPED",
+      "invariant_mapping_basis": "回滚前后比较的是同一指标（scan() 行数）：事务前 2、删除后 1、回滚后 2，「没撤销」或「撤销两次」都会红，对应 INV-01「rollback 精确恢复原多重集」；覆盖面限于基数。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "engine::tests::test_rollback_restores_deleted_rows",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "事务内 delete 掉 1 行后执行 rollback_transaction()，scan() 的行数回到 2（事务前为 2）。被比较的量是行数基数，未钉住被恢复行的内容与身份。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -281,16 +282,15 @@
     {
       "case_id": "PILOT-T1-008",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言只涉及事务号与事务标志，不涉及任何被撤销的状态量，因此不构成 INV-01 的证据；登记表中也没有以事务号分配或标志复位为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "engine::tests::test_storage_engine_begin_rollback",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "事务号分配与事务标志复位：begin_transaction() 返回 1，rollback_transaction() 之后 in_transaction() 为 false。无数据写入，也无回滚前后的状态比较。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -318,16 +318,15 @@
     {
       "case_id": "PILOT-T1-009",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "函数体里没有 assert，空过也成立、无法证伪，它既不触及 INV-01 的回滚恢复语义，登记表中也没有以 set_current_tx_id 回显为主体的不变量；按 §5 的修复路径本应补一条可证伪断言，但本任务只允许改 R3 那两条测试体，故此条留空并登记缺口提案。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "engine::tests::test_storage_engine_set_current_tx_id",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "本用例没有任何断言：函数体只有 set_current_tx_id(42) 一条语句，不比较任何可观察量，因此不构成可判定断言。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -355,16 +354,15 @@
     {
       "case_id": "PILOT-T1-010",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言只涉及事务标志与事务号的生命周期，不涉及任何被提交或被撤销的状态量，不构成 INV-01 的证据；登记表中没有以事务标志复位为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "engine::tests::test_storage_engine_transaction",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "begin/commit 后事务标志复位：初始 !in_transaction() 且 current_tx_id() == 0；begin 返回 1 且 in_transaction() 为 true；commit 之后 in_transaction() 为 false。无数据写入，也无前后状态比较。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -392,16 +390,15 @@
     {
       "case_id": "PILOT-T1-011",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是新实例的事务状态初值，主体是实例初始化，不是回滚后的状态恢复，18 条不变量中无一条以它为主体。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "file_storage::tests::test_in_transaction",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "新建实例的事务状态：!in_transaction() 且 current_tx_id() == 0。不涉及回滚，也不涉及状态比较。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -429,16 +426,15 @@
     {
       "case_id": "PILOT-T1-012",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是事务号写入后的回显，主体是单字段的写入生效，不是回滚恢复；登记表中没有以该回显为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "file_storage::tests::test_set_current_tx_id",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "set_current_tx_id 生效：set_current_tx_id(42) 之后 current_tx_id() 回显 42 且 in_transaction() 为 true。不涉及回滚，也不涉及状态比较。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -466,16 +462,15 @@
     {
       "case_id": "PILOT-T1-013",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是管线调用成功与事务号原子的回显，没有数据写入也没有前后状态比较，因此不构成 INV-01 的证据；登记表中没有以 WAL 事务管线可用性为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "parallel_wal_storage::tests::transaction_lifecycle_via_wal",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "begin/commit/rollback 管线可用：三个调用均返回 Ok；当前事务号原子初值为 0，set_current_tx_id(99) 之后回显 99。注释自陈不检查 commit 之后 current_tx_id 是否复位，也不做数据状态比较。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -504,15 +499,16 @@
       "case_id": "PILOT-T1-014",
       "feature": "T1",
       "invariant_ids": [
-        "INV-01"
+        "INV-07"
       ],
       "invariant_mapping_status": "MAPPED",
+      "invariant_mapping_basis": "断言的是恢复结果里不含未提交事务的行（entries_applied == 0 且 ids() 为空），主体正是「未提交态不得进入 recovery 可见基线」，对应 INV-07；它不涉及 undo 回滚恢复，所以不属 INV-01。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "pitr::tests::open_transaction_at_target_is_not_applied",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "PITR 恢复不应用未提交事务的行：重放只有 Begin+Insert（无 Commit）的 WAL 条目到目标 LSN 之后，active_transactions_at_target == 1、entries_applied == 0、entries_skipped == 1，且恢复结果 ids(&s) 为空。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -540,16 +536,15 @@
     {
       "case_id": "PILOT-T1-015",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是 SQL 文本的分类结果，主体是语句分类器，与事务恢复、可见性、写回时机都无关；18 条不变量中无一条以它为主体。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "read_write_split::tests::test_classify_sql_transaction",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "SQL 分类：classify_sql(\"BEGIN TRANSACTION\") 被分类为 QueryType::Transaction。不涉及回滚，也不涉及状态比较。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -577,16 +572,15 @@
     {
       "case_id": "PILOT-T1-016",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是 semi-sync 的两个计数器，主体是同步状态的计数；INV-08 的主体是 ACK 前 durable_lsn >= commit_lsn，本用例没有任何 lsn 或提交边界的断言，主体不同。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "semisync::tests::test_semi_sync_master_record_transactions",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "semi-sync 事务计数：record_yes_transaction() 两次加 record_no_transaction() 一次之后，status.rpl_semi_sync_master_yes_transactions == 2、rpl_semi_sync_master_no_transactions == 1。不涉及 durable_lsn 与 commit 边界。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -614,16 +608,15 @@
     {
       "case_id": "PILOT-T1-017",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言只证明 wrapper 的事务调用可用，没有任何数据写入，也没有证明内层是否真的撤销了状态，因此不构成 INV-01 的证据，也不足以证明 INV-14 的「wrapper 不凭空增加 inner 回滚能力」。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "table_level_storage::tests::transaction_lifecycle_passthrough",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "事务生命周期透传：begin_transaction() 返回 tx id > 0，commit 与 rollback 均返回 Ok，set_current_tx_id(7) 可调用。无数据写入，也无前后状态比较。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -651,16 +644,15 @@
     {
       "case_id": "PILOT-T1-018",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是 tx id 与事务标志的联动，主体是状态标志的一致性，不是任何被撤销或被提交的数据量；18 条不变量中无一条以它为主体。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "vtu_guard::tests::test_3129_memory_storage_in_transaction_reflects_tx_id",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "tx id 决定 in_transaction：初始 !in_transaction() 且 current_tx_id() == 0；set_current_tx_id(7) 之后 in_transaction() 为 true 且 current_tx_id() == 7；set_current_tx_id(0) 之后复位为 false。不涉及回滚，也不涉及状态比较。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -688,16 +680,15 @@
     {
       "case_id": "PILOT-T1-019",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是一个守卫在事务内不拦截，主体是准入检查，与回滚恢复、可见性、写回时机都无关；登记表中没有以守卫放行为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "vtu_guard::tests::test_3129_vtu_guard_passes_in_tx_with_memory_storage",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "事务内 DML 安全检查放行：set_current_tx_id(123) 之后 VtuGuard::assert_dml_safe(\"insert\", \"users\") 不 panic（没有显式 assert，只由 panic 兜底）。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -725,16 +716,15 @@
     {
       "case_id": "PILOT-T1-020",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是 wrapper 对内层事务状态的透传与 flush 的返回值，没有任何数据写入或前后状态比较，不构成 INV-01 的证据；登记表中也没有以状态透传为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "vtu_guard::tests::test_vtu_guard_tx_state_via_set_current_tx_id",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "guard 透传 tx 状态：guard 初始 !in_transaction()；内层 set_current_tx_id(7) 之后 in_transaction() 为 true 且 current_tx_id() == 7；置回 0 之后复位为 false；flush() 返回 Ok。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -762,16 +752,15 @@
     {
       "case_id": "PILOT-T1-021",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是 WAL 记录条数，主体是记录计数，不涉及回滚后的状态恢复，也没有任何 lsn 或 durable 与 commit 边界的比较，因此 INV-01 与 INV-08 都不对应。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "wal_legacy::tests::test_wal_5_transactions",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "N 个已提交事务产生 M 条 WAL 记录：5 个事务各写 begin+insert+commit 之后 recover() 得到 15 条。只钉住条数，未钉住记录内容与提交边界。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -799,16 +788,15 @@
     {
       "case_id": "PILOT-T1-022",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言只证明「回滚这件事被写进了 WAL」，没有比较任何被撤销的状态量，所以无法判定 INV-01 的「撤销」；登记表中也没有以 WAL 回滚条目类型为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "wal_legacy::tests::test_wal_manager_log_rollback",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "WAL 写入了回滚条目：log_begin 加 log_insert 加 log_rollback 之后 recover() 得到 3 条，且第 3 条的 entry_type 为 Rollback。只钉住条数与条目类型，未比较任何存储状态。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -836,16 +824,15 @@
     {
       "case_id": "PILOT-T1-023",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是 WAL 记录条数，主体是记录计数，与回滚恢复、可见性、写回时机都无关；18 条不变量中无一条以它为主体。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "wal_legacy::tests::test_wal_multiple_transactions",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "WAL 记录条数：2 个已提交事务各写 begin+insert+commit 之后 recover() 得到 6 条。无回滚，也无状态比较。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -873,16 +860,15 @@
     {
       "case_id": "PILOT-T1-024",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是事务登记簿的记账，不是被撤销的状态量，所以不构成 INV-01 的证据；登记表中没有以 active_txs 记账为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "wal_storage::tests::test_active_txs_lifecycle_begin_rollback",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "回滚后事务退出 active_txs：begin_transaction() 之后 is_tx_active(7) 为 true，rollback_transaction() 之后为 false。被比较的量是 active_txs 记账，不是存储状态。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -910,16 +896,15 @@
     {
       "case_id": "PILOT-T1-025",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是活动事务集合的初值，主体是登记簿初始化，与任何被撤销或被提交的状态量无关；18 条不变量中无一条以它为主体。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "wal_storage::tests::test_wal_active_tx_ids_empty",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "初始无活动事务：新建 WalStorage 的 active_tx_ids() 为空。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -947,16 +932,15 @@
     {
       "case_id": "PILOT-T1-026",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是事务号写入后的回显，主体是单字段写入生效，不是回滚恢复；登记表中没有以该回显为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "wal_storage::tests::test_wal_set_current_tx_id",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "set_current_tx_id 生效：set_current_tx_id(42) 之后 current_tx_id() 回显 42 且 in_transaction() 为 true。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -984,16 +968,15 @@
     {
       "case_id": "PILOT-T1-027",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是提交条数，主体是 WAL 条目计数；INV-08 的主体是 ACK 前 durable_lsn >= commit_lsn 与两处 commit 入口的语义一致，本用例既没有 lsn 也没有入口对照，因此不对应。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "wal_storage::tests::test_wal_storage_multiple_transactions",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "WAL 提交记录条数：2 个已提交事务之后 recover() 中 entry_type == Commit 的条目恰为 2 条。只钉住提交条数，未比较存储状态。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1021,16 +1004,15 @@
     {
       "case_id": "PILOT-T1-028",
       "feature": "T1",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言只证明「回滚这件事被写进了 WAL」，没有比较被撤销的行是否消失，所以无法判定 INV-01；登记表中也没有以 WAL 回滚条目条数为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "wal_storage::tests::test_wal_storage_rollback",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义：回滚后状态 == 事务前"
+        "declared_invariant": "WAL 回滚记录条数：begin 加 insert 加 rollback 之后 recover() 中 entry_type == Rollback 的条目恰为 1 条。只钉住条数，未比较被插入的行是否消失。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1059,15 +1041,16 @@
       "case_id": "PILOT-T1-101",
       "feature": "T1",
       "invariant_ids": [
-        "INV-01"
+        "INV-04"
       ],
       "invariant_mapping_status": "MAPPED",
+      "invariant_mapping_basis": "回滚前后是同一指标（undo_log_len）且被钉死：savepoint 建在两条 undo 之后，rollback_to 只弹出该 cursor 之后的 undo（此处 0 条），对应 INV-04「部分回滚只影响该点之后」这一分句；未覆盖「cursor 仅属本 tx」与「不污染顶层恢复」两分句，也没有任何 mutation 被撤销，故不附 INV-01。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "tf_t1_01_insert_then_rollback",
         "declared_source": null,
         "claimed_status": "PASS",
-        "declared_invariant": "undo log 语义"
+        "declared_invariant": "回滚到一个刚建的 savepoint 不弹出任何 undo：add_undo 两条后 undo_log_len() == 2；在其之上建 savepoint(\"sp0\") 并 rollback_to(\"sp0\") 之后 undo_log_len() 仍为 2。被比较的量是 undo 日志长度。"
       },
       "seed": "N/A",
       "backend": "MemoryStorage",
@@ -1100,12 +1083,13 @@
         "INV-01"
       ],
       "invariant_mapping_status": "MAPPED",
+      "invariant_mapping_basis": "回滚前后是同一指标（undo_log_len）且被钉死，差值 2 恰是 savepoint 之后的 2 条 undo：既证明 INV-04「部分回滚只影响该点之后、不污染顶层恢复」，也证明 INV-01「每个 mutation 只撤销一次」；限制是回调闭包未计数，无法证明被弹出的正是那两条。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "tf_t1_02_savepoint_partial_rollback",
         "declared_source": null,
         "claimed_status": "PASS",
-        "declared_invariant": "SAVEPOINT 部分撤销"
+        "declared_invariant": "SAVEPOINT 部分撤销：savepoint(\"sp1\") 建在第 1 条 undo 之后，undo_log_len() 由 3 降到 1 —— 只弹出 savepoint 之后的 2 条 undo，savepoint 之前的第 1 条保留在日志里。"
       },
       "seed": "N/A",
       "backend": "MemoryStorage",
@@ -1136,12 +1120,13 @@
         "INV-02"
       ],
       "invariant_mapping_status": "MAPPED",
+      "invariant_mapping_basis": "断言直接钉住「相同 key 与行值对应多个彼此独立的 RowId 且都存活」，即 INV-02「相同行值独立 RowId」；同一次比较里还钉住了 key 的去重（len() == 1），二者同属这一条断言。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::tests::duplicate_keys_keep_every_row_id",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "逻辑行身份：相同值不等同同一行"
+        "declared_invariant": "同一 key 42 的 5 个不同 row_id 全部保留：search_all(42) == [0,1,2,3,4]，search(42) == Some(0)（首个 row_id），len() == 1（只有一个不同的 key），search_all(43) 为空。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1168,16 +1153,15 @@
     {
       "case_id": "PILOT-T2-002",
       "feature": "T2",
-      "invariant_ids": [
-        "INV-02"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是 DDL 侧 trigger 定义的重复创建行为，主体是元数据操作，与行身份、可见性、写回时机都无关；INV-05 讲的是 trigger 触发的可逆变化必须与语句一起原子提交或撤销，本用例没有任何触发或撤销动作。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "file_storage::tests::test_save_trigger_load_trigger_duplicate",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "逻辑行身份：相同值不等同同一行"
+        "declared_invariant": "同名 trigger 重复创建不报错：两次 create_trigger 同一个 TriggerInfo 均返回 Ok，list_triggers(\"t\").len() >= 1（未收紧为确切条数，也未断言重复项是否被保留）。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1205,16 +1189,15 @@
     {
       "case_id": "PILOT-T2-003",
       "feature": "T2",
-      "invariant_ids": [
-        "INV-02"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "夹具是空表，既没有相同行值的不同 RowId（INV-02），也没有未提交态与已提交基线的区分（INV-07），断言恒成立因而不构成这两条不变量的证据；18 条不变量中无一条以「空表快照」为主体。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "mvcc::tests::test_empty_table_snapshot",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "逻辑行身份：相同值不等同同一行"
+        "declared_invariant": "空表快照：空表的 begin_snapshot() == 0，scan_visible(0, 0) 为空。被比较的是快照起点与空结果，夹具里没有任何数据，也没有未提交态。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1242,16 +1225,15 @@
     {
       "case_id": "PILOT-T2-004",
       "feature": "T2",
-      "invariant_ids": [
-        "INV-02"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是空版本链上的查找结果，夹具里没有版本、没有相同行值的不同 RowId，因此不触及 INV-02；登记表中也没有以「空版本链查找」为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "mvcc::tests::test_find_visible_at_snapshot_before_all",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "逻辑行身份：相同值不等同同一行"
+        "declared_invariant": "空版本链查找返回 None：find_visible(&[], 0, 0) 与 find_visible(&[], u64::MAX, 0) 都返回 None。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1279,16 +1261,15 @@
     {
       "case_id": "PILOT-T2-005",
       "feature": "T2",
-      "invariant_ids": [
-        "INV-02"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是 MVCC 版本回收的条数，主体是版本链回收；INV-11 的主体是 WAL 日志段的 reclaim 与 segment 切换可恢复性，主体不同，因此不对应。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "mvcc::tests::test_gc_drops_old_versions",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "逻辑行身份：相同值不等同同一行"
+        "declared_invariant": "GC 回收旧版本：同一逻辑行写入 10 个版本后 version_count() == 10；gc(latest, lag=3) 之后 dropped == 6、version_count() == 4。只钉住回收条数与剩余版本数，未断言回收后可见版本的内容。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1316,16 +1297,15 @@
     {
       "case_id": "PILOT-T2-006",
       "feature": "T2",
-      "invariant_ids": [
-        "INV-02"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是同一主键在各快照上取到哪一版与墓碑后的可见性，夹具里只有一行一个值，没有「相同值不同行」的场景（INV-02），也没有未提交态与已提交基线的对照（INV-07）。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "mvcc::tests::test_get_visible_pk_lookup",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "逻辑行身份：相同值不等同同一行"
+        "declared_invariant": "按 PK 取可见版本：缺失 PK 返回 None；PK=1 在快照 ts1 取到 [10,20]、在 ts2 取到 [99]、在 ts3（墓碑）取到 None。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1353,17 +1333,15 @@
     {
       "case_id": "PILOT-T3-001",
       "feature": "T3",
-      "invariant_ids": [
-        "INV-07",
-        "INV-10"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是自适应哈希索引的页失效语义（AHI 不再返回已被回收页的 location）；该模块没有 committed 或 recovery 可见基线，也没有 fsync generation 与 checkpoint 证书的概念，18 条不变量中无一条以页缓存失效为主体（最接近的 INV-15 以「与同一 committed RowStore 一致」为主体，而本用例没有 RowStore），故不贴 id。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "adaptive_hash_index::tests::test_invalidate_page_removes_entries",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "buffer/flush：页可见性与写回时机"
+        "declared_invariant": "页失效后该页在索引缓存中不再可见：17 次 record_access 提升出条目后 size() == 1；invalidate_page(1) 之后 size() == 0 且 lookup(\"users\", \"alice\") 返回 None。被比较的量是 AHI 的条目数与查找结果。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1391,17 +1369,15 @@
     {
       "case_id": "PILOT-T3-002",
       "feature": "T3",
-      "invariant_ids": [
-        "INV-07",
-        "INV-10"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是 flush 调用之后的 dirty 布尔，而这正是 INV-10 明确排除的「flush 调用布尔」；加上该断言在 dirty 从未被置真的前提下空过，它对任何不变量都不构成可证伪的证据。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "append_only_storage::tests::flush_clears_dirty",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "buffer/flush：页可见性与写回时机"
+        "declared_invariant": "flush 之后 dirty 标志为 false：flush() 返回 Ok，随后 assert!(!s.dirty)。但本用例在此之前从未写入任何数据，dirty 从未被置真，这条断言是空过（flush 即使什么都不做也通过）。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1429,17 +1405,15 @@
     {
       "case_id": "PILOT-T3-003",
       "feature": "T3",
-      "invariant_ids": [
-        "INV-07",
-        "INV-10"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "函数体没有 assert，空过也成立、无法证伪；该模块的 flush 与本用例都没有触及 checkpoint 证书的 generation（INV-10），因此不构成任何不变量的证据。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "binary_storage::tests::test_bin_flush",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "buffer/flush：页可见性与写回时机"
+        "declared_invariant": "本用例没有任何断言：函数体只有 create_table 与 flush() 两个 unwrap，没有任何比较。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1467,17 +1441,15 @@
     {
       "case_id": "PILOT-T3-004",
       "feature": "T3",
-      "invariant_ids": [
-        "INV-07",
-        "INV-10"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是 I/O 记账计数，主体是计数器；它既不判定页对读者的可见内容，也不判定写回时机（INV-10 的 generation 语义），登记表中无一条以 I/O 计数为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "buffer_pool::tests::buffer_pool_bumps_disk_reads_on_loader_invocation",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "buffer/flush：页可见性与写回时机"
+        "declared_invariant": "buffer pool 的磁盘读记账：一次 get_or_load 触发 loader 之后 disk_reads() == 1。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1505,17 +1477,15 @@
     {
       "case_id": "PILOT-T3-005",
       "feature": "T3",
-      "invariant_ids": [
-        "INV-07",
-        "INV-10"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是 I/O 记账计数，主体是计数器；它不判定写回是否真的发生、也不判定 checkpoint 证书的依据（INV-10），登记表中无一条以 I/O 计数为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "buffer_pool::tests::buffer_pool_bumps_disk_writes_on_insert",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "buffer/flush：页可见性与写回时机"
+        "declared_invariant": "buffer pool 的磁盘写记账：insert 一个页之后 disk_writes() == 1。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1543,17 +1513,15 @@
     {
       "case_id": "PILOT-T3-006",
       "feature": "T3",
-      "invariant_ids": [
-        "INV-07",
-        "INV-10"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是读路径的三个记账计数加一条命中守卫，主体是计数器与缓存命中规则；该模块没有 flush/写回路径、没有 fsync generation、也没有 checkpoint 证书与 committed 基线的概念，INV-07 与 INV-10 的能力在本模块里不存在，登记表中亦无一条以缓存计数为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "buffer_pool::tests::buffer_pool_bumps_pages_visited_on_get_or_load",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "buffer/flush：页可见性与写回时机"
+        "declared_invariant": "buffer pool 的读路径记账与命中守卫：miss 路径之后 pages_visited() == 1、cache_misses() == 1；再次 get_or_load 命中同一页时 pages_visited() == 2、cache_hits() == 1，且 loader 不得被调用（命中时 panic）。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1581,17 +1549,15 @@
     {
       "case_id": "PILOT-T3-007",
       "feature": "T3",
-      "invariant_ids": [
-        "INV-07",
-        "INV-10"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是统计字段的零初值，主体是结构体初始化；它没有经过任何真实读写，因此不反映可见性或写回时机，登记表中无一条以它为主体。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "buffer_pool::tests::buffer_pool_stats_exposes_five_new_fields_with_zero_init",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "buffer/flush：页可见性与写回时机"
+        "declared_invariant": "统计字段初值：BufferPoolStats::new() 的 pages_visited、cache_hits、cache_misses、disk_reads、disk_writes 以及 hits、misses 全部为 0。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1619,17 +1585,15 @@
     {
       "case_id": "PILOT-T3-008",
       "feature": "T3",
-      "invariant_ids": [
-        "INV-07",
-        "INV-10"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是缓冲池的容量与空状态，主体是构造参数与初始集合，不涉及页可见性或写回时机；登记表中无一条以它为主体。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "buffer_pool::tests::test_buffer_pool_basic",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "buffer/flush：页可见性与写回时机"
+        "declared_invariant": "缓冲池容量与初始为空：BufferPool::new(10) 的 capacity() == 10 且 is_empty() 为 true。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1661,12 +1625,13 @@
         "INV-14"
       ],
       "invariant_mapping_status": "MAPPED",
+      "invariant_mapping_basis": "本用例断言的是「后端接受了写入就必须真的生效」，其反面（能力不足却仍然返回成功 = 静默成功）正是 INV-14「capability 不足写前拒绝」所禁止的，二者是同一份能力契约的两面；覆盖边界：本条钉住「真生效」这一面，「写前拒绝」那一面由 PILOT-T4-104 断言。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "tf_t4_01_scan_after_insert_sees_rows",
         "declared_source": null,
         "claimed_status": "KNOWN_FAIL",
-        "declared_invariant": "后端能力契约"
+        "declared_invariant": "写入必须真实生效：BinaryTableStorageV2 上 insert 两行之后 scan(\"t\") 必须返回 2 行（桩实现返回 Ok 但 0 行即静默成功）。"
       },
       "red_identity": {
         "test_fn": "tf_t4_01_scan_after_insert_sees_rows",
@@ -1698,12 +1663,13 @@
         "INV-14"
       ],
       "invariant_mapping_status": "MAPPED",
+      "invariant_mapping_basis": "断言的是「后端接受了删除就必须真的删掉并报出真实条数」，其反面（能力不足却返回成功 = 静默成功）正是 INV-14「capability 不足写前拒绝」所禁止的；覆盖边界：本条钉住「真生效」这一面，「写前拒绝」那一面由 PILOT-T4-104 断言。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "tf_t4_02_delete_reports_real_count",
         "declared_source": null,
         "claimed_status": "KNOWN_FAIL",
-        "declared_invariant": "后端能力契约"
+        "declared_invariant": "删除必须报告真实行数：insert 一行之后 delete(\"t\", &[]) 必须返回 1（桩实现恒返回 Ok(0) 即静默成功）。"
       },
       "red_identity": {
         "test_fn": "tf_t4_02_delete_reports_real_count",
@@ -1735,12 +1701,13 @@
         "INV-14"
       ],
       "invariant_mapping_status": "MAPPED",
+      "invariant_mapping_basis": "断言的是「后端接受了更新就必须真的更新并报出真实条数」，其反面（能力不足却返回成功 = 静默成功）正是 INV-14「capability 不足写前拒绝」所禁止的；覆盖边界：本条钉住「真生效」这一面，「写前拒绝」那一面由 PILOT-T4-104 断言。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "tf_t4_03_update_reports_real_count",
         "declared_source": null,
         "claimed_status": "KNOWN_FAIL",
-        "declared_invariant": "后端能力契约"
+        "declared_invariant": "更新必须报告真实行数：insert 一行之后 update(\"t\", &[], &[(0, Value::Integer(9))]) 必须返回 1（桩实现返回 Ok(0) 即静默成功）。"
       },
       "red_identity": {
         "test_fn": "tf_t4_03_update_reports_real_count",
@@ -1772,12 +1739,13 @@
         "INV-14"
       ],
       "invariant_mapping_status": "MAPPED",
+      "invariant_mapping_basis": "断言的正是「能力不足的后端必须在开始事务时就写前拒绝」，直接对应 INV-14 的第一分句「capability 不足写前拒绝」。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "tf_t4_04_non_tx_backend_must_reject_or_document",
         "declared_source": null,
         "claimed_status": "KNOWN_FAIL",
-        "declared_invariant": "非事务后端须显式拒绝"
+        "declared_invariant": "非事务后端必须显式拒绝：BinaryTableStorageV2::begin_transaction() 必须返回 Err，且错误文本（Debug 形态转小写后）包含 \"unsupported\" 或 \"not support\"；返回 Ok 即为 UNSUPPORTED_NOT_REJECTED。"
       },
       "red_identity": {
         "test_fn": "tf_t4_04_non_tx_backend_must_reject_or_document",
@@ -1805,16 +1773,15 @@
     {
       "case_id": "PILOT-T4-001",
       "feature": "T4",
-      "invariant_ids": [
-        "INV-14"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "用例名声称「compact 清除墓碑」，但函数体把返回值丢弃、没有任何比较，断言只证明该调用不报错；登记表中没有以表压缩或墓碑清除为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "append_only_storage::tests::compact_table_drops_tombstones",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "storage 后端能力契约：非桩返回真实结果"
+        "declared_invariant": "compact_table 调用成功：create_table、insert、delete 之后 compact_table(\"t\") 返回 Ok（返回值被丢弃，本用例不比较墓碑是否被清除）。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1835,16 +1802,15 @@
     {
       "case_id": "PILOT-T4-002",
       "feature": "T4",
-      "invariant_ids": [
-        "INV-14"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是一个能力充足的后端的写入读回往返，主体是 DML 结果；它不涉及能力不足时的写前拒绝（INV-14），也不涉及提交边界或撤销语义（INV-01/INV-07）。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "append_only_storage::tests::create_insert_scan_roundtrip",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "storage 后端能力契约：非桩返回真实结果"
+        "declared_invariant": "写入后读回：create_table 之后两次 insert，scan(\"t\") 返回 2 行。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1865,16 +1831,15 @@
     {
       "case_id": "PILOT-T4-003",
       "feature": "T4",
-      "invariant_ids": [
-        "INV-14"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是一个能力充足的后端的删除结果，主体是 DML 结果与墓碑可见性；不涉及能力不足时的写前拒绝（INV-14），也不涉及回滚撤销（INV-01）。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "append_only_storage::tests::delete_with_tombstones",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "storage 后端能力契约：非桩返回真实结果"
+        "declared_invariant": "删除生效：insert 一行后 delete(\"t\", &[]) 返回 1，且 scan(\"t\") 为空。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1895,16 +1860,15 @@
     {
       "case_id": "PILOT-T4-004",
       "feature": "T4",
-      "invariant_ids": [
-        "INV-14"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是表目录的增删查，主体是 DDL 元数据；它没有跨库同名表的场景（INV-03 的跨库不串写），也不涉及事务、可见性或写回时机。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "append_only_storage::tests::has_list_get_drop_table",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "storage 后端能力契约：非桩返回真实结果"
+        "declared_invariant": "表目录操作生效：has_table(\"a\") 为真、has_table(\"c\") 为假；list_tables() 排序后恰为 [\"a\",\"b\"]；get_table_info(\"a\").name == \"a\"；drop_table(\"a\") 之后 has_table(\"a\") 为假。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1925,16 +1889,15 @@
     {
       "case_id": "PILOT-T4-005",
       "feature": "T4",
-      "invariant_ids": [
-        "INV-14"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是模式错误（表不存在）必须拒绝，不是能力不足的拒绝；登记表中唯一的「写前拒绝」分句属于 INV-14 的能力语义，主体不同，因此不贴 id。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "append_only_storage::tests::insert_missing_table_errors",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "storage 后端能力契约：非桩返回真实结果"
+        "declared_invariant": "写入不存在的表必须报错：insert(\"nope\", ...) 返回 Err。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1955,16 +1918,15 @@
     {
       "case_id": "PILOT-T4-006",
       "feature": "T4",
-      "invariant_ids": [
-        "INV-14"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是加载不存在表时的 no-op 语义，主体是装载接口的容错；与事务恢复、可见性、写回时机都无关，登记表中无一条以它为主体。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "append_only_storage::tests::load_table_nonexistent_is_noop",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "storage 后端能力契约：非桩返回真实结果"
+        "declared_invariant": "load_table 对不存在的表是 no-op：load_table(\"nope\") 返回 Ok。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -1985,16 +1947,15 @@
     {
       "case_id": "PILOT-T4-007",
       "feature": "T4",
-      "invariant_ids": [
-        "INV-14"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是新建实例的初始状态，主体是初始化，与任何不变量的事务、可见性或写回语义都不对应。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "append_only_storage::tests::new_creates_dir_and_load_all_empty",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "storage 后端能力契约：非桩返回真实结果"
+        "declared_invariant": "新建存储的初始状态：load_all() 返回 Ok 且 list_tables() 为空。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -2015,16 +1976,15 @@
     {
       "case_id": "PILOT-T4-008",
       "feature": "T4",
-      "invariant_ids": [
-        "INV-14"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是已知的桩接口返回值形态，主体是接口面本身，不是「能力不足却不得静默成功」的能力契约（INV-14）——本用例把返回 Ok/0/空当作既定事实接受下来，并没有主张后端应当拒绝。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "append_only_storage::tests::stub_methods_return_ok_or_empty",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "storage 后端能力契约：非桩返回真实结果"
+        "declared_invariant": "桩方法返回 Ok 或空值：update 与 update_if 返回 0；create_index 与 drop_index 之后 list_indexes(\"t\") 为空；has_view 为假；add_column 与 rename_table 返回 Ok；drop_trigger(\"n\") 返回 Ok 且 get_trigger(\"n\") 为 None、list_triggers(\"t\") 为空。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -2045,16 +2005,15 @@
     {
       "case_id": "PILOT-T4-009",
       "feature": "T4",
-      "invariant_ids": [
-        "INV-14"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是错误类型的展示文本，主体是格式化输出；与事务、恢复、可见性、写回时机都无关，登记表中无一条以它为主体。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "binary_format::tests::test_binary_format_error_display",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "storage 后端能力契约：非桩返回真实结果"
+        "declared_invariant": "二进制格式错误的 Display 文本：InsufficientData 显示为 \"Insufficient data in buffer\"、InvalidFormat(\"test\") 显示为 \"Invalid format: test\"、DataTooLarge(100) 显示为 \"Data too large: 100 bytes\"，逐字比对。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -2075,16 +2034,15 @@
     {
       "case_id": "PILOT-T4-010",
       "feature": "T4",
-      "invariant_ids": [
-        "INV-14"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是单个字段的编解码往返，主体是序列化工具；INV-16 讲的是旧格式迁移、重复值 redo 幂等与备份/复制/PITR 共享恢复身份，本用例不涉及任何迁移、redo 或恢复身份。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "binary_format::tests::test_helpers_write_read_string",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "storage 后端能力契约：非桩返回真实结果"
+        "declared_invariant": "字符串编解码往返：write_string(\"Hello, World!\") 之后 read_string 读回等值。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -2105,17 +2063,15 @@
     {
       "case_id": "PILOT-T5-001",
       "feature": "T5",
-      "invariant_ids": [
-        "INV-05",
-        "INV-15"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是索引的热点提升计数，主体是缓存准入计数；它不涉及 committed RowStore 的发布/撤销（INV-15），也没有任何行状态，登记表中无一条以它为主体。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "adaptive_hash_index::tests::test_record_access_updates_promoted_count",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "DML 语义：update/delete/insert 的计数与可见性"
+        "declared_invariant": "自适应哈希索引的提升计数：同一 page_id 上 17 次 record_access 之后 promoted_count() == 1、size() == 1。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -2136,17 +2092,15 @@
     {
       "case_id": "PILOT-T5-002",
       "feature": "T5",
-      "invariant_ids": [
-        "INV-05",
-        "INV-15"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是复合键索引的插入与查找，主体是索引自身的数据结构；用例里没有 RowStore、没有发布/撤销动作，因此不对应 INV-15，也不涉及任何事务或可见性不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::index::composite_index_tests::test_composite_btree_insert_and_search",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "DML 语义：update/delete/insert 的计数与可见性"
+        "declared_invariant": "复合索引可查：insert((1,100) 映射到 row 1) 之后 search((1,100)) 返回 Some。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -2167,17 +2121,15 @@
     {
       "case_id": "PILOT-T5-003",
       "feature": "T5",
-      "invariant_ids": [
-        "INV-05",
-        "INV-15"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是索引自身键值对的增删，主体是数据结构操作；没有 RowStore 与发布/撤销语义（INV-15），也不涉及事务或可见性不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::index::tests::test_btree_index_delete",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "DML 语义：update/delete/insert 的计数与可见性"
+        "declared_invariant": "BTree 索引删除：delete(1) 返回 true 且删除后 len() == 0。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -2198,17 +2150,15 @@
     {
       "case_id": "PILOT-T5-004",
       "feature": "T5",
-      "invariant_ids": [
-        "INV-05",
-        "INV-15"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是索引自身键值对的逐条删除，主体是数据结构操作；没有 RowStore 与发布/撤销语义（INV-15），也不涉及事务或可见性不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::index::tests::test_btree_index_delete_multiple",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "DML 语义：update/delete/insert 的计数与可见性"
+        "declared_invariant": "BTree 索引逐条删除：每次 delete 返回 true、对应 search 变为 None、len() 依次为 2、1、0。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -2229,17 +2179,15 @@
     {
       "case_id": "PILOT-T5-005",
       "feature": "T5",
-      "invariant_ids": [
-        "INV-05",
-        "INV-15"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是索引的条目计数，主体是数据结构操作；没有 RowStore 与发布/撤销语义（INV-15），也不涉及事务或可见性不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::index::tests::test_btree_index_insert",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "DML 语义：update/delete/insert 的计数与可见性"
+        "declared_invariant": "BTree 索引插入计数：两次 insert 之后 len() == 2 且 is_empty() 为假。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -2260,17 +2208,15 @@
     {
       "case_id": "PILOT-T5-006",
       "feature": "T5",
-      "invariant_ids": [
-        "INV-05",
-        "INV-15"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是 100 次批量插入之后索引的条目计数，主体是数据结构操作；没有 RowStore 与发布/撤销语义（INV-15），也不涉及事务或可见性不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::index::tests::test_btree_index_insert_multiple",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "DML 语义：update/delete/insert 的计数与可见性"
+        "declared_invariant": "BTree 索引批量插入计数：100 次 insert 之后 len() == 100。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -2291,17 +2237,15 @@
     {
       "case_id": "PILOT-T5-007",
       "feature": "T5",
-      "invariant_ids": [
-        "INV-05",
-        "INV-15"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是索引自身的键查找，主体是数据结构操作；没有 RowStore 与发布/撤销语义（INV-15），也不涉及事务或可见性不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::index::tests::test_btree_index_search_after_insert",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "DML 语义：update/delete/insert 的计数与可见性"
+        "declared_invariant": "BTree 索引查找：插入 5、10、3 之后 search 分别返回 Some(500)、Some(1000)、Some(300)，未插入的 999 返回 None。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -2322,17 +2266,15 @@
     {
       "case_id": "PILOT-T5-008",
       "feature": "T5",
-      "invariant_ids": [
-        "INV-05",
-        "INV-15"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "这条断言是恒真式，空过也成立，无法证伪任何性质，因此不构成任何不变量的证据；登记表中也没有以 BTree 节点插入为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::index::tests::test_btree_node_insert_key_value",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "DML 语义：update/delete/insert 的计数与可见性"
+        "declared_invariant": "BTree 节点插入的返回值断言是恒真式：assert!(result.is_none() || result.is_some()) 对任何返回值都成立，不构成可证伪的断言。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -2353,17 +2295,15 @@
     {
       "case_id": "PILOT-T6-001",
       "feature": "T6",
-      "invariant_ids": [
-        "INV-08",
-        "INV-07"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是 checkpoint 文件的保留条数，主体是文件清理；INV-11 的主体是 WAL 日志段的 reclaim 与 segment 切换可恢复性，INV-10 的主体是 checkpoint 证书所依据的 generation，二者主体都不同。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "checkpoint::tests::test_checkpoint_cleanup",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "WAL/恢复：提交边界与重启可见性"
+        "declared_invariant": "checkpoint 文件保留策略：写入 5 个 checkpoint 元数据文件之后，cleanup_old_checkpoints(2) 报告删除 3 个。只钉住删除条数。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -2384,17 +2324,15 @@
     {
       "case_id": "PILOT-T6-002",
       "feature": "T6",
-      "invariant_ids": [
-        "INV-08",
-        "INV-07"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是 manager 的初始状态，主体是对象初始化；与 checkpoint 证书的依据（INV-10）和 segment 切换（INV-11）都无关。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "checkpoint::tests::test_checkpoint_manager_default",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "WAL/恢复：提交边界与重启可见性"
+        "declared_invariant": "新建 CheckpointManager 的 last_checkpoint() 为 None。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -2415,17 +2353,15 @@
     {
       "case_id": "PILOT-T6-003",
       "feature": "T6",
-      "invariant_ids": [
-        "INV-08",
-        "INV-07"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是元数据的序列化往返，主体是编码；INV-10 要求证书依据 fsync 的 generation 而不是 flush 布尔，本用例不涉及任何 fsync 或 generation；INV-16 的迁移/redo 幂等也不涉及。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "checkpoint::tests::test_checkpoint_metadata_serialization",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "WAL/恢复：提交边界与重启可见性"
+        "declared_invariant": "checkpoint 元数据 JSON 往返：from_json(to_json(meta)) 之后 lsn、timestamp、tx_count 与原值相等（dirty_pages 未断言）。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -2446,17 +2382,15 @@
     {
       "case_id": "PILOT-T6-004",
       "feature": "T6",
-      "invariant_ids": [
-        "INV-08",
-        "INV-07"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是 checkpoint 的触发阈值判断，主体是配置比较；INV-10 的主体是证书所依据的 generation，主体不同。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "checkpoint::tests::test_checkpoint_needs",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "WAL/恢复：提交边界与重启可见性"
+        "declared_invariant": "checkpoint 触发条件：interval = 3600s、max_wal_size = 100MB 的配置下 needs_checkpoint() 为 false。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -2477,17 +2411,15 @@
     {
       "case_id": "PILOT-T6-005",
       "feature": "T6",
-      "invariant_ids": [
-        "INV-08",
-        "INV-07"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是内存里最后一次 checkpoint 记录的 lsn，主体是记录簿；INV-10 的主体是证书依据的 fsync generation，INV-11 的主体是日志段 reclaim，主体都不同。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "checkpoint::tests::test_checkpoint_record",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "WAL/恢复：提交边界与重启可见性"
+        "declared_invariant": "checkpoint 记录：record_checkpoint(meta) 之后 last_checkpoint().lsn == 1000。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -2508,17 +2440,15 @@
     {
       "case_id": "PILOT-T6-006",
       "feature": "T6",
-      "invariant_ids": [
-        "INV-08",
-        "INV-07"
-      ],
-      "invariant_mapping_status": "MAPPED",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "断言的是元数据文件的写读往返，主体是文件持久化；它没有触及 fsync generation（INV-10）与 segment 切换可恢复（INV-11），主体都不同。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "checkpoint::tests::test_checkpoint_save_load",
         "declared_source": "cargo test --list @ e9ff21fc",
         "claimed_status": "PASS",
-        "declared_invariant": "WAL/恢复：提交边界与重启可见性"
+        "declared_invariant": "checkpoint 元数据落盘与读回：save_metadata(meta) 之后 load_metadata() 得到 lsn == 2000、tx_count == 100。"
       },
       "seed": "N/A (deterministic)",
       "backend": "MemoryStorage/FileStorage (默认工厂产物)",
@@ -2544,12 +2474,13 @@
         "INV-07"
       ],
       "invariant_mapping_status": "MAPPED",
+      "invariant_mapping_basis": "探针源码不可读，映射只能依据标签与声明目的，属暂定映射：崩溃恢复的主体包含「未提交态不得进入 recovery 可见基线」（INV-07）与「恢复失败不得进入 Recovered、重试不得空成功」（INV-12）两条；副签前须先把探针源码迁入仓内再复核。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "(crash-recovery-kill-9)",
         "declared_source": null,
         "claimed_status": "NOT_RUN",
-        "declared_invariant": "崩溃恢复"
+        "declared_invariant": "崩溃恢复探针 (crash-recovery-kill-9)：kill -9 之后恢复出来的基线必须只含已提交的部分（未提交事务的行不得进入恢复后的可见基线），且恢复失败不得被记为 Recovered、重试不得空成功。探针源码不在本仓（probe_registry 未绑定该标签，本条为 NOT_RUN），本条断言文本依据探针标签与声明目的。"
       },
       "seed": "fixed",
       "backend": "FileStorage+WAL",
@@ -2571,16 +2502,16 @@
       "case_id": "PILOT-T6-002B",
       "feature": "T6",
       "invariant_ids": [
-        "INV-10",
-        "INV-11"
+        "INV-10"
       ],
       "invariant_mapping_status": "MAPPED",
+      "invariant_mapping_basis": "探针源码不可读，映射只能依据标签与声明目的，属暂定映射：撕裂写要判定的正是「证书依据 fsync 的 generation 而不是 flush 布尔」，对应 INV-10；原映射里的 INV-11 被收窄掉，因为标签与声明目的都没有给出 WAL 段 reclaim 或 segment 切换可恢复的主张。副签前须先迁入探针源码再复核。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "(checkpoint-torn-write)",
         "declared_source": null,
         "claimed_status": "NOT_RUN",
-        "declared_invariant": "checkpoint 安全性"
+        "declared_invariant": "checkpoint 撕裂写探针 (checkpoint-torn-write)：checkpoint 证书必须建立在 fsync 数据与目录的 generation 上，而不是 flush 调用的布尔；撕裂写不得被当作一份有效的 checkpoint。探针源码不在本仓（probe_registry 未绑定该标签，本条为 NOT_RUN），本条断言文本依据探针标签与声明目的。"
       },
       "seed": "fixed",
       "backend": "FileStorage+WAL",
@@ -2602,16 +2533,16 @@
       "case_id": "PILOT-T5-101",
       "feature": "T5",
       "invariant_ids": [
-        "INV-01",
-        "INV-05"
+        "INV-01"
       ],
       "invariant_mapping_status": "MAPPED",
+      "invariant_mapping_basis": "唯一可读的证据是 red_identity 里登记的失败断言形式（left == right，比较的是回滚后的值与旧值），它正是 INV-01「rollback 精确恢复原多重集」的可证伪形式；原映射里的 INV-05 被收窄掉，因为归因文本没有记录任何多行/多表/trigger 的原子性主张。映射为暂定：探针源码未迁入仓内，副签前须先补源码复核。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "(odku-rollback-noop)",
         "declared_source": null,
         "claimed_status": "NOT_RUN",
-        "declared_invariant": "ODKU 回滚不空转"
+        "declared_invariant": "ODKU 回滚必须还原旧值：探针 p2c1id_odku_rollback_restores_the_old_value 的失败断言是 p2c0_undo_proto.rs:497 的 \"left == right\" —— ON DUPLICATE KEY UPDATE 写入之后回滚，被比较的值必须等于写入前的旧值。探针源码不在本仓（未迁移），本条断言文本依据 red_identity 的归因文本。"
       },
       "red_identity": {
         "test_fn": "p2c1id_odku_rollback_restores_the_old_value",

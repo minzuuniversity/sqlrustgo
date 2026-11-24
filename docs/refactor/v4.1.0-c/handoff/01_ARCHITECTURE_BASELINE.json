@@ -3,7 +3,7 @@
   "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
   "tree": "72d378e8e58797eae18502ab474325015b8993d4",
   "source_run": "C-ALPHA-01-HANDOFF-20261120",
-  "timestamp": "2026-11-23T16:27:32.256947+00:00",
+  "timestamp": "2026-11-24T02:59:30.313663+00:00",
   "stage": "ALPHA",
   "hara_manifest": {
     "path": "docs/releases/v4.1.0/refactoring/audit/HARA-410/evidence/MANIFEST.json",
@@ -11,7 +11,7 @@
   },
   "source_bindings": {
     "path": "docs/releases/v4.1.0/refactoring/evidence/SOURCE_BINDINGS.json",
-    "sha256": "52d99f848ac01f8fb2b3e34d94ce64cb0909f3e747a9b27a57dc8c85dc5c3de8"
+    "sha256": "5ed64a616567e3a6e31cf63a6596bdf0ee9994e9da5bc9ef154533c1b2ca62dc"
   },
   "adrs": [
     {

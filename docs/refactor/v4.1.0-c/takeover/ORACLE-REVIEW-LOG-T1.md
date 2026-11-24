@@ -338,6 +338,10 @@ T3 声明的不变量：`buffer/flush：页可见性与写回时机` → `INV-07
 
 ## 8. 验证记录
 
+> **本节记录的是 Task 7 当时的运行结果**（当时的矩阵门禁是 M1–M6，6/6）。
+> **矩阵门禁已由 Task 10 扩为 M1–M7（7/7）**，见 §10。
+> 本节的输出**保持原样不改写**（它是历史事实），但「6/6」不再代表当前契约。
+
 三条门禁命令，全部退出码 0：
 
 ```
@@ -426,3 +430,243 @@ Oracle 签署步骤 BLOCKED 的残余项如下，请在 Task 9 的放行裁决�
 
 在 (1) 或 (2) 落地之前，**本日志与矩阵都不构成任何已完成签署的证据**。
 
+
+## 10. Task 10：逐用例重做映射后的可判定性预判（**不是** Oracle 签署）
+
+> **本节的作者**：`task10-executor/minimax-m3.1-flash`（Claude Code agent，模型 MiniMax-M3.1-Flash）
+> **作业**：`V410-READINESS-IMPLEMENTATION-PLAN` / Task 10
+> **工作区**：`/Volumes/workspace/dev/wt-v410-base`（分支 `base/v4.1.0-frozen`）
+> **日期**：2026-11-24
+>
+> **本节不是 Oracle 签署。** §0 的 BLOCKED 状态**不变**，§9 的残余项 R-T7-1 / R-T7-2 / R-T7-3 **仍然有效**。
+> §3 与 §4 的逐条判定记录**逐字节保留**（它们记录的是**修复前**的状态），
+> 本节记录的是**修复后**的可判定性**预判**。两者并存，不互相覆盖。
+
+### 10.1 本轮做了什么、没做什么
+
+**做了**
+
+1. **75 条逐用例重建 `invariant_ids`** —— 不再按 feature 分桶；每条新增 `invariant_mapping_basis`
+   （一句可被独立复核的话：测试函数断言了哪条不变量的哪一面，或者为什么对不上）。
+2. **75 条 `source.declared_invariant` 改成逐用例的精确断言文本** —— 指明**比较哪个量**、**比较关系是什么**、
+   **覆盖范围到哪为止**（原来 13 种分桶标签现在 75 条各不相同）。
+3. **38 条按 §5 的逐条建议修断言文本**（R1 改文本 / R2 先收窄映射再改文本 / R3 见 10.4）。
+4. **新增 `verify_matrix.py` 的 M7（分桶映射检测）**，矩阵门禁契约 **6/6 → 7/7**。
+5. 新建 `docs/refactor/v4.1.0-c/takeover/INVARIANT-GAP-PROPOSALS.md`（60 条空映射的缺口提案）。
+
+**没做（硬边界）**
+
+- `red_identity`、**任何 `assertion_*` 字段**、`execution_status`、`actual`、`artifact_sha256`
+  **逐字节未动**（已用改动前的快照逐条比对确认）—— §3/§4 的判定记录仍然是「修复前」的判定；
+- 未改任何门禁阈值、阶段清单或 ADR；
+- 未写任何数据库内核逻辑：**两个 R3 测试体也没有改**（原因见 10.4）。
+
+### 10.2 逐用例重建的结果
+
+| 项 | 值 |
+|---|---|
+| 矩阵场景总数 | 75 |
+| `invariant_ids` **发生变化**的 | **64** |
+| `invariant_ids` **未变**的 | 11（T1-003 / T1-004 / T1-006 / T1-007 / T1-102、T2-001、T4-101 / T4-102 / T4-103 / T4-104、T6-001B） |
+| 重建后**有**对应不变量 | **15**（T1 7 / T2 1 / T4 4 / T5 1 / T6 2） |
+| 重建后**无**对应不变量（`invariant_ids == []`） | **60** —— 全部登记在 `INVARIANT-GAP-PROPOSALS.md` |
+| `source.declared_invariant` 的取值种数 | 13 → **75**（不再有任何分桶标签） |
+| 18 条不变量中**零覆盖**的 | **10**（INV-03/05/06/08/09/13/15/16/17/18） |
+
+**映射变化的形态**（这是 Task 7 说的结构性缺陷的直接后果）：
+
+| feature | 原 id 集合（分桶） | 逐用例重建后 | 空映射 |
+|---|---|---|---|
+| T1 | 28 条共用 `INV-01` | INV-01 × 4、INV-04 × 2、INV-07 × 1 | 23 |
+| T2 | 6 条共用 `INV-02` | INV-02 × 1 | 5 |
+| T3 | 8 条共用 `INV-07 + INV-10` | 无 | 8 |
+| T4 | 14 条共用 `INV-14` | INV-14 × 4 | 10 |
+| T5 | 8 条共用 `INV-05 + INV-15`，1 条 `INV-01 + INV-05` | INV-01 × 1 | 8 |
+| T6 | 6 条共用 `INV-08 + INV-07`，2 条 bespoke | INV-12+INV-07、INV-10 | 6 |
+
+**结论**：分桶映射不是「少贴了几个 id」，而是**贴错了主体**。75 条里真正落在 18 条不变量上的只有 15 条；
+其余 60 条断言的是登记表根本没写的东西（事务标志、WAL 计数、索引 CRUD、checkpoint 元数据、缓冲池计数……）。
+把 18 条不变量当成「所有用例的公共标签」，本身就是错的。
+
+### 10.3 38 条修复后的可判定性预判（逐条）
+
+**判定口径**沿用 §1.1 的 (a)(b)(c)(d)：(a) 被比较的可观测量由断言文本所指机制直接决定；
+(b) 断言可证伪；(c) 不与登记表原文抵触；(d) 断言主体与登记表原文是**同一个**主体。
+本节额外区分两种「可判定」：
+
+- **可判定（有映射）**：(a)(b)(c)(d) 全过，且 `invariant_ids` 非空 —— 副签人可以照此副签；
+- **可判定（无对应不变量）**：(a)(b) 过，断言本身是一句能独立判定的陈述，但登记表里**没有**它对应的不变量 ——
+  它**不能计入不变量覆盖**，只能作为缺口提案的证据；
+- **仍不可判定**：空过 / 无断言 / 恒真式，改文本救不回来。
+
+| case_id | 原原因码 | 修复后的断言（摘要） | 新映射 | 预判 | 理由 |
+|---|---|---|---|---|---|
+| `PILOT-T1-001` | R1 | begin 返回 tx>0 且 in_transaction 为 true；commit/rollback 后为 false；set_current_tx_id(42) 后回显 42（无数据写入） | `[]` | 可判定（无对应不变量） | 比较对象与关系已写明，与源码一致；但登记表 18 条里没有「事务标志复位」这一条 → GAP-01 |
+| `PILOT-T1-002` | R2 | 回滚**不**排空 buffer pool：pages_visited 回滚前后相等 | `[]` | 可判定（无对应不变量） | 可证伪；但它钉的是「回滚后缓存仍留着被回滚的页」，与 INV-15 的要求方向相反 → GAP-13 |
+| `PILOT-T1-005` | R2 | 嵌套 begin_transaction() 返回 Err | `[]` | 可判定（无对应不变量） | 可证伪；无对应不变量 → GAP-03 |
+| `PILOT-T1-008` | R1 | begin 返回 1；rollback 之后 in_transaction 为 false | `[]` | 可判定（无对应不变量） | → GAP-01 |
+| `PILOT-T1-009` | R1 | 本用例**没有任何断言**（函数体只有 set_current_tx_id(42)） | `[]` | **仍不可判定** | 空过也成立，无法证伪；改文本救不回来。§5 的修复路径是「需改测试」，而本任务只允许改 R3 那两条测试体 → GAP-05 |
+| `PILOT-T1-010` | R1 | 初始 !in_transaction 且 tx id 0；begin 返回 1；commit 后 !in_transaction | `[]` | 可判定（无对应不变量） | → GAP-01 |
+| `PILOT-T1-011` | R2 | 新实例 !in_transaction 且 current_tx_id()==0 | `[]` | 可判定（无对应不变量） | → GAP-01 |
+| `PILOT-T1-012` | R2 | set_current_tx_id(42) 后回显 42 且 in_transaction 为 true | `[]` | 可判定（无对应不变量） | → GAP-01 |
+| `PILOT-T1-013` | R1 | begin/commit/rollback 均返回 Ok；tx id 原子初值 0，set 99 后回显 99 | `[]` | 可判定（无对应不变量） | → GAP-01 |
+| `PILOT-T1-014` | R2 | PITR 重放未提交事务：entries_applied==0、entries_skipped==1、ids() 为空、active_transactions_at_target==1 | **`INV-07`** | **可判定（有映射）** | (a) 被比较量（恢复结果里的行 id 集合与条目计数）由 PITR 重放机制直接决定；(b) 未提交事务的行一旦进入恢复结果就会红；(c)(d) 与 INV-07「未提交私有状态不能进入 committed snapshot/recovery 可见基线」同一主体 |
+| `PILOT-T1-015` | R2 | classify_sql("BEGIN TRANSACTION") == QueryType::Transaction | `[]` | 可判定（无对应不变量） | → GAP-03 |
+| `PILOT-T1-016` | R2 | yes 计数 == 2、no 计数 == 1 | `[]` | 可判定（无对应不变量） | → GAP-04 |
+| `PILOT-T1-017` | R1 | begin 返回 tx>0，commit/rollback 返回 Ok，set_current_tx_id(7) 可调用 | `[]` | 可判定（无对应不变量） | → GAP-01 |
+| `PILOT-T1-018` | R2 | tx id 0→空闲；7→in_transaction 为 true；回 0→复位 | `[]` | 可判定（无对应不变量） | → GAP-01 |
+| `PILOT-T1-019` | R2 | 事务内 assert_dml_safe("insert","users") 不 panic | `[]` | 可判定（无对应不变量） | → GAP-03 |
+| `PILOT-T1-020` | R2 | guard 透传内层 tx 状态；flush() 返回 Ok | `[]` | 可判定（无对应不变量） | → GAP-01 |
+| `PILOT-T1-021` | R2 | 5 个事务 ⇒ recover() 得 15 条 | `[]` | 可判定（无对应不变量） | → GAP-02 |
+| `PILOT-T1-022` | R1 | recover() 得 3 条且第 3 条类型为 Rollback | `[]` | 可判定（无对应不变量） | → GAP-02 |
+| `PILOT-T1-023` | R2 | 2 个事务 ⇒ recover() 得 6 条 | `[]` | 可判定（无对应不变量） | → GAP-02 |
+| `PILOT-T1-024` | R1 | is_tx_active(7) 回滚后为 false | `[]` | 可判定（无对应不变量） | → GAP-02 |
+| `PILOT-T1-025` | R2 | active_tx_ids() 为空 | `[]` | 可判定（无对应不变量） | → GAP-02 |
+| `PILOT-T1-026` | R2 | set_current_tx_id(42) 后回显 42 且 in_transaction 为 true | `[]` | 可判定（无对应不变量） | → GAP-01 |
+| `PILOT-T1-027` | R2 | recover() 中 Commit 条目恰 2 条 | `[]` | 可判定（无对应不变量） | → GAP-02 |
+| `PILOT-T1-028` | R1 | recover() 中 Rollback 条目恰 1 条 | `[]` | 可判定（无对应不变量） | → GAP-02 |
+| `PILOT-T1-101` | R1 | 回滚到一个刚建的 savepoint 不弹出 undo：undo_log_len 仍为 2 | **`INV-04`** | **可判定（有映射）** | (a) 被比较量（undo_log_len）由 savepoint 回滚机制直接决定；(b) 若 rollback_to 多弹或少弹一条就会红；(c)(d) 覆盖 INV-04「部分回滚只影响该点之后」这一分句（未覆盖「cursor 仅属本 tx」与「不污染顶层恢复」，已在依据里写明）。**遗留**：该测试文件的文档注释写的是「INSERT 后 ROLLBACK 必须撤销该插入（undo log 清空）」，与断言相反，见 10.5 |
+| `PILOT-T2-002` | R2 | 同名 trigger 重复创建两次均 Ok，list_triggers("t").len() >= 1 | `[]` | 可判定（无对应不变量） | 可判定但无对应不变量（且 `>= 1` 未收紧为确切条数，文本已如实写明） → GAP-07 |
+| `PILOT-T2-003` | R2 | 空表 begin_snapshot()==0，scan_visible(0,0) 为空 | `[]` | 可判定（无对应不变量） | 夹具里没有任何数据，也没有未提交态 → 不触及 INV-02/INV-07 → GAP-06 |
+| `PILOT-T2-004` | R2 | 空版本链 find_visible 在两个快照下都返回 None | `[]` | 可判定（无对应不变量） | → GAP-06 |
+| `PILOT-T2-005` | R2 | 10 个版本 ⇒ gc(latest,3) 后 dropped==6、version_count()==4 | `[]` | 可判定（无对应不变量） | 主体是 MVCC 版本回收，与 INV-11 的 WAL 段 reclaim 不同 → GAP-06 |
+| `PILOT-T2-006` | R2 | 按 PK：缺失→None；ts1→[10,20]；ts2→[99]；ts3（墓碑）→None | `[]` | 可判定（无对应不变量） | 只有一行一个值，没有「相同值不同行」，也没有未提交态 → GAP-06 |
+| `PILOT-T3-001` | R2 | 页失效后该页在索引缓存中不再可见：size 1→0、lookup 落空 | `[]` | 可判定（无对应不变量） | 断言文本已按 §5 改成「页失效后该页在索引缓存中不再可见」，可判定；但 AHI 模块没有 committed/recovery 可见基线、也没有 fsync generation，**被测能力不存在**，改测试也触不到 INV-07/INV-10 → GAP-13。**测试体未改**，见 10.4 |
+| `PILOT-T3-002` | R1 | flush 之后 !s.dirty，**但 dirty 从未被置真 ⇒ 空过** | `[]` | **仍不可判定** | 空过：flush 什么都不做也通过。必须先写入把 dirty 置真。§5 的修复路径是「需改测试」，本任务只允许改 R3 那两条测试体 → GAP-05 |
+| `PILOT-T3-003` | R1 | 本用例**没有任何断言** | `[]` | **仍不可判定** | 空过也成立 → GAP-05 |
+| `PILOT-T3-004` | R3 | 一次 get_or_load 之后 disk_reads()==1 | `[]` | 可判定（无对应不变量） | 断言文本已改成「buffer pool 的磁盘读记账」，可判定；但 I/O 计数不是可见性也不是写回时机 → GAP-10 |
+| `PILOT-T3-005` | R3 | insert 一个页之后 disk_writes()==1 | `[]` | 可判定（无对应不变量） | → GAP-10 |
+| `PILOT-T3-006` | R3 | 读路径记账与命中守卫：pages_visited 1→2、cache_misses 1、cache_hits 1、命中时不得调 loader | `[]` | 可判定（无对应不变量） | 断言文本已按 §5 改成「读路径记账与命中守卫」，可判定；但 buffer_pool 模块**没有 flush / 写回 / fsync / generation 路径**，**被测能力不存在**，无法改测试去触及 INV-07/INV-10 → GAP-13。**测试体未改**，见 10.4 |
+| `PILOT-T3-007` | R3 | 7 个统计字段初值全为 0 | `[]` | 可判定（无对应不变量） | → GAP-10 |
+| `PILOT-T3-008` | R2 | capacity()==10 且 is_empty() 为 true | `[]` | 可判定（无对应不变量） | → GAP-10 |
+
+**统计**：**可判定（有映射）2 条**（`PILOT-T1-014`、`PILOT-T1-101`）；
+**可判定（无对应不变量）33 条**；**仍不可判定 3 条**（`PILOT-T1-009`、`PILOT-T3-002`、`PILOT-T3-003`）。
+2 + 33 + 3 = 38。
+
+**这 3 条为什么修不了**：它们的共同点是**断言本身不存在或恒成立**，
+补一条可证伪断言必须改测试体，而本任务的硬边界只允许改 R3 那两条（`PILOT-T3-001`、`PILOT-T3-006`）的测试体。
+本节只登记事实并列入缺口提案 GAP-05，**建议属主另开一次授权**改这 3 条测试体。
+
+### 10.4 R3 两条的处置：**测试体未改**，`invariant_ids` 留空
+
+§5 给 R3 的两条各留了两个选项：「收窄/留空映射 + 改断言文本」或「改测试去触及 INV-07 / INV-10」。
+本轮把两个模块都实读了一遍，结论是**第二个选项在冻结基线上不存在该能力**：
+
+| case | 模块里有没有 INV-07 需要的能力 | 模块里有没有 INV-10 需要的能力 | 处置 |
+|---|---|---|---|
+| `PILOT-T3-001`（`adaptive_hash_index.rs`） | **没有**：AHI 全模块只有 `map` / `access_count` / `threshold` / 四个计数器，**没有 committed、没有快照、没有 recovery 基线的概念** | **没有**：没有 fsync、没有 generation、没有 checkpoint | 断言文本改成「页失效后该页在索引缓存中不再可见」，`invariant_ids` 留空 → GAP-13 |
+| `PILOT-T3-006`（`buffer_pool.rs`） | **没有**：BufferPool 只有 LRU 页表与 9 个计数器，**没有事务、没有 committed 基线** | **没有**：**整个模块没有 flush / 写回 / fsync / generation 路径** | 断言文本改成「buffer pool 的读路径记账与命中守卫」，`invariant_ids` 留空 → GAP-13 |
+
+**因此两个测试函数体一行未改**（diff 为空）：
+它们的原断言**不与任何不变量矛盾**，只是**不对应**任何已登记的不变量；
+Task 7 说的「矛盾」指的是它们与**分桶标签**矛盾，标签已经被逐用例的断言文本取代。
+
+**为什么不能硬凑一个 id**：
+- 把 T3-001 贴 INV-15（索引/聚类/cache 与同一 committed RowStore 发布/撤销一致）——本用例**没有 RowStore**，
+  INV-15 的主体缺失，正是 §5 已经指出「也不是本用例」的那一条；
+- 把 T3-001/T3-006 贴 INV-10（checkpoint 证书基于 fsync 的 generation）——这两个模块**没有 checkpoint、没有 fsync**；
+- 把 T3-006 贴 INV-07（未提交态不得进入 committed 基线）——BufferPool **没有事务概念**，
+  并且 `engine.rs` 的 `PILOT-T1-002` 注释明写「BufferPool 没有事务性排空」，
+  即**基线在「回滚后排空缓存」这一侧根本做不到**。
+
+**这三条（连同 T1-002）构成 GAP-13，是本轮对属主最重要的一个发现**：
+INV-15 在冻结基线上**不可满足**，且**零覆盖**。处置方向（改 INV-15 的措辞，还是排进 C01-10/11）属主裁决。
+
+### 10.5 矩阵里的 `assertion_*` 字段与本节的关系
+
+- 矩阵里 44 条的 `assertion_review_verdict` / `assertion_review_reason` / `assertion_source_sha256` /
+  `assertion_reviewed_by` 等字段**逐字节未动**。它们记录的是 **Task 7 在修复前**的判定；
+  本节记录的是**修复后**的预判。两者并存，**不互相覆盖**。
+- 因此：`assertion_review_verdict == "ASSERTION_UNREVIEWABLE"` 的 38 条**仍然是 38 条**，
+  `assertion_reviewed_by` 在 44 条上**仍然全部缺席**（副签没发生）。
+  **本节不产生任何签名，Oracle 签署步骤仍然是 BLOCKED（§0.3、§9 R-T7-1）。**
+- `assertion_source_sha256` 仍然有效：**两个 R3 测试体没有改**，
+  所以 44 条对应的 17 个测试源文件的摘要**逐字节仍然成立**。
+- **一条遗留矛盾**：`tests/integration/test_factory/tf_t1_undo_invariants.rs` 的 `tf_t1_01_insert_then_rollback`
+  的**文档注释**写「INSERT 后 ROLLBACK 必须撤销该插入（undo log 清空）」，而它的断言是相反的
+  （回滚到刚建的 savepoint 不弹出任何 undo）。修文档注释不在本任务的允许范围内（只允许改 R3 那两条测试体），
+  已登记在 `INVARIANT-GAP-PROPOSALS.md` GAP-05 与本节 10.3 的 `PILOT-T1-101` 行。
+
+### 10.6 M7 与 7/7 契约
+
+`verify_matrix.py` 新增 **M7：分桶映射检测**，三条子判定：
+
+1. **每条 case 都必须有 `invariant_mapping_basis`** —— 分桶映射没有逐用例的一句话，这是抓它的主判据；
+2. **同一标签 + 同一 id 集合的 case 不得共用同一句依据** —— 「贴一个 id 再把同一句话抄一遍」是同一个缺陷换个帽子；
+3. **每条空映射的 case 必须登记在 `INVARIANT-GAP-PROPOSALS.md` 里** —— 洞要能被人在文档里看见，而不是只能 diff 矩阵。
+
+同时 **M1 的形式**变了（**语义目标不变**）：原来「每条 case 必须至少有一个 invariant id」，
+现在「每条 case 必须至少有一个 id，**或者**显式声明 `invariant_mapping_status == "NO_INVARIANT_MATCH"`
+并给出逐用例依据」。
+这是任务书 Step 2 的直接要求（「`invariant_ids` 留空 `[]`」）与「M1–M6 语义不变」之间的**唯一冲突点**：
+不留这一条，75 条里 60 条诚实留空就会把 M1 判红，门禁永远到不了 7/7。
+**M1 的反空过意图被保留**：M1 仍然拒绝「静默地没有映射」，只是把「显式声明的没有映射」也认了；
+M4 的全局反空过（所有 case 一个 id 都不引用）**原样保留**。
+
+**「6/6」出现的地方**（实测，不是推测）：
+
+| 位置 | 处理 |
+|---|---|
+| `docs/releases/v4.1.0/refactoring/tools/verify_matrix.py`（docstring、argparse、`0/6 PASS` ×2、checks 元组） | **已改为 7/7**，新增 M7 |
+| `docs/releases/v4.1.0/refactoring/tools/test_matrix_driver.py`（工具自带的夹具） | 新增 Q1–Q5 夹具，逐条证明 M7/M1 会咬住分桶映射；夹具自造的矩阵也改成逐用例贴标签与依据 |
+| 本日志 §8 | **保留原样**（历史运行记录），加了一句指明「当时的门禁是 M1–M6，现在的契约是 M1–M7（见 §10）」 |
+| `verify_sha_scope.py` 的「6/6 PASS」 | **不动** —— 那是 SHA 范围门禁自己的 6 条，与矩阵门禁无关 |
+| `L1-BINDING-fd849ae20541.json` / `L1-DIFF-fd849ae20541.md` / `dsh-b/REQUIREMENT-TEST-COVERAGE-MATRIX.md` | **实测不含「6/6」**（逐字检索过），见 10.8 |
+
+### 10.7 本轮的验证记录
+
+```
+$ python3 docs/releases/v4.1.0/refactoring/tools/verify_matrix.py
+[M1] PASS  15 case(s) carry at least one invariant id, 60 declare an empty mapping (NO_INVARIANT_MATCH) with a per-case basis
+[M2] PASS  75 case(s), mapping status MAPPED/NO_INVARIANT_MATCH
+[M3] PASS  75 case(s), 75 distinct case_id(s)
+[M4] PASS  7 distinct id(s) referenced, all declared in docs/releases/v4.1.0/refactoring/TRANSACTION_INVARIANTS.md
+[M5] PASS  75 case(s) use the contract/pilot vocabulary; the mapping covers 9 word(s) and keeps the RED words on KNOWN_FAIL
+[M6] PASS  4 KNOWN_FAIL case(s), every one carries the five-element RED identity
+[M7] PASS  75 case(s) carry a per-case basis; 60 empty mapping(s), all listed in docs/refactor/v4.1.0-c/takeover/INVARIANT-GAP-PROPOSALS.md; 0 declared-invariant label(s) are still shared, 0 of them with divergent id sets
+7/7 PASS                                   # exit 0
+
+$ python3 docs/releases/v4.1.0/refactoring/tools/test_matrix_driver.py
+...
+OK: matrix_driver 夹具全部通过              # exit 0
+```
+
+### 10.8 与任务书的三处**现实不符**（如实登记，未粉饰）
+
+1. **任务书说「所有引用『6/6』的地方必须同步更新：工具自带的夹具、Task 6 的 `L1-BINDING` / `L1-DIFF`、
+   `dsh-b/REQUIREMENT-TEST-COVERAGE-MATRIX.md`」。实测：这三个文件里没有「6/6」**
+   （`grep` 过 `6/6`、`M1`、`M6`、`verify_matrix`）。
+   它们与矩阵门禁的**契约数字**无关，但 `L1-BINDING` 里**有矩阵的 sha256 摘要**，
+   矩阵一变摘要就变 —— 这部分**已按要求重算并重签**（见 10.9）。
+2. **任务书说「M1–M6 语义不变」。实测：与「60 条诚实留空」直接冲突**，见 10.6 的说明。
+   本轮采用**保留 M1 语义目标、放宽其判定形式**的最小改动，并在工具 docstring 里写明。
+3. **任务书预期 R3 两条要改测试体。实测：被测能力在冻结基线上不存在**
+   （AHI 无 committed 概念、BufferPool 无 flush/fsync/generation），
+   按任务书自己的兜底条款（「若被测功能根本没有该能力，则改为把该 case 的 `invariant_ids` 留空并记入
+   `INVARIANT-GAP-PROPOSALS.md`」）处置，**两个测试体未改**。见 10.4。
+
+### 10.9 摘要与回执的重签
+
+矩阵、`verify_matrix.py`、`test_matrix_driver.py` 都在 handoff manifest 的哈希范围内（`MANIFEST_ROOTS` 含
+`docs/releases/v4.1.0/refactoring/`），**必须重签**：`verify_handoff.py --finalize` → `--check`（期望 0）。
+`L1-BINDING-fd849ae20541.json` 里 `inputs.matrix.sha256` 与 `verification.digests.input_matrix.sha256`
+两处摘要随矩阵变化而变化，**已重算**；`validator_note` 里「verify_matrix.py 只查 case_id / invariant_ids /
+mapping_status / execution_status / 词表 / red_identity」这句**已过时**，也已改写（现在还查
+`invariant_mapping_basis` 与空映射登记）。
+
+### 10.10 本节没有改变的结论
+
+- **Oracle 签署步骤仍是 BLOCKED**（§0.3、§9 R-T7-1）。本节是材料，不是签名。
+- **`assertion_reviewed_by` 在 44 条上仍然全部缺席**；L1 的 42 条 PASS **仍然无一**满足 `ASSERTION_REVIEW`。
+- **§9 的三条残余项全部保留**：R-T7-1（副签缺失）、R-T7-2（断言可判定性缺陷 —— 本节把 38 条里的 35 条
+  修到「可判定」，其中 2 条可计入不变量覆盖、33 条只能计入缺口提案；3 条仍需改测试）、
+  R-T7-3（本日志不在 manifest 哈希范围内 —— 仍然成立）。
+- **本节新增四条残余项**：
+
+| 编号 | 残余项 | 需要谁裁决 | 影响 |
+|---|---|---|---|
+| R-T10-1 | **75 条里 60 条映射为空**：试点用例集断言的内容有 60 条在 18 条不变量里没有对应物；10 条不变量零覆盖 | **属主**（裁决是补不变量、还是把这些用例从「不变量覆盖」口径里摘出去） | 按 INV-17 的口径「必需 case 的 NOT_RUN 等状态阻断认证」，零覆盖的不变量同样会阻断阶段出口；`INVARIANT-GAP-PROPOSALS.md` §4 给了三个具体问题 |
+| R-T10-2 | **INV-15 在冻结基线上不可满足**：BufferPool 没有事务性排空、没有 flush/fsync 路径；`PILOT-T1-002` 钉住的是反面 | **属主**（改 INV-15 措辞，还是排进 C01-10/11） | `PILOT-T1-002`、`PILOT-T3-001`、`PILOT-T3-006` 三条无法映射到任何已登记不变量 |
+| R-T10-3 | **3 条用例的断言体本身是空的/恒真的**：`PILOT-T1-009`（无断言）、`PILOT-T3-002`（空过）、`PILOT-T3-003`（无断言），另有 `PILOT-T5-008` 是恒真式（不在 Task 7 的 38 条内，本轮新发现） | **属主**（另开一次授权改这 4 条测试体） | 这 4 条对任何不变量都不构成证据；改文本救不回来 |
+| R-T10-4 | **M1 的判定形式被放宽**（接受显式声明的空映射） | **属主**（确认口径） | 门禁契约由 6/6 变 7/7；M1 仍拒绝静默空映射，M4 的全局反空过原样保留 |

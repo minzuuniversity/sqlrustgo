@@ -31,6 +31,17 @@ WHY（2026-11-23）
   O   适配层输出的固定形状：五个键一个不少
   P   工厂把测试判成 KNOWN_FAIL 但 case 没有完整身份 → INFRA_ERROR
 
+Task 10（逐用例重做 invariant 映射）补的用例 —— **M7 必须咬住分桶映射**：
+
+  Q1  某条 case 少了 invariant_mapping_basis      → M7 判红
+  Q2  两条 case 共用同一个标签 + 同一组 id + 同一句依据 → M7 判红（分桶签名）
+  Q3  某条 case 声明空映射却没登记进缺口提案        → M7 判红
+  Q4  某条 case 空映射但没声明 NO_INVARIANT_MATCH   → M1 判红
+  Q5  基线矩阵本身过 M7                             → 适配层夹具矩阵也过 M7
+
+矩阵门禁的契约已由 6/6 变为 7/7（M1–M6 的**语义目标**不变；M1 的**判定形式**接受「显式声明的空映射」，
+M7 是新增的逐用例映射断言）。
+
 所有用例都在临时目录里做，不碰工作仓库。
 
 用法：python3 docs/releases/v4.1.0/refactoring/tools/test_matrix_driver.py
@@ -39,6 +50,7 @@ WHY（2026-11-23）
 from __future__ import annotations
 
 import contextlib
+import copy
 import io
 import json
 import pathlib
@@ -74,16 +86,24 @@ def check(name: str, cond: bool, detail: str = "") -> None:
 
 def case(case_id: str, test_name: str, *, identity=None,
          claimed_status: str = "PASS") -> dict:
+    """A minimal matrix case.
+
+    The mapping fields are per case, not per bucket: the fixture's own matrix
+    has to survive M7, so the label and the basis carry the case id.
+    """
     return {
         "case_id": case_id,
         "feature": "T4",
         "invariant_ids": ["INV-14"],
         "invariant_mapping_status": "MAPPED",
+        "invariant_mapping_basis": (
+            f"夹具用例 {case_id}（{test_name}）：断言该测试直接检查 "
+            f"INV-14 所述的能力不足写前拒绝，故贴 INV-14"),
         "source": {"kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
                    "test_name": test_name,
                    "declared_source": "cargo test --list @ e9ff21fc",
                    "claimed_status": claimed_status,
-                   "declared_invariant": "后端能力契约"},
+                   "declared_invariant": f"后端能力契约（夹具用例 {case_id}）"},
         "execution_status": "NOT_RUN",
         "actual": None,
         "artifact_sha256": None,
@@ -690,6 +710,81 @@ def p_factory_known_fail_without_identity() -> None:
           verdict["execution_status"])
 
 
+# --------------------------------------------------------------------------
+# Q —— M7 必须咬住「分桶映射」，M1 必须咬住「未声明的空映射」
+# --------------------------------------------------------------------------
+
+def q_m7_bites_bucket_mapping() -> None:
+    print("Q. M7 必须咬住分桶映射")
+    baseline = md.load_matrix(md.ROOT / md.MATRIX_REL)
+
+    # Q5: 基线矩阵本身过 M7。
+    try:
+        vm.m7(baseline)
+        check("Q5 ⇒ 基线矩阵过 M7", True)
+    except vm.MatrixError as exc:
+        check("Q5 ⇒ 基线矩阵过 M7", False, str(exc))
+
+    # Q1: 某条 case 少了逐用例依据。
+    mutated = copy.deepcopy(baseline)
+    del mutated["cases"][0]["invariant_mapping_basis"]
+    try:
+        vm.m7(mutated)
+        check("Q1 ⇒ 缺依据 ⇒ M7 判红", False, "no exception raised")
+    except vm.MatrixError as exc:
+        check("Q1 ⇒ 缺依据 ⇒ M7 判红", True)
+        check("Q1 ⇒ 理由点名依据字段", vm.BASIS_FIELD in str(exc), str(exc))
+
+    # Q2: 分桶签名 —— 同一个标签 + 同一组 id + 同一句依据。
+    mutated = copy.deepcopy(baseline)
+    first, second = mutated["cases"][0], mutated["cases"][1]
+    for subject in (first, second):
+        subject["source"]["declared_invariant"] = "同一个标签"
+        subject["invariant_ids"] = ["INV-01"]
+        subject["invariant_mapping_basis"] = "同一句依据"
+    try:
+        vm.m7(mutated)
+        check("Q2 ⇒ 分桶签名 ⇒ M7 判红", False, "no exception raised")
+    except vm.MatrixError as exc:
+        check("Q2 ⇒ 分桶签名 ⇒ M7 判红", True)
+        check("Q2 ⇒ 理由点名复制依据", "copied basis" in str(exc), str(exc))
+
+    # Q3: 声明了空映射，却没有登记进缺口提案。
+    mutated = copy.deepcopy(baseline)
+    orphan = mutated["cases"][0]
+    orphan["case_id"] = "PILOT-XX-999"
+    orphan["invariant_ids"] = []
+    orphan["invariant_mapping_status"] = vm.NO_MATCH_STATUS
+    orphan["invariant_mapping_basis"] = "该断言不对应任何已登记不变量"
+    try:
+        vm.m7(mutated)
+        check("Q3 ⇒ 空映射未登记 ⇒ M7 判红", False, "no exception raised")
+    except vm.MatrixError as exc:
+        check("Q3 ⇒ 空映射未登记 ⇒ M7 判红", True)
+        check("Q3 ⇒ 理由点名缺口提案文件", "not listed" in str(exc), str(exc))
+
+    # Q4: 空映射没有显式声明（状态仍是 MAPPED）。
+    mutated = copy.deepcopy(baseline)
+    mapped = next(c for c in mutated["cases"] if c["invariant_ids"])
+    mapped["invariant_ids"] = []
+    try:
+        vm.m1(mutated)
+        check("Q4 ⇒ 未声明的空映射 ⇒ M1 判红", False, "no exception raised")
+    except vm.MatrixError as exc:
+        check("Q4 ⇒ 未声明的空映射 ⇒ M1 判红", True)
+        check("Q4 ⇒ 理由点名 NO_INVARIANT_MATCH",
+              vm.NO_MATCH_STATUS in str(exc), str(exc))
+
+    # 适配层夹具自己造的矩阵也要过 M7（它按用例贴标签与依据）。
+    fixture_matrix = {"cases": [case(f"FAKE-{i:03d}", f"fake::tests::case_{i}")
+                                for i in range(vm.EXPECTED_CASES)]}
+    try:
+        vm.m7(fixture_matrix)
+        check("Q5 ⇒ 夹具矩阵也过 M7", True)
+    except vm.MatrixError as exc:
+        check("Q5 ⇒ 夹具矩阵也过 M7", False, str(exc))
+
+
 def main() -> int:
     d1_d2_failed_red()
     d3_covered_pass()
@@ -705,6 +800,7 @@ def main() -> int:
     m_migrated_probe_runs()
     n_odku_identity()
     p_factory_known_fail_without_identity()
+    q_m7_bites_bucket_mapping()
     print()
     if FAILURES:
         print(f"FAILED ({len(FAILURES)}): {', '.join(FAILURES)}")

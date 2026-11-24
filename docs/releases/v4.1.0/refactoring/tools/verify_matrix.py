@@ -9,9 +9,10 @@ A list of positions cannot be executed, cannot be reviewed and cannot block a
 release, so the matrix needs the same kind of gate the rest of the package
 already has.
 
-Six assertions:
+Seven assertions:
 
-  M1  every case carries at least one invariant id
+  M1  every case carries at least one invariant id, or declares -- in words --
+      that it matches none, with a per-case basis for that declaration
   M2  no case is still `UNREVIEWED`
   M3  `case_id` is unique across the 75 cases
   M4  every referenced invariant id is declared in
@@ -23,6 +24,10 @@ Six assertions:
   M6  every case that is KNOWN_FAIL carries the complete five-element RED
       identity (`test_fn`, `package_or_target`, `source_sha256`, `rc`,
       `attribution`)
+  M7  the mapping is per case, not per bucket: every case carries an
+      `invariant_mapping_basis`, no two cases that share one declared
+      invariant and one id set share one copied basis, and every case with an
+      empty mapping is listed in the gap-proposal record
 
 The corpus of M4 is the *id column* of the two registry documents: an
 invariant id is the first cell of a table row.  A token that only occurs in
@@ -47,9 +52,22 @@ Two properties are load-bearing and are asserted explicitly:
     and report success), and M6 fails when no case is KNOWN_FAIL (there would
     be no RED identity to check).
 
+M1 and M7 are the pair that the Task 10 rework introduced.  The mapping used
+to be attached per *feature*: every case that shared a `declared_invariant`
+label was given the same id set, so 75 cases ended up with 13 labels and a
+group of 28 unrelated tests carried one sentence about undo-log semantics.
+Task 10 re-derived all 75 mappings from the test source, one case at a time,
+and the honest result is that most of the pilot cases assert a property the
+18 registered invariants do not talk about.  Those cases now carry an empty
+id list -- which M1 used to forbid outright -- so M1's *purpose* (no case may
+carry no invariant without saying so) is kept while its *form* now accepts a
+declared empty mapping, and M7 makes the declaration auditable: a basis per
+case, no copied basis inside a bucket, and every empty mapping listed in
+`INVARIANT-GAP-PROPOSALS.md`.
+
 The invariants are raised explicitly instead of being written as `assert`
 statements, because `python -O` strips `assert` and would turn this gate into
-a no-op that prints "6/6 PASS" for anything.  The tool refuses to run under
+a no-op that prints "7/7 PASS" for anything.  The tool refuses to run under
 `python -O` at all.
 """
 from __future__ import annotations
@@ -65,6 +83,17 @@ ROOT = pathlib.Path(__file__).resolve().parents[5]
 MATRIX_REL = "docs/releases/v4.1.0/refactoring/TEST_COVERAGE_MATRIX.json"
 TX_REL = "docs/releases/v4.1.0/refactoring/TRANSACTION_INVARIANTS.md"
 STORAGE_REL = "docs/releases/v4.1.0/refactoring/STORAGE_CAPABILITY_CONTRACT.md"
+# The record that holds the cases whose assertions match no registered
+# invariant.  M7 checks that every declared-empty case is listed there, so the
+# hole is visible in a document a reviewer can read instead of only in the
+# matrix.
+GAP_REL = "docs/refactor/v4.1.0-c/takeover/INVARIANT-GAP-PROPOSALS.md"
+
+# The mapping status a case must carry when it declares that its test asserts
+# something no registered invariant talks about.
+NO_MATCH_STATUS = "NO_INVARIANT_MATCH"
+# The per-case field that says *why* a case carries the ids it carries.
+BASIS_FIELD = "invariant_mapping_basis"
 
 EXPECTED_CASES = 75
 
@@ -171,17 +200,37 @@ def corpus():
     return found
 
 
+def basis_of(case):
+    """The per-case mapping basis, or "" when it is missing or not a string."""
+    value = case.get(BASIS_FIELD)
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return ""
+
+
 def m1(matrix):
     cases = cases_of(matrix)
-    empty = [c.get("case_id") for c in cases if not c.get("invariant_ids")]
-    require(not empty,
-            f"{len(empty)} case(s) carry no invariant id: {empty[:5]}")
+    empty = [c for c in cases if not c.get("invariant_ids")]
+    # An empty id list is only allowed when the case says so: the mapping
+    # status declares the empty mapping and the basis says why.  A case that
+    # silently carries no invariant is the failure M1 exists to catch.
+    undeclared = [c.get("case_id") for c in empty
+                  if c.get("invariant_mapping_status") != NO_MATCH_STATUS]
+    require(not undeclared,
+            f"{len(undeclared)} case(s) carry no invariant id without declaring "
+            f"the empty mapping ({NO_MATCH_STATUS}): {undeclared[:5]}")
+    unexplained = [c.get("case_id") for c in empty if not basis_of(c)]
+    require(not unexplained,
+            f"{len(unexplained)} case(s) declare an empty mapping without a "
+            f"{BASIS_FIELD}: {unexplained[:5]}")
     blank = [c.get("case_id") for c in cases
              for iid in c["invariant_ids"]
              if not isinstance(iid, str) or not iid.strip()]
     require(not blank,
             f"{len(blank)} invariant id(s) are blank or not a string: {blank[:5]}")
-    return f"{len(cases)} case(s), every one carries at least one invariant id"
+    return (f"{len(cases) - len(empty)} case(s) carry at least one invariant id, "
+            f"{len(empty)} declare an empty mapping ({NO_MATCH_STATUS}) with a "
+            f"per-case basis")
 
 
 def m2(matrix):
@@ -351,9 +400,81 @@ def m6(matrix):
             f"five-element RED identity")
 
 
+def m7(matrix):
+    """The mapping must be per case, not per bucket.
+
+    Three properties, all of them about the *shape* of the mapping rather
+    than about the invariants themselves:
+
+      (a) every case carries a basis -- one sentence that says which part of
+          which invariant its test actually asserts.  A bucket mapping has no
+          per-case sentence, so this is the check that catches it.
+
+      (b) no two cases that share one declared invariant *and* one id set
+          share one copied basis.  A bucket mapping re-uses a single label
+          and a single id set, and a basis pasted over the whole group is the
+          same defect wearing a different hat.
+
+      (c) every case whose id list is empty is listed in the gap-proposal
+          record, so the hole is readable without diffing the matrix.
+    """
+    cases = cases_of(matrix)
+
+    missing = [c.get("case_id") for c in cases if not basis_of(c)]
+    require(not missing,
+            f"{len(missing)} case(s) carry no {BASIS_FIELD}: the mapping must "
+            f"say per case why it holds the ids it holds: {missing[:5]}")
+
+    buckets: dict[tuple, list] = {}
+    for case in cases:
+        text = (case.get("source") or {}).get("declared_invariant")
+        key = (text, tuple(case.get("invariant_ids") or []))
+        buckets.setdefault(key, []).append(case)
+    copied = []
+    for (text, ids), members in buckets.items():
+        if len(members) < 2:
+            continue
+        bases = {basis_of(m) for m in members}
+        if len(bases) == 1:
+            copied.append({"declared_invariant": text,
+                           "invariant_ids": list(ids),
+                           "case_ids": [m.get("case_id") for m in members]})
+    require(not copied,
+            f"{len(copied)} bucket(s) share one declared invariant, one id set "
+            f"and one copied basis: {copied[:2]}")
+
+    empty = [c for c in cases if not c.get("invariant_ids")]
+    listed = "no empty mapping to register"
+    if empty:
+        path = ROOT / GAP_REL
+        if not path.is_file():
+            skip("M7/gap-proposals", f"{GAP_REL} does not exist")
+            listed = f"{len(empty)} empty mapping(s), the gap record is missing"
+        else:
+            record = path.read_text(encoding="utf-8")
+            unlisted = [c.get("case_id") for c in empty
+                        if c.get("case_id") not in record]
+            require(not unlisted,
+                    f"{len(unlisted)} case(s) declare an empty mapping but are "
+                    f"not listed in {GAP_REL}: {unlisted[:5]}")
+            listed = f"{len(empty)} empty mapping(s), all listed in {GAP_REL}"
+
+    labels: dict[str, list] = {}
+    for case in cases:
+        text = (case.get("source") or {}).get("declared_invariant")
+        labels.setdefault(text, []).append(case)
+    shared = {text: members for text, members in labels.items() if len(members) > 1}
+    divergent = sum(1 for members in shared.values()
+                    if len({tuple(m.get("invariant_ids") or []) for m in members}) > 1)
+    return (f"{len(cases)} case(s) carry a per-case basis; "
+            f"{listed}; "
+            f"{len(shared)} declared-invariant label(s) are still shared, "
+            f"{divergent} of them with divergent id sets")
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description="Verify the v4.1.0 75-scenario coverage matrix (M1-M6).")
+        description="Verify the v4.1.0 75-scenario coverage matrix (M1-M7).")
     parser.add_argument("--strict", action="store_true",
                         help="fail when a cross-check could not be run")
     args = parser.parse_args()
@@ -364,17 +485,17 @@ def main():
         return 2
     if not (ROOT / MATRIX_REL).is_file():
         print(f"FAIL  {MATRIX_REL} does not exist")
-        print("0/6 PASS")
+        print("0/7 PASS")
         return 1
     try:
         matrix = read_json(MATRIX_REL)
     except MatrixError as exc:
         print(f"FAIL  {exc}")
-        print("0/6 PASS")
+        print("0/7 PASS")
         return 1
 
     checks = (("M1", m1), ("M2", m2), ("M3", m3),
-              ("M4", m4), ("M5", m5), ("M6", m6))
+              ("M4", m4), ("M5", m5), ("M6", m6), ("M7", m7))
     passed = 0
     for name, check in checks:
         try:

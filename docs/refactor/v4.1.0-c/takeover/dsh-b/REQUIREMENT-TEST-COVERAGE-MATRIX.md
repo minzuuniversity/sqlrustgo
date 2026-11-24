@@ -14,6 +14,7 @@
 | 矩阵立场 | `source_claims_are_not_acceptance: true`（来源声明不等于验收） |
 | 必需字段 | case_id/feature/invariant_ids/source/seed/backend/assembly/base_sha/expected/actual/execution_status/artifact_sha256 |
 | 装配状态 | 全部 `UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY` |
+| **invariant 映射（2026-11-24 Task 10 重做）** | **逐用例**重建：75 条里有对应不变量的 **15** 条，空映射（`invariant_mapping_status = NO_INVARIANT_MATCH`）**60** 条，每条带 `invariant_mapping_basis`；映射门禁 `verify_matrix.py` 由 **6/6** 变 **7/7**（新增 M7 分桶映射检测）。**逐条 `execution_status` 未动**（仍为 PASS=42 / NOT_RUN=2 + 其余 31 条 NOT_RUN） |
 
 ## DSH-B 执行计划（把 0 → 75）
 
@@ -23,6 +24,17 @@
 4. **验收口径**：execution_status 只能来自真实运行；assembly=UNVERIFIED 的不得记 PASS。
 
 > **2026-11-23 Task 6 状态注记（不改写本条规则，只登记冲突）**：L1 切片（`feature∈{T1,T2,T3}` 的 44 条）在冻结基线 fd849ae20541 上实跑，得到 PASS=42 / NOT_RUN=2，并按「execution_status = 执行状态」的读法回写进了权威矩阵 —— 而 75 条全部 `assembly=UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY`，按本条第 4 项的**字面**读法这 42 条 PASS 不能作为验收证据。两种读法（字面 vs 矩阵自带的软化口径：`required_for_certification=false` + `activation_requires=[ASSERTION_REVIEW, INPUT_HASH_BINDING, REAL_EXECUTION]`）**尚未由属主裁决**，登记在 `docs/releases/v4.1.0/refactoring/evidence/L1-DIFF-fd849ae20541.md` §五-5 与 §六 属主裁决项 ②。裁决前，这 42 条 PASS 不得被当作「已验收」的凭据。
+
+> **2026-11-24 Task 10 状态注记（不改写上面任何一条执行结论）**：矩阵的 `invariant_ids` 原先是**按 feature 分桶**贴的
+> （`declared_invariant` 相同的整组用同一组 id），Task 7 在 44 条 L1 上判定出 38 条不可判定；
+> Task 10 对**全部 75 条**逐条重做（读测试源码 → 判定实际断言 → 找真正对应的不变量），结果：
+> **只有 15 条能落到 `TRANSACTION_INVARIANTS.md` 的 18 条不变量上，其余 60 条对不上任何一条**，
+> 空映射逐条登记在 `docs/refactor/v4.1.0-c/takeover/INVARIANT-GAP-PROPOSALS.md`（13 组缺口提案 + 属主待裁决问题）。
+> **本注记不改写执行事实**：42 条 PASS / 2 条 NOT_RUN 与 §一 的复跑结果一字未动，
+> `red_identity` / `assertion_*` / `execution_status` / `actual` / `artifact_sha256` 全部逐字节保留。
+> 映射门禁的契约由 **6/6 变 7/7**（`verify_matrix.py` 新增 M7：分桶映射检测；
+> M1 的判定**形式**放宽为「至少一个 id **或**显式声明空映射并给出依据」，语义目标不变）。
+> Oracle 签署步骤**仍然 BLOCKED**（副签人待属主指定），详见 `ORACLE-REVIEW-LOG-T1.md` §10。
 
 ## D-001~004 映射状态（诚实记录）
 
