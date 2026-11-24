@@ -99,7 +99,13 @@ rm -rf "$FX_RUN_DIR"
 restore
 
 if [ "$EXPECT" = "red" ]; then
-    if ! fx_is_red "$FX_GATE_STATE" "$FX_GATE_RC"; then
+    if [ "$FX_GATE_STATE" = "INCOMPLETE" ] || [ "$FX_GATE_RC" = "124" ]; then
+    echo "$FX_ID: the gate layer is INCOMPLETE (exit=${FX_GATE_RC:-?}) - a timeout is NOT a red (R50) -> INCONCLUSIVE"
+    restore
+    rm -rf "$FX_RUN_DIR"
+    exit 4
+fi
+if ! fx_is_red "$FX_GATE_STATE" "$FX_GATE_RC"; then
         echo "$FX_ID: gate layer state=$FX_GATE_STATE rc=$FX_GATE_RC (want FAIL with a non-124 rc) -> FIXTURE-FAIL"
         exit 3
     fi

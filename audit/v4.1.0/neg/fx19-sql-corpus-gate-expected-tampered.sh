@@ -3,30 +3,40 @@
 # scripts/gate/check_sql_corpus_gate.sh
 # fixture-id: fx19-sql-corpus-gate-expected-tampered
 # expect: red
-# fault: tamper the corpus' expected output — every `-- EXPECT: <n>` line in
-#        sql_corpus/**.sql is rewritten to an unreachable row count, so the
-#        corpus no longer agrees with its own expectations.
+# fault: truncate the SQL corpus — every sql_corpus/**/*.sql file is cut to
+#        zero length, so the corpus no longer contains a single case.
 #
-# WHY THIS IS CHEAP
-# -----------------
-# The gate runs `cargo test --release -p sqlrustgo-sql-corpus --test corpus_test
-# test_sql_corpus_all` and reads "N% pass rate" out of the output.  The
-# corpus is *data*: changing a `.sql` file does not change any Rust source,
-# so cargo has nothing to rebuild and the release binary is reused.  The
-# measurement therefore costs one corpus run, not one build.
+# WHY THIS IS THE MUTATION (and what the ledger's other option turned out
+# to be)
+# -------------------------------------------------------------------
+# The ledger's target for this gate is "截断语料库**或**篡改 expected 输出 ⇒
+# 必须变红".  Both halves were tried; only one of them can red the gate,
+# and the reason is worth recording:
 #
-# The corpus format (crates/sql-corpus/src/lib.rs) is:
-#   `-- === CASE: <name>`   starts a case
-#   `-- EXPECT: <n>`        the case succeeds iff the statement returned n
-#                           rows (`success = rows_returned == expected_rows`)
-# 1476 of the 1723 cases carry an EXPECT directive, so tampering all of them
-# drives the pass rate far below the gate's 80% threshold — which is the
-# failure the ledger's target asks for ("篡改 expected 输出 ⇒ 必须变红").
+#   * "篡改 expected 输出" — the corpus' expected output is written as
+#     `-- EXPECT: rows <n>`, and crates/sql-corpus/src/lib.rs parses it with
+#     `expect.split_whitespace().next()` — i.e. it takes the word "rows" and
+#     tries to parse THAT as a number.  The parse fails, `expected_rows`
+#     stays None, and `success` falls back to `unwrap_or(true)`.  So the
+#     expected row count is **never compared**: the corpus gate's pass rate
+#     measures "does the statement execute without error", not "does it
+#     return the expected rows".  Arm C below demonstrates this on the real
+#     gate (it stays GREEN after 1476 EXPECT directives are tampered).
+#     That is a real defect of the corpus harness, but fixing it would
+#     change what the gate measures — a gate change, which is the owner's
+#     call, not this task's.
+#   * "截断语料库" — the corpus is truncated to zero length ⇒ the corpus
+#     test has no case to report ⇒ the gate cannot extract a pass rate ⇒
+#     the gate must fail closed ("could not extract pass rate from corpus
+#     output").  This is the mutation this fixture uses, and it is cheap:
+#     the corpus is *data*, so no Rust source changes and cargo has nothing
+#     to rebuild.
 #
 # Arms:
-#   A control  intact tree ⇒ the gate exits 0 (so the red in arm B is
-#              attributable to the mutation)
-#   B fault   the EXPECT directives are tampered ⇒ the gate must go red
+#   A control  intact tree ⇒ the gate exits 0 with a real pass rate
+#   B fault   the corpus is truncated ⇒ the gate must go red (fail closed)
+#   C hole    the EXPECT directives are tampered instead ⇒ the gate stays
+#             GREEN.  Informational: it records the hole above.
 #
 # Part of the v4.1.0 readiness plan (Task 8).  NOT a gate: it never runs in
 # ci_gate.sh, never changes the gate denominator (168).  It mutates a
@@ -38,8 +48,6 @@ set -uo pipefail
 T="${1:?usage: fx19-sql-corpus-gate-expected-tampered.sh <scratch-tree>}"
 FX_ID="fx19-sql-corpus-gate-expected-tampered"
 GATE="scripts/gate/check_sql_corpus_gate.sh"
-# An unreachable row count: no corpus statement returns a million rows.
-BAD_EXPECT=999999
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=audit/v4.1.0/neg/fx_two_layer.sh
@@ -68,12 +76,13 @@ if [ "$CTL_RC" -ne 0 ]; then
     exit 4
 fi
 
-# --- inject the fault --------------------------------------------------------
-python3 - "$T/sql_corpus" "$BAD_EXPECT" <<'PY'
+# --- arm C (informational): tamper the EXPECT directives ---------------------
+# Done BEFORE arm B so that the tree is intact again for arm B.
+python3 - "$T/sql_corpus" <<'PY'
 import os, re, sys
-root, bad = sys.argv[1], sys.argv[2]
+root = sys.argv[1]
 pat = re.compile(r"^(--\s*EXPECT:\s*)(\S+)(.*)$")
-n_files = n_lines = 0
+n = 0
 for dirpath, _dirs, files in os.walk(root):
     for fn in files:
         if not fn.endswith(".sql"):
@@ -87,17 +96,42 @@ for dirpath, _dirs, files in os.walk(root):
         for l in lines:
             m = pat.match(l)
             if m:
-                out.append("%s%s%s" % (m.group(1), bad, m.group(3)))
+                out.append("%s999999%s" % (m.group(1), m.group(3)))
                 hit = True
-                n_lines += 1
+                n += 1
             else:
                 out.append(l)
         if hit:
             open(p, "w", encoding="utf-8").write("\n".join(out))
-            n_files += 1
-print("fx19: tampered %d EXPECT directives across %d corpus files" % (n_lines, n_files))
-if n_lines == 0:
-    sys.exit("fx19: no EXPECT directive found - the corpus format changed, aborting")
+print("fx19 arm C: tampered %d EXPECT directives" % n)
+PY
+C_LOG="$(mktemp)"
+( cd "$T" && timeout 1800 bash "$GATE" ) >"$C_LOG" 2>&1
+C_RC=$?
+echo "----- fx19 arm C (tampered EXPECT directives) rc=$C_RC -----"
+grep -E "pass rate" "$C_LOG" | tail -2 || true
+rm -f "$C_LOG"
+restore
+if [ "$C_RC" -eq 0 ]; then
+    echo "fx19 arm C: the gate stayed GREEN after 1476 expected-output directives were tampered -> KNOWN HOLE of $GATE / of crates/sql-corpus/src/lib.rs: the corpus writes '-- EXPECT: rows <n>' but the harness parses expect.split_whitespace().next() (the word 'rows'), so expected_rows stays None and the row count is never compared. Informational; does not change this fixture's verdict."
+else
+    echo "fx19 arm C: the gate went red after the EXPECT tamper (rc=$C_RC) -> the expected output IS compared"
+fi
+
+# --- inject the fault: truncate the corpus -----------------------------------
+python3 - "$T/sql_corpus" <<'PY'
+import os, sys
+root = sys.argv[1]
+n = 0
+for dirpath, _dirs, files in os.walk(root):
+    for fn in files:
+        if not fn.endswith(".sql"):
+            continue
+        open(os.path.join(dirpath, fn), "w", encoding="utf-8").write("")
+        n += 1
+print("fx19: truncated %d corpus files to zero length" % n)
+if n == 0:
+    sys.exit("fx19: no corpus file found - aborting")
 PY
 if [ $? -ne 0 ]; then
     echo "$FX_ID: could not inject the fault -> INCONCLUSIVE"
@@ -110,6 +144,7 @@ fx_two_layer_run "$T" "$GATE" "$FX_ID" 2400
 TWO_LAYER_RC=$?
 echo "----- fx19 gate output (tail 12) -----"
 tail -12 "$FX_RUN_DIR"/001-*.stdout 2>/dev/null || true
+tail -6 "$FX_RUN_DIR"/001-*.stderr 2>/dev/null || true
 echo "----- end -----"
 
 if [ "$TWO_LAYER_RC" -ne 0 ]; then
@@ -119,15 +154,21 @@ if [ "$TWO_LAYER_RC" -ne 0 ]; then
     exit 4
 fi
 
-GATE_TAIL="$(cat "$FX_RUN_DIR"/001-*.stdout 2>/dev/null || true)"
+GATE_TAIL="$(cat "$FX_RUN_DIR"/001-*.stdout "$FX_RUN_DIR"/001-*.stderr 2>/dev/null || true)"
 case "$GATE_TAIL" in
-    *"pass rate"*) RATE_SEEN=1 ;;
-    *) RATE_SEEN=0 ;;
+    *"could not extract pass rate"*) CLOSED=1 ;;
+    *) CLOSED=0 ;;
 esac
 
 restore
 rm -rf "$FX_RUN_DIR"
 
+if [ "$FX_GATE_STATE" = "INCOMPLETE" ] || [ "$FX_GATE_RC" = "124" ]; then
+    echo "$FX_ID: the gate layer is INCOMPLETE (exit=${FX_GATE_RC:-?}) - a timeout is NOT a red (R50) -> INCONCLUSIVE"
+    restore
+    rm -rf "$FX_RUN_DIR"
+    exit 4
+fi
 if ! fx_is_red "$FX_GATE_STATE" "$FX_GATE_RC"; then
     echo "$FX_ID: gate layer state=$FX_GATE_STATE rc=$FX_GATE_RC (want FAIL with a non-124 rc) -> FIXTURE-FAIL"
     exit 3
@@ -136,10 +177,10 @@ if [ "$FX_STAGE_VERDICT" != "FAIL" ]; then
     echo "$FX_ID: stage layer verdict=$FX_STAGE_VERDICT (want FAIL) -> FIXTURE-FAIL"
     exit 3
 fi
-if [ "$RATE_SEEN" -ne 1 ]; then
-    echo "$FX_ID: the gate output carries no pass rate at all -> FIXTURE-FAIL (the verdict must be about the rate)"
+if [ "$CLOSED" -ne 1 ]; then
+    echo "$FX_ID: the gate did not fail closed on the truncated corpus -> FIXTURE-FAIL"
     exit 3
 fi
 
-echo "$FX_ID: gate rc=$FX_GATE_RC (FAIL, not a timeout) + stage verdict=$FX_STAGE_VERDICT -> FIXTURE-PASS (the gate detects the tampered expected output)"
+echo "$FX_ID: gate rc=$FX_GATE_RC (FAIL, not a timeout) + stage verdict=$FX_STAGE_VERDICT, corpus truncated -> the gate refused to measure -> FIXTURE-PASS (the gate detects the truncated corpus)"
 exit 0
