@@ -34,7 +34,7 @@ fx02-anti-ignore-registry-drift: gate rc=1 (FAIL, not a timeout) + stage verdict
 ===== fx03-drift-not-pass-new-antipattern.sh (script rc=0) =====
 ----- fx03-drift-not-pass-new-antipattern : gate output (first 15 lines) -----
 === P14 DRIFT != PASS - Anti-pattern Detector ===
-Date: 2026-11-24T09:32:53Z
+Date: 2026-11-24T14:23:36Z
 
 [1/5] Scanning for DRIFT-accepting patterns...
   Found 1 potential DRIFT-handling sites
@@ -88,7 +88,7 @@ fx07-docs-links-broken: gate rc=1 (want non-zero) -> FIXTURE-PASS (the gate dete
 ===== fx08-alpha-entry-doc-missing.sh (script rc=0) =====
 ----- fx08-alpha-entry-doc-missing : gate output (first 15 lines) -----
 === v4.1.0 Alpha Entry Check ===
-Branch: base/v4.1.0-frozen @ 366d2cd2dd
+Branch: base/v4.1.0-frozen @ b556199c86
 Boundary: entry readiness only; not a feature-completion or quality PASS.
 
 --- E1: Required Draft/Alpha Documents ---
@@ -108,7 +108,7 @@ fx08-alpha-entry-doc-missing: gate rc=1 (want non-zero) -> FIXTURE-PASS (the gat
 ===== fx09-architecture-freeze-characterization.sh (script rc=0) =====
 ----- fx09-architecture-freeze-characterization : gate output (first 15 lines) -----
 === Architecture Freeze Check (A7) ===
-Timestamp: 2026-11-24T09:35:12Z
+Timestamp: 2026-11-24T14:24:32Z
 
 --- A7-1: 双路径残留检查 ---
 [A7-1] storage DML bypass in server/network ... INFO (5 calls found in server/network crates — verify they go through ExecutionEngine)
@@ -156,7 +156,7 @@ fx14 arm A: driver refused before evaluating any stage (rc=2, INCOMPLETE) -> FIX
   Stage Gate Check: ALPHA
   Version: v4.1.0
   Branch: base/v4.1.0-frozen
-  Commit: 366d2cd2dd
+  Commit: b556199c86
   Description: 功能开发阶段 (active feature development, API may change)
 ----- end arm B -----
 fx14 arm B: resolved v4.1.0 -> FIXTURE-PASS (correct release line)
@@ -177,10 +177,10 @@ STATUS: ALPHA ENTRY PASS
 FX-GATE-LAYER: gate=scripts/gate/check_alpha_v410.sh state=FAIL exit_code=1
 FX-STAGE-LAYER: verdict=FAIL counts={"PASS": 0, "FAIL": 1, "INCOMPLETE": 0}
 ----- fx15 gate output (tail 16) -----
-  [Q5_SQL_CORPUS] PASS (log=docs/releases/v4.1.0/logs/alpha_quality_Q5_SQL_CORPUS_366d2cd2dd_20261124_182111.log sha256=245051ea7dea1eb1cf64cf73b5484009e81eacf0c61c5778bc21a53d3948a60d)
+  [Q5_SQL_CORPUS] PASS (log=docs/releases/v4.1.0/logs/alpha_quality_Q5_SQL_CORPUS_b556199c86_20261124_232918.log sha256=245051ea7dea1eb1cf64cf73b5484009e81eacf0c61c5778bc21a53d3948a60d)
 
 --- Q6: Test Suite Compile ---
-  [Q6_TEST_LIB] PASS (log=docs/releases/v4.1.0/logs/alpha_quality_Q6_TEST_LIB_366d2cd2dd_20261124_182134.log sha256=02a3359e4b68eaafd09534c431cd19a75d0c164e8f2ed99fb80d46f19ccd9efe)
+  [Q6_TEST_LIB] PASS (log=docs/releases/v4.1.0/logs/alpha_quality_Q6_TEST_LIB_b556199c86_20261124_232944.log sha256=af67c49e3ed6d243e3f563d5091f7ba22bc7f770adb109516005226c94b2395e)
 
 --- (Q7 Coverage deferred to alpha_to_beta per STAGE.yaml) ---
 === v4.1.0 Alpha Quality Summary ===
@@ -239,7 +239,7 @@ fx17-arch3-no-bypass-dml-guard-dropped: gate rc=1 (FAIL, not a timeout) + stage 
 
 ===== fx18-coverage-v312-crate-coverage-below-threshold.sh (script rc=4) =====
 ----- fx18 control (intact tree) -----
-control rc=1 in 312s
+control rc=1 in 327s
   sqlrustgo-types: 95.04%
 FAIL: measured 7 of 8 crates — no coverage data for: sqlrustgo-storage
       The average is only meaningful over the full crate set —
@@ -273,7 +273,7 @@ fx18-coverage-v312-crate-coverage-below-threshold: (for the record: the mutation
 
 ===== fx19-sql-corpus-gate-corpus-truncated.sh (script rc=0) =====
 ----- fx19 arm A (control: intact tree) -----
-control rc=0 (want 0) in 20s
+control rc=0 (want 0) in 18s
 SQL Corpus pass rate: 98.2% (threshold: 80.0%)
 fx19: truncated 103 corpus files to zero length
 FX-GATE-LAYER: gate=scripts/gate/check_sql_corpus_gate.sh state=FAIL exit_code=1
@@ -318,13 +318,13 @@ fx20-g1-tpch-baseline-hash-tampered: gate rc=1 (FAIL, not a timeout) + stage ver
 
 ===== fx21-sql-corpus-expected-tamper-invisible-characterization.sh (script rc=0) =====
 ----- fx21 control (intact tree) -----
-control rc=0 pass rate=<none>
+control rc=0 pass rate=98.2
 fx21: rewrote 1476 EXPECT directives to an unreachable row count
 ----- fx21 fault run (tampered EXPECT directives) -----
-fault rc=0 pass rate=<none>
+fault rc=0 pass rate=98.2
 Running corpus_test::test_sql_corpus_all ...
 SQL Corpus pass rate: 98.2% (threshold: 80.0%)
-fx21-sql-corpus-expected-tamper-invisible-characterization: the gate stayed GREEN (rc=0, pass rate <none>%) after the expected output was tampered -> UNFALSIFIABLE (as documented): this gate cannot see a tampered expected output
+fx21-sql-corpus-expected-tamper-invisible-characterization: the gate stayed GREEN (rc=0) and the pass rate did not move (98.2% = control) after the expected output was tampered -> UNFALSIFIABLE (as documented): this gate cannot see a tampered expected output
 
 ===== fx22-arch3-added-bypass-invisible-characterization.sh (script rc=0) =====
 ----- fx22 control (intact tree) -----

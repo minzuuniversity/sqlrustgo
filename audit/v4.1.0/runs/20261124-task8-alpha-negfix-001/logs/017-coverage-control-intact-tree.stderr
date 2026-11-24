@@ -1,0 +1,4 @@
+could not measure sqlrustgo-storage (exit=101)
+FAIL: measured 7 of 8 crates — no coverage data for: sqlrustgo-storage
+      The average is only meaningful over the full crate set —
+      a reduced sample silently changes the verdict.

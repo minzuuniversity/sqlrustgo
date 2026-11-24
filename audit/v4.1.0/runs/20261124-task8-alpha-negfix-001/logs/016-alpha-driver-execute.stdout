@@ -2,7 +2,7 @@
   Stage Gate Check: ALPHA
   Version: v4.1.0
   Branch: base/v4.1.0-frozen
-  Commit: fbfe4c7400
+  Commit: b556199c86
   Description: 功能开发阶段 (active feature development, API may change)
   Mode:    EXECUTE
 ==================================================================
@@ -38,7 +38,5 @@
 ==================================================================
   Stage ALPHA (v4.1.0): 13 PASS, 4 FAIL
   gate logs: docs/releases/v4.1.0/logs/gates/
-  run log:   docs/releases/v4.1.0/logs/gate_alpha_fbfe4c7400_20261124_071804Z.log
+  run log:   docs/releases/v4.1.0/logs/gate_alpha_b556199c86_20261124_190447Z.log
 ==================================================================
-timeout 3600 bash scripts/gate/check_stage.sh --version v4.1.0 --stage ALPHA  4802.97s user 1326.56s system 376% cpu 27:06.58 total
-DRIVER_RC=1

@@ -1,0 +1,2 @@
+timeout 10800 bash scripts/gate/check_stage.sh --version v4.1.0 --stage ALPHA  455.73s user 533.96s system 68% cpu 23:58.64 total
+DRIVER_RC=1
