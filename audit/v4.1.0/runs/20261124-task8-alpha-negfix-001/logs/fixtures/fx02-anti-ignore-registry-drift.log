@@ -1,0 +1,10 @@
+----- fx02 control (intact tree) -----
+control rc=1 tree_ignores=136 registry=135
+FX-GATE-LAYER: gate=scripts/gate/check_anti_ignore_gate.sh state=FAIL exit_code=1
+FX-STAGE-LAYER: verdict=FAIL counts={"PASS": 0, "FAIL": 1, "INCOMPLETE": 0}
+----- fx02-anti-ignore-registry-drift : gate output (first 15 lines) -----
+ignore_registry.json: total_allowed=135 (max=150), active=81 (max=92)
+tree recount: real #[ignore] attributes in tests/ + crates/ = 137
+----- end -----
+fx02-anti-ignore-registry-drift: control tree=136 registry=135 -> fault tree=137 registry=135
+fx02-anti-ignore-registry-drift: gate rc=1 (FAIL, not a timeout) + stage verdict=FAIL, drift 136 -> 137 -> FIXTURE-PASS (the gate detects the fault)

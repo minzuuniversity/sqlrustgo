@@ -1,0 +1,29 @@
+fx20-g1-tpch-baseline-hash-tampered: baseline hash 7439ce80589f262b8e3291735fdef9507d8e13d62029708b3682a3d02cf883a3 -> 0439ce80589f262b8e3291735fdef9507d8e13d62029708b3682a3d02cf883a3
+----- fx20 arm A (control: intact tree) -----
+control rc=0
+control reported expected hash: <none>
+control reported match line   : G1 PASS: TPC-H 22/22 baseline hash matches (7439ce80...)
+fx20-g1-tpch-baseline-hash-tampered: control named the original baseline number: 1 (control rc=0)
+FX-GATE-LAYER: gate=scripts/gate/check_g1_tpch_baseline.sh state=FAIL exit_code=1
+FX-STAGE-LAYER: verdict=FAIL counts={"PASS": 0, "FAIL": 1, "INCOMPLETE": 0}
+----- fx20 gate output (tail 16) -----
+     right: "0439ce80589f262b8e3291735fdef9507d8e13d62029708b3682a3d02cf883a3"
+      left: "7439ce80589f262b8e3291735fdef9507d8e13d62029708b3682a3d02cf883a3"
+     right: "0439ce80589f262b8e3291735fdef9507d8e13d62029708b3682a3d02cf883a3"
+  locate it with: cargo test --test tpch_hash_test v380_candidate_dump -- --exact --nocapture
+  [0;31mFAIL[0m: tpch_hash_test exited non-zero
+
+=== G1 step 4/4: python3 tpch_hash_compare.py --check 0439ce80... ===
+G1 FAIL: hash mismatch
+  expected: 0439ce80589f262b8e3291735fdef9507d8e13d62029708b3682a3d02cf883a3
+  actual:   7439ce80589f262b8e3291735fdef9507d8e13d62029708b3682a3d02cf883a3
+
+  To update the baseline:
+    python3 scripts/gate/tpch_hash_compare.py --capture
+  [0;31mFAIL[0m: python3 --check failed (hash mismatch)
+
+G1 FAIL: at least one sub-check failed (see above)
+----- end -----
+fx20-g1-tpch-baseline-hash-tampered: fault run reported expected hash: 0439ce80589f262b8e3291735fdef9507d8e13d62029708b3682a3d02cf883a3
+fx20-g1-tpch-baseline-hash-tampered: fault run reported match line   : <none>
+fx20-g1-tpch-baseline-hash-tampered: gate rc=1 (FAIL, not a timeout) + stage verdict=FAIL, verdict driven by the tampered SF1 baseline (0439ce80) -> FIXTURE-PASS

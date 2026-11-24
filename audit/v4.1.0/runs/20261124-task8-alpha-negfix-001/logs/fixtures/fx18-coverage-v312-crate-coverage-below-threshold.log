@@ -1,0 +1,32 @@
+----- fx18 control (intact tree) -----
+control rc=1 in 286s
+  sqlrustgo-types: 95.04%
+FAIL: measured 7 of 8 crates — no coverage data for: sqlrustgo-storage
+      The average is only meaningful over the full crate set —
+      a reduced sample silently changes the verdict.
+fx18-coverage-v312-crate-coverage-below-threshold: control: sqlrustgo-transaction coverage = 93.31%, gate rc=1
+fx18-coverage-v312-crate-coverage-below-threshold: appended 8000 never-executed functions to crates/transaction/src/lib.rs
+FX-GATE-LAYER: gate=scripts/gate/check_coverage_v312.sh state=FAIL exit_code=1
+FX-STAGE-LAYER: verdict=FAIL counts={"PASS": 0, "FAIL": 1, "INCOMPLETE": 0}
+----- fx18 gate output (tail 30) -----
+Coverage criterion: stage=ga threshold=85%
+
+Measuring coverage for sqlrustgo-parser ...
+  sqlrustgo-parser: 86.00%
+Measuring coverage for sqlrustgo-planner ...
+  sqlrustgo-planner: 88.71%
+Measuring coverage for sqlrustgo-executor ...
+  sqlrustgo-executor: 82.73%
+Measuring coverage for sqlrustgo-transaction ...
+  sqlrustgo-transaction: 20.42%
+Measuring coverage for sqlrustgo-storage ...
+Measuring coverage for sqlrustgo-catalog ...
+  sqlrustgo-catalog: 87.33%
+Measuring coverage for sqlrustgo-optimizer ...
+  sqlrustgo-optimizer: 87.64%
+Measuring coverage for sqlrustgo-types ...
+  sqlrustgo-types: 95.04%
+----- end -----
+fx18-coverage-v312-crate-coverage-below-threshold: mutated crate percentage=20.42 average_fail=0 reduced_sample=1
+fx18-coverage-v312-crate-coverage-below-threshold: the gate is ALREADY RED on the intact tree (control rc=1) -> the mutation cannot be attributed to the red -> INCONCLUSIVE
+fx18-coverage-v312-crate-coverage-below-threshold: (for the record: the mutation did replace sqlrustgo-transaction's coverage table: 93.31% -> 20.42%)
