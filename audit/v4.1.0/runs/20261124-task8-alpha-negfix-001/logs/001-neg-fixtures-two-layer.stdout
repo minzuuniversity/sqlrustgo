@@ -1,5 +1,5 @@
 verify_neg_fixtures: scratch tree = /Volumes/workspace/dev/wt-v410-base
-verify_neg_fixtures: logs          = /tmp/task8-neg-logs3
+verify_neg_fixtures: logs          = /tmp/task8-neg-logs-r2
 
 ===== scripts/gate/check_anti_ignore_gate.sh  <-  audit/v4.1.0/neg/fx02-anti-ignore-registry-drift.sh =====
   fixture_rc=0 gate_state=FAIL gate_rc=1 stage_verdict=FAIL
@@ -13,7 +13,7 @@ verify_neg_fixtures: logs          = /tmp/task8-neg-logs3
   fixture_rc=0 gate_state=FAIL gate_rc=1 stage_verdict=FAIL
   gate=RED stage=RED
 
-===== scripts/gate/check_sql_corpus_gate.sh  <-  audit/v4.1.0/neg/fx19-sql-corpus-gate-expected-tampered.sh =====
+===== scripts/gate/check_sql_corpus_gate.sh  <-  audit/v4.1.0/neg/fx19-sql-corpus-gate-corpus-truncated.sh =====
   fixture_rc=0 gate_state=FAIL gate_rc=1 stage_verdict=FAIL
   gate=RED stage=RED
 

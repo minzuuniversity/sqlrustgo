@@ -1,0 +1,44 @@
+==================================================================
+  Stage Gate Check: ALPHA
+  Version: v4.1.0
+  Branch: base/v4.1.0-frozen
+  Commit: fbfe4c7400
+  Description: 功能开发阶段 (active feature development, API may change)
+  Mode:    EXECUTE
+==================================================================
+
+--- Branch Pattern ---
+  stage:     ALPHA
+  pattern:   develop/v*
+  branch:    base/v4.1.0-frozen
+  enforced:  false
+  [INFO] carrier rule is declared but not enforced for this stage (development stage)
+
+--- Required files & doc artifacts ---
+  [OK]  docs/releases/v4.1.0/CHANGELOG.md
+  [OK]  docs/releases/v4.1.0/RELEASE_NOTES.md
+  [OK]  docs/releases/v4.1.0/STAGE.yaml
+  [OK]  docs/releases/v4.1.0/CHANGELOG.md
+  [OK]  docs/releases/v4.1.0/RELEASE_NOTES.md
+  [OK]  docs/releases/v4.1.0/STAGE.yaml
+  [OK]  docs/releases/v4.1.0/FEATURE_MATRIX.md
+
+--- Required gates (10) ---
+  [FAIL] check_alpha_v4.1.0.sh
+  [PASS] check_arch_invariants.sh
+  [PASS] check_arch3_no_bypass.sh
+  [FAIL] check_coverage_v312.sh (SQLRUSTGO_COVERAGE_STAGE=alpha)
+  [PASS] check_sql_corpus_gate.sh
+  [FAIL] check_anti_ignore_gate.sh
+  [PASS] check_g1_tpch_baseline.sh
+  [PASS] cargo build --all-features
+  [PASS] cargo test --all-features --lib
+  [FAIL] cargo fmt --check
+
+==================================================================
+  Stage ALPHA (v4.1.0): 13 PASS, 4 FAIL
+  gate logs: docs/releases/v4.1.0/logs/gates/
+  run log:   docs/releases/v4.1.0/logs/gate_alpha_fbfe4c7400_20261124_071804Z.log
+==================================================================
+timeout 3600 bash scripts/gate/check_stage.sh --version v4.1.0 --stage ALPHA  4802.97s user 1326.56s system 376% cpu 27:06.58 total
+DRIVER_RC=1

@@ -1,0 +1,2 @@
+FAIL  AssertionError: docs/releases/v4.1.0/refactoring/tools/test_verify_sha_scope.py
+      at docs/releases/v4.1.0/refactoring/tools/verify_handoff.py:552: for p,h in manifest["files"].items():assert sha(ROOT/p)==h,p

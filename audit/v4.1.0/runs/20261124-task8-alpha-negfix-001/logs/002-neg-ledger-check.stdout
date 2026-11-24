@@ -1,7 +1,1 @@
-scope=55 rows=57 kinds=mutation-verified=14,pending-fixture=39,selftest-verified=3,unfalsifiable=1 falsifiable_now=17/55 -> NOT-OK
-  NO-EVIDENCE-RUN: scripts/gate/check_anti_ignore_gate.sh claims mutation-verified without a run
-  NO-EVIDENCE-RUN: scripts/gate/check_alpha_v410.sh claims mutation-verified without a run
-  NO-EVIDENCE-RUN: scripts/gate/check_arch3_no_bypass.sh claims mutation-verified without a run
-  NO-EVIDENCE-RUN: scripts/gate/check_arch_invariants.sh claims mutation-verified without a run
-  NO-EVIDENCE-RUN: scripts/gate/check_g1_tpch_baseline.sh claims mutation-verified without a run
-  NO-EVIDENCE-RUN: scripts/gate/check_sql_corpus_gate.sh claims mutation-verified without a run
+scope=55 rows=57 kinds=mutation-verified=14,pending-fixture=39,selftest-verified=3,unfalsifiable=1 falsifiable_now=17/55 -> OK

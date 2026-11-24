@@ -2,7 +2,7 @@
   Stage Gate Check: ALPHA
   Version: v4.1.0
   Branch: base/v4.1.0-frozen
-  Commit: 492cf9facb
+  Commit: fbfe4c7400
   Description: 功能开发阶段 (active feature development, API may change)
   Mode:    DRY-RUN (nothing executed)
 ==================================================================
