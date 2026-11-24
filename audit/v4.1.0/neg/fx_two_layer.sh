@@ -47,6 +47,19 @@
 
 set -uo pipefail
 
+# fx_restore <scratch-tree> — put the scratch tree back the way it was.
+#
+# The clean is **excluded** for `audit/v4.1.0/runs/`: that directory is where
+# the evidence run this fixture belongs to is written, and a fixture must not
+# delete the evidence of the run that is executing it.  Nothing else is
+# excluded: every other untracked file the fixture created is removed, and
+# every tracked file it touched is restored.
+fx_restore() {
+    local tree="${1:?usage: fx_restore <scratch-tree>}"
+    git -C "$tree" checkout -- . >/dev/null 2>&1 || true
+    git -C "$tree" clean -qfd -e audit/v4.1.0/runs/ >/dev/null 2>&1 || true
+}
+
 # fx_two_layer_run <scratch-tree> <gate-path> <run-id> <timeout-sec>
 fx_two_layer_run() {
     local tree="$1" gate="$2" run_id="$3" timeout="${4:-1800}"

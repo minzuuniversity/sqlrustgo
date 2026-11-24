@@ -59,9 +59,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=audit/v4.1.0/neg/fx_two_layer.sh
 . "$HERE/fx_two_layer.sh"
 
+# restore() is the shared one (fx_two_layer.sh): it puts the scratch tree back
+# and does not delete the evidence run directory this fixture belongs to.
 restore() {
-    git -C "$T" checkout -- . >/dev/null 2>&1 || true
-    git -C "$T" clean -qfd >/dev/null 2>&1 || true
+    fx_restore "$T"
 }
 restore
 
@@ -88,7 +89,13 @@ fi
 echo "$FX_ID: appended $PAD never-executed functions to $TARGET"
 
 # --- run the real gate through the tri-state runner --------------------------
-fx_two_layer_run "$T" "$GATE" "$FX_ID" 5400
+# The budget is the one this ledger sets (issue #5598): 30 minutes per
+# fixture.  The gate measures eight crates with `cargo llvm-cov`
+# (single-threaded, instrumented) and does NOT finish inside it — the
+# parser crate alone was still measuring after 20 minutes on this machine.
+# A run that hits the budget is reported as INCONCLUSIVE, never as a red
+# (R50): a timeout is not a drift.
+fx_two_layer_run "$T" "$GATE" "$FX_ID" 1800
 TWO_LAYER_RC=$?
 echo "----- fx18 gate output (tail 30) -----"
 tail -30 "$FX_RUN_DIR"/001-*.stdout 2>/dev/null || true

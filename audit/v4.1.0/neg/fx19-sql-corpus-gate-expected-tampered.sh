@@ -45,9 +45,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=audit/v4.1.0/neg/fx_two_layer.sh
 . "$HERE/fx_two_layer.sh"
 
+# restore() is the shared one (fx_two_layer.sh): it puts the scratch tree back
+# and does not delete the evidence run directory this fixture belongs to.
 restore() {
-    git -C "$T" checkout -- . >/dev/null 2>&1 || true
-    git -C "$T" clean -qfd >/dev/null 2>&1 || true
+    fx_restore "$T"
 }
 restore
 
