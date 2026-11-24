@@ -1,7 +1,7 @@
 schema_version: 1
 run_id: 20261124-task8-alpha-negfix-001
 source_agent: task8-implementer
-frozen_commit: 366d2cd2dd24e92584d73fdb0464338daef874ac
+frozen_commit: d6b6343955693e175c057b83c4be1636738e21b2
 environment:
   os: Darwin
   arch: arm64
@@ -100,10 +100,10 @@ commands:
   timeout_sec: 3600
 results:
 - id: neg-fixtures-two-layer
-  started_at: '2026-11-24T07:48:04Z'
-  finished_at: '2026-11-24T08:26:43Z'
+  started_at: '2026-11-24T10:53:00Z'
+  finished_at: '2026-11-24T12:19:30Z'
   exit_code: 3
-  stdout_sha256: c911ab050c341b5a5bb4c309e5ab7c17fe27c78f053c50d9b5b9b70513634322
+  stdout_sha256: 0e75f0ce4ca068bbeb9bfa271db2f2bf1b71458f7554201721c77af44f68087f
   stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
   stdout_path: logs/001-neg-fixtures-two-layer.stdout
   stderr_path: logs/001-neg-fixtures-two-layer.stderr
@@ -235,8 +235,8 @@ results:
   stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
   stdout_path: logs/017-coverage-control-intact-tree.stdout
   stderr_path: logs/017-coverage-control-intact-tree.stderr
-evidence_hash: sha256:455614b9cc8ef8636cd6e6a4df8174822738707fec4ee8b930edb8d7b8679129
-completed_at: '2026-11-24T10:40:52Z'
+evidence_hash: sha256:05672028f7d732e4d3d67fa2dcfc298f51b9d8852d3abefafc0900a260e4b260
+completed_at: '2026-11-24T12:21:17Z'
 notes:
 - 本 run 记录 Task 8（ALPHA 阶段执行点与 7 道负向夹具）修订 1 的实跑证据。
 - 001 是七道 ALPHA 门禁的两层 RED 逐道验证；它的退出码是 3：verify_neg_fixtures.sh 只有 7/7 才退出 0，本次是 RED=6/7、INCONCLUSIVE=1/7（覆盖率门禁）。非

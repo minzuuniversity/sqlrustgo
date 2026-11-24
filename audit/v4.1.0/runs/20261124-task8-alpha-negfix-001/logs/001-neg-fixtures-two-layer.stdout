@@ -1,5 +1,5 @@
 verify_neg_fixtures: scratch tree = /Volumes/workspace/dev/wt-v410-base
-verify_neg_fixtures: logs          = /tmp/task8-neg-logs-r2
+verify_neg_fixtures: logs          = /tmp/task8-neg-logs-r3
 
 ===== scripts/gate/check_anti_ignore_gate.sh  <-  audit/v4.1.0/neg/fx02-anti-ignore-registry-drift.sh =====
   fixture_rc=0 gate_state=FAIL gate_rc=1 stage_verdict=FAIL
@@ -40,3 +40,4 @@ verify_neg_fixtures: logs          = /tmp/task8-neg-logs-r2
 
 verify_neg_fixtures: RED=6/7  INCONCLUSIVE=1/7
 verify_neg_fixtures: NOT 7/7 — 1 gate(s) did not reach a two-layer RED. This is reported as INCONCLUSIVE, not as a pass (R50).
+VERIFY_EXIT=3
