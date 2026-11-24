@@ -38,6 +38,35 @@
 # expensive lane of this ledger (its own note says ">720s 未跑完").  A run
 # that hits the timeout is reported as INCONCLUSIVE, never as a red (R50).
 #
+# TWO MEASURED FACTS THAT MAKE THIS FIXTURE INCONCLUSIVE TODAY (both are
+# findings, not excuses; neither is repaired here — repairing either one
+# changes what the gate measures, which is the owner's call):
+#
+# 1. **The gate is red at baseline in this tree.**  `sqlrustgo-storage`
+#    produces NO coverage table at all: the RED characterisation tests the
+#    readiness plan's earlier tasks imported
+#    (crates/storage/tests/tf_t4_ai_candidate_v1.rs and
+#    tf_t4_stub_silent_success.rs) fail BY DESIGN (they assert the
+#    "STUB_SILENT_SUCCESS" defect on purpose), and a failing test target
+#    makes `cargo llvm-cov` exit 101.  The L1_8 sample is therefore 7 of 8
+#    and the gate takes its fail-closed path: "FAIL: measured 7 of 8 crates".
+#    Measured: control rc=1, with $CRATE at 93.31%; after the mutation
+#    $CRATE reads 20.42% — the defect DID replace the crate's coverage table,
+#    but the gate's red was already there, so the red cannot be attributed
+#    to the defect.  The fixture therefore reports INCONCLUSIVE.
+#
+# 2. **At the ALPHA bar the target's mutation is arithmetically unable to
+#    reach the threshold.**  The ALPHA stage runs this gate with
+#    `SQLRUSTGO_COVERAGE_STAGE=alpha` (bar 50; the GA bar is 85).  With the
+#    repository's own recorded per-crate numbers (scripts/gate/common.sh:
+#    parser 86.46, planner 88.91, executor 82.68, transaction 93.29,
+#    storage 80.65, catalog 87.33, optimizer 87.85, types 95.04) the other
+#    seven crates already average 86.64%, so the L1_8 average cannot fall
+#    below 50 by changing ONE crate — it would need a negative coverage.
+#    Only a change in a shared dependency (sqlrustgo-types) could move the
+#    ALPHA bar.  This fixture measures the gate with its own default bar
+#    (85) and says so rather than silently claiming the ALPHA bar.
+#
 # Part of the v4.1.0 readiness plan (Task 8).  NOT a gate: it never runs in
 # ci_gate.sh, never changes the gate denominator (168).  It mutates a
 # **scratch** checkout, runs the real gate there, and the scratch tree is
@@ -70,6 +99,31 @@ if [ ! -f "$T/$TARGET" ]; then
     echo "$FX_ID: $TARGET not found in the scratch tree -> INCONCLUSIVE"
     exit 4
 fi
+
+# --- control: what does the gate say on the INTACT tree? ---------------------
+# This gate is red at baseline in this environment for a reason that has
+# nothing to do with coverage: `sqlrustgo-storage` cannot be measured at all,
+# because the RED characterisation tests imported by the readiness plan's
+# earlier tasks (crates/storage/tests/tf_t4_ai_candidate_v1.rs,
+# tf_t4_stub_silent_success.rs) fail BY DESIGN.  A failing test target makes
+# `cargo llvm-cov` exit 101 => no coverage table for that crate => the L1_8
+# sample is 7 of 8 => the gate reports "measured 7 of 8 crates" and goes red
+# on its fail-closed path.
+#
+# The control therefore decides the fixture's verdict: if the gate is
+# already red without the defect, the defect cannot be attributed to the
+# mutation and the fixture must report INCONCLUSIVE (R50), not a red.
+echo "----- fx18 control (intact tree) -----"
+CTL_LOG="$(mktemp)"
+CTL_T0=$(date +%s)
+( cd "$T" && timeout 1800 bash "$GATE" ) >"$CTL_LOG" 2>&1
+CTL_RC=$?
+CTL_T1=$(date +%s)
+echo "control rc=$CTL_RC in $((CTL_T1-CTL_T0))s"
+tail -4 "$CTL_LOG"
+CTL_MUT_PCT="$(grep -m1 -E "$CRATE: [0-9]+\.[0-9]+%" "$CTL_LOG" | grep -oE '[0-9]+\.[0-9]+' || true)"
+echo "$FX_ID: control: $CRATE coverage = ${CTL_MUT_PCT:-<none>}%, gate rc=$CTL_RC"
+rm -f "$CTL_LOG"
 
 # --- inject the fault --------------------------------------------------------
 python3 - "$T/$TARGET" "$PAD" <<'PY'
@@ -141,18 +195,36 @@ if [ "$FX_STAGE_VERDICT" != "FAIL" ]; then
     echo "$FX_ID: stage layer verdict=$FX_STAGE_VERDICT (want FAIL) -> FIXTURE-FAIL"
     exit 3
 fi
+
+# The verdict the target names is "average < threshold" — the L1_8 average
+# falling under the stage bar because one crate's coverage table went below
+# it.  Two things can prevent that verdict from being the cause of the red:
+#
+#   * the gate's RED already existed before the mutation (control rc != 0) —
+#     then the mutation cannot be attributed to the red;
+#   * the gate took its other fail-closed path (a reduced sample) instead.
+#
+# Either way the honest verdict is INCONCLUSIVE, not a red: the fixture would
+# otherwise claim "this gate can see this defect" while the red it observed
+# was already there.
+if [ "$CTL_RC" -ne 0 ]; then
+    echo "$FX_ID: the gate is ALREADY RED on the intact tree (control rc=$CTL_RC) -> the mutation cannot be attributed to the red -> INCONCLUSIVE"
+    echo "$FX_ID: (for the record: the mutation did replace $CRATE's coverage table: ${CTL_MUT_PCT:-<none>}% -> ${MUT_PCT:-<none>}%)"
+    exit 4
+fi
 if [ "$AVERAGE_FAIL" -ne 1 ]; then
     if [ "$REDUCED_SAMPLE" -eq 1 ]; then
-        echo "$FX_ID: the gate failed with the REDUCED-SAMPLE verdict, not with 'average < threshold' -> FIXTURE-FAIL (the target asks for a below-threshold coverage table)"
+        echo "$FX_ID: the gate failed with the REDUCED-SAMPLE verdict, not with 'average < threshold' -> INCONCLUSIVE (the target asks for a below-threshold coverage table)"
     else
         echo "$FX_ID: the gate did not report 'average < threshold' -> FIXTURE-FAIL"
+        exit 3
     fi
-    exit 3
+    exit 4
 fi
 if [ -z "$MUT_PCT" ]; then
     echo "$FX_ID: the mutated crate's coverage number is not in the report -> FIXTURE-FAIL"
     exit 3
 fi
 
-echo "$FX_ID: gate rc=$FX_GATE_RC (FAIL, not a timeout) + stage verdict=$FX_STAGE_VERDICT, $CRATE coverage table = $MUT_PCT% -> FIXTURE-PASS (the gate detects a below-threshold coverage table)"
+echo "$FX_ID: gate rc=$FX_GATE_RC (FAIL, not a timeout) + stage verdict=$FX_STAGE_VERDICT, $CRATE coverage table = ${CTL_MUT_PCT:-<none>}% -> $MUT_PCT% -> FIXTURE-PASS (the gate detects a below-threshold coverage table)"
 exit 0
