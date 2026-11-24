@@ -30,6 +30,13 @@
 # ledger row, not as a `catches` claim.  What the gate does catch (a truncated
 # corpus) is established by fx19-sql-corpus-gate-corpus-truncated.sh.
 #
+# What this fixture ASSERTS (both, not just one):
+#   * the gate still exits 0 after the tamper, and
+#   * the pass rate the gate reports is UNCHANGED (control == fault) — i.e. the
+#     tampered expectation has no effect on the gate's own measurement.
+#     The rate is read out of the gate's own line
+#     "SQL Corpus pass rate: <rate>% (threshold: 80.0%)".
+#
 # Part of the v4.1.0 readiness plan (Task 8).  NOT a gate: it never runs in
 # ci_gate.sh, never changes the gate denominator (168).  It mutates a
 # **scratch** checkout, runs the real gate there, and the scratch tree is
@@ -53,7 +60,7 @@ restore
 CTL_LOG="$(mktemp)"
 ( cd "$T" && timeout 1800 bash "$GATE" ) >"$CTL_LOG" 2>&1
 CTL_RC=$?
-CTL_RATE="$(grep -m1 -oE '[0-9]+\.[0-9]+% pass rate' "$CTL_LOG" | grep -oE '[0-9]+\.[0-9]+' || true)"
+CTL_RATE="$(grep -m1 -oE 'pass rate: [0-9]+\.[0-9]+%' "$CTL_LOG" | grep -oE '[0-9]+\.[0-9]+' || true)"
 echo "----- fx21 control (intact tree) -----"
 echo "control rc=$CTL_RC pass rate=${CTL_RATE:-<none>}"
 rm -f "$CTL_LOG"
@@ -103,7 +110,7 @@ fi
 LOG="$(mktemp)"
 ( cd "$T" && timeout 1800 bash "$GATE" ) >"$LOG" 2>&1
 RC=$?
-FAULT_RATE="$(grep -m1 -oE '[0-9]+\.[0-9]+% pass rate' "$LOG" | grep -oE '[0-9]+\.[0-9]+' || true)"
+FAULT_RATE="$(grep -m1 -oE 'pass rate: [0-9]+\.[0-9]+%' "$LOG" | grep -oE '[0-9]+\.[0-9]+' || true)"
 echo "----- fx21 fault run (tampered EXPECT directives) -----"
 echo "fault rc=$RC pass rate=${FAULT_RATE:-<none>}"
 tail -4 "$LOG"
@@ -111,11 +118,23 @@ rm -f "$LOG"
 
 restore
 
-# The characterization holds when the gate STAYS GREEN: the tampered expected
-# output is invisible to it.
+# The characterization holds when the gate STAYS GREEN **and the pass rate it
+# reports does not move**.  Both are asserted: the exit code is the primary
+# discriminator, the rate is the premise the header claims ("the gate still
+# reports the same pass rate") and it must be machine-checked, not merely
+# printed.
 if [ "$RC" -ne 0 ]; then
     echo "$FX_ID: the gate went RED after the EXPECT tamper (rc=$RC) -> the 'unfalsifiable' claim is WRONG (the gate does see it)"
     exit 3
 fi
-echo "$FX_ID: the gate stayed GREEN (rc=0, pass rate ${FAULT_RATE:-<none>}%) after the expected output was tampered -> UNFALSIFIABLE (as documented): this gate cannot see a tampered expected output"
+if [ -z "$CTL_RATE" ] || [ -z "$FAULT_RATE" ]; then
+    echo "$FX_ID: could not read the pass rate out of the gate's output (control='${CTL_RATE:-<none>}' fault='${FAULT_RATE:-<none>}') -> the premise is unverified -> INCONCLUSIVE"
+    restore
+    exit 4
+fi
+if [ "$CTL_RATE" != "$FAULT_RATE" ]; then
+    echo "$FX_ID: the pass rate MOVED (control ${CTL_RATE}% -> fault ${FAULT_RATE}%) -> the gate does react to the tampered expectation -> the 'unfalsifiable' claim is WRONG"
+    exit 3
+fi
+echo "$FX_ID: the gate stayed GREEN (rc=0) and the pass rate did not move (${FAULT_RATE}% = control) after the expected output was tampered -> UNFALSIFIABLE (as documented): this gate cannot see a tampered expected output"
 exit 0
