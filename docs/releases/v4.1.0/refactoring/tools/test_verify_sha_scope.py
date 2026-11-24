@@ -44,6 +44,10 @@ TASK_MANIFEST_REL = "docs/refactor/v4.1.0-c/handoff/03_TASK_MANIFEST.jsonl"
 HANDOFF_REL = "docs/releases/v4.1.0/refactoring/test-factory-design/14_HANDOFF_MANIFEST.json"
 PILOT_REL = "evidence/rerun-summary-20261120.json"
 HISTORICAL_MANIFEST_REL = "audit/v4.1.0/runs/20261105-lb1-006-mcode/manifest.yaml"
+# A historical record that was ADDED after the freeze and is therefore listed
+# in BASELINE_FREEZE.json -> historical_set_additions.
+REGISTERED_ADDITION_REL = ("audit/v4.1.0/runs/20261124-task8-alpha-negfix-001"
+                        "/manifest.yaml")
 UNRELATED_REL = "docs/releases/v4.1.0/refactoring/README.md"
 
 PRE_FREEZE_BASE_SHA = "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0"
@@ -278,6 +282,31 @@ def main() -> int:
 
         probe_red(shared, pristine, "历史 manifest 被删除",
                   "are gone from the worktree", historical_manifest_deleted)
+
+        def unregistered_manifest_added(repo: Path) -> None:
+            # A new audit run manifest that is NOT listed in the freeze record's
+            # historical_set_additions must still be rejected: the set may only
+            # widen by an entry that is registered.
+            path = Path(repo) / "audit/v4.1.0/runs/20991231-unregistered/manifest.yaml"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text("schema_version: 1\n"
+                            "run_id: 20991231-unregistered\n"
+                            "frozen_commit: " + "0" * 40 + "\n")
+
+        probe_red(shared, pristine, "没有登记在冻结记录里的新 manifest",
+                  "not part of the frozen historical set", unregistered_manifest_added)
+
+        def registered_addition_binding_removed(repo: Path) -> None:
+            # A registered addition must still declare its own frozen_commit
+            # binding -- otherwise the binding comparison would be vacuous for
+            # it, which is exactly what the frozen entries are checked for.
+            path = Path(repo) / REGISTERED_ADDITION_REL
+            text = path.read_text()
+            path.write_text(re.sub(r"^frozen_commit:.*\n", "", text, flags=re.M))
+
+        probe_red(shared, pristine, "已登记增补项的 frozen_commit 绑定被抹掉",
+                  "declares no frozen_commit binding",
+                  registered_addition_binding_removed)
 
         def artifact_context_repointed(repo: Path) -> None:
             def mutate(data):

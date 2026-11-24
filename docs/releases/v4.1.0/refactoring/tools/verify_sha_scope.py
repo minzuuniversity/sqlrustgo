@@ -34,6 +34,15 @@ if it were the expected one.  The set is frozen -- a *new* audit run manifest
 must be added to the freeze record (or the gate must be re-ruled), it must
 not silently widen the set.
 
+  The freeze record carries that first way forward: `BASELINE_FREEZE.json`
+  has a `historical_set_additions` field, and the expected set is the frozen
+  set UNION the records listed there.  Everything else about S5 is unchanged:
+  the frozen entries are still compared byte-for-byte against BASE and their
+  frozen_commit bindings against the import commit, a manifest that is not
+  listed in `historical_set_additions` is still rejected as an unregistered
+  addition, and a registered addition must declare a frozen_commit binding of
+  its own (otherwise the binding comparison would be vacuous for it).
+
 S5 compares the historical records against the frozen baseline (which is an
 ancestor of HEAD and therefore holds the bytes as they stood before this
 re-point), and additionally compares every `frozen_commit` binding against the
@@ -193,6 +202,34 @@ def matches_historical_pattern(rel):
     return any(fnmatch.fnmatch(rel, pattern) for pattern in HISTORICAL_PATTERNS)
 
 
+def registered_historical_additions():
+    """The historical records that were added AFTER the freeze, explicitly.
+
+    S5's own docstring allows exactly two ways forward when a new audit run
+    manifest has to exist: "a *new* audit run manifest must be added to the
+    freeze record (or the gate must be re-ruled), it must not silently widen the
+    set".  This implements the first one: the freeze record
+    (`BASELINE_FREEZE.json`) carries a `historical_set_additions` field, and
+    only the records listed there may join the set.
+
+    What this does NOT do: it does not relax any check on the frozen entries.
+    Their bytes are still compared against BASE and their `frozen_commit`
+    bindings against the import commit, and a manifest that is not listed here
+    is still rejected as an unregistered addition.
+    """
+    record = read_json(FREEZE_REL)
+    block = record.get("historical_set_additions") or {}
+    paths = block.get("paths") if isinstance(block, dict) else block
+    out = []
+    for rel in paths or []:
+        rel = str(rel)
+        require(matches_historical_pattern(rel),
+                f"{FREEZE_REL}: historical_set_additions lists {rel}, which is not "
+                f"a historical record pattern")
+        out.append(rel)
+    return sorted(set(out))
+
+
 def frozen_historical_paths(base):
     """The historical record set as frozen in the baseline commit."""
     listing = git_out("ls-tree", "-r", "--name-only", base, "--", "audit/v4.1.0")
@@ -274,8 +311,10 @@ def s5(base):
     require(have_commit(base),
             f"the frozen baseline {base[:10]} is not a commit of this repository; "
             f"the historical record set cannot be derived")
-    expected = frozen_historical_paths(base)
-    require(expected, "the frozen baseline holds no historical record")
+    frozen_set = frozen_historical_paths(base)
+    require(frozen_set, "the frozen baseline holds no historical record")
+    additions = registered_historical_additions()
+    expected = sorted(set(frozen_set) | set(additions))
     current = worktree_historical_paths()
     missing = sorted(set(expected) - set(current))
     extra = sorted(set(current) - set(expected))
@@ -326,6 +365,15 @@ def s5(base):
                  f"{MATERIAL_COMMIT[:10]}; their bytes are covered by the frozen-baseline "
                  f"comparison")
     for rel in expected:
+        if rel in additions:
+            # A registered addition has no counterpart in the frozen baseline,
+            # so there are no bytes to compare against.  What it must have is a
+            # frozen_commit binding of its own -- a record without one would
+            # make the binding comparison vacuous for it.
+            require(bindings_now[rel],
+                    f"registered historical record {rel} declares no frozen_commit "
+                    f"binding; an addition without one is not a record")
+            continue
         frozen = git_blob(base, rel)
         require(frozen is not None,
                 f"historical record {rel} is absent from the frozen baseline {base[:10]}")
@@ -333,7 +381,8 @@ def s5(base):
                 f"historical record {rel} drifted away from the frozen baseline "
                 f"{base[:10]}; historical bindings must not be re-pointed")
     return (f"{len(expected)} historical record(s) byte-identical to the frozen "
-            f"baseline {base[:10]}; {compared} frozen_commit binding(s) compared "
+            f"baseline {base[:10]} ({len(frozen_set)} frozen + {len(additions)} "
+            f"registered addition(s)); {compared} frozen_commit binding(s) compared "
             f"against {MATERIAL_COMMIT[:10]}, all unchanged")
 
 
