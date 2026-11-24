@@ -33,14 +33,22 @@ WHY（2026-11-23）
 
 Task 10（逐用例重做 invariant 映射）补的用例 —— **M7 必须咬住分桶映射**：
 
-  Q1  某条 case 少了 invariant_mapping_basis      → M7 判红
-  Q2  两条 case 共用同一个标签 + 同一组 id + 同一句依据 → M7 判红（分桶签名）
-  Q3  某条 case 声明空映射却没登记进缺口提案        → M7 判红
-  Q4  某条 case 空映射但没声明 NO_INVARIANT_MATCH   → M1 判红
-  Q5  基线矩阵本身过 M7                             → 适配层夹具矩阵也过 M7
+  Q1   某条 case 少了 invariant_mapping_basis        → M7 判红
+  Q2   两条 case 共用同一个标签 + 同一组 id + 同一句依据 → M7 判红（分桶签名）
+  Q2b  抄一遍再改一个字                             → M7 判红（不能靠改写躲过）
+  Q3   某条 case 声明空映射却没登记进缺口提案索引表   → M7 判红
+  Q4   某条 case 空映射但没声明 NO_INVARIANT_MATCH   → M1 判红
+  Q5   基线矩阵本身过 M7
+  Q6   同一个模板给很多条 case 生成依据              → M7 判红（分桶签名的典型形状）
+  Q7   一条 id 被三分之一的矩阵以上主张               → M7 判红（分桶映射的规模形状）
+  Q8   主张了某条 id，依据里却没有点名它             → M7 判红（共享 id 必须逐案说明）
+  Q9   用了词表外的 invariant_mapping_status          → M7 判红
+  Q9b  登记表登记的词表与工具的常量一致
+  Q10  缺口提案索引表多列了一条不是空映射的 case      → M7 判红（反向一致性）
 
 矩阵门禁的契约已由 6/6 变为 7/7（M1–M6 的**语义目标**不变；M1 的**判定形式**接受「显式声明的空映射」，
-M7 是新增的逐用例映射断言）。
+M7 是新增的逐用例映射断言）。**M7 只验形式**：一条映射与测试源码是否**实质**相符，
+是人（Oracle / 副签人）的事，`verify_matrix.py` 的 docstring 里写明了这一点。
 
 所有用例都在临时目录里做，不碰工作仓库。
 
@@ -89,7 +97,10 @@ def case(case_id: str, test_name: str, *, identity=None,
     """A minimal matrix case.
 
     The mapping fields are per case, not per bucket: the fixture's own matrix
-    has to survive M7, so the label and the basis carry the case id.
+    has to survive M7, so the label and the basis carry the case id.  The
+    basis is generated from one template on purpose -- that is the shape M7 is
+    built to flag in a real matrix (see Q6), so the fixture must not pretend
+    the shape is acceptable.
     """
     return {
         "case_id": case_id,
@@ -747,21 +758,114 @@ def q_m7_bites_bucket_mapping() -> None:
         check("Q2 ⇒ 分桶签名 ⇒ M7 判红", False, "no exception raised")
     except vm.MatrixError as exc:
         check("Q2 ⇒ 分桶签名 ⇒ M7 判红", True)
-        check("Q2 ⇒ 理由点名复制依据", "copied basis" in str(exc), str(exc))
+        check("Q2 ⇒ 理由点名近似依据", "near-identical basis" in str(exc), str(exc))
 
-    # Q3: 声明了空映射，却没有登记进缺口提案。
+    # Q2b: 抄一遍再改一个字 —— 必须仍然判红（不能靠改写躲过）。
     mutated = copy.deepcopy(baseline)
-    orphan = mutated["cases"][0]
-    orphan["case_id"] = "PILOT-XX-999"
-    orphan["invariant_ids"] = []
-    orphan["invariant_mapping_status"] = vm.NO_MATCH_STATUS
-    orphan["invariant_mapping_basis"] = "该断言不对应任何已登记不变量"
+    first, second = mutated["cases"][0], mutated["cases"][1]
+    first["invariant_mapping_basis"] = "断言的是回滚之后行数回到事务前的那一条不变量的恢复语义"
+    second["invariant_mapping_basis"] = "断言的是回滚之后行数回到事务前的那一条不变量的恢复语义。"
     try:
         vm.m7(mutated)
-        check("Q3 ⇒ 空映射未登记 ⇒ M7 判红", False, "no exception raised")
+        check("Q2b ⇒ 改一个字也判红", False, "no exception raised")
     except vm.MatrixError as exc:
-        check("Q3 ⇒ 空映射未登记 ⇒ M7 判红", True)
-        check("Q3 ⇒ 理由点名缺口提案文件", "not listed" in str(exc), str(exc))
+        check("Q2b ⇒ 改一个字也判红", True)
+
+    # Q6: 同一个模板给很多条 case 生成依据 —— 分桶签名的典型形状。
+    mutated = copy.deepcopy(baseline)
+    for subject in mutated["cases"]:
+        subject["invariant_mapping_basis"] = "断言该测试直接检查 INV-14 所述的能力不足写前拒绝"
+    try:
+        vm.m7(mutated)
+        check("Q6 ⇒ 模板化依据 ⇒ M7 判红", False, "no exception raised")
+    except vm.MatrixError as exc:
+        check("Q6 ⇒ 模板化依据 ⇒ M7 判红", True)
+        check("Q6 ⇒ 理由点名近似依据", "near-identical basis" in str(exc), str(exc))
+
+    # Q7: 一条 id 被三分之一的矩阵以上主张 —— 分桶映射的规模形状。
+    mutated = copy.deepcopy(baseline)
+    for subject in mutated["cases"][:40]:
+        subject["invariant_ids"] = ["INV-01"]
+    try:
+        vm.m7(mutated)
+        check("Q7 ⇒ 一条 id 铺满矩阵 ⇒ M7 判红", False, "no exception raised")
+    except vm.MatrixError as exc:
+        check("Q7 ⇒ 一条 id 铺满矩阵 ⇒ M7 判红", True)
+        check("Q7 ⇒ 理由点名覆盖上限", "third of the matrix" in str(exc), str(exc))
+
+    # Q8: 主张了某条 id，依据里却没有点名它 —— 共享 id 必须逐案说明。
+    mutated = copy.deepcopy(baseline)
+    mapped = next(c for c in mutated["cases"] if c["invariant_ids"])
+    mapped["invariant_mapping_basis"] = "断言与源码一致，故贴一条已登记的不变量。"
+    try:
+        vm.m7(mutated)
+        check("Q8 ⇒ 依据没点名所主张的 id ⇒ M7 判红", False, "no exception raised")
+    except vm.MatrixError as exc:
+        check("Q8 ⇒ 依据没点名所主张的 id ⇒ M7 判红", True)
+        check("Q8 ⇒ 理由点名逐案说明", "justified per case" in str(exc), str(exc))
+
+    # Q9: 词表外的映射状态。
+    mutated = copy.deepcopy(baseline)
+    mutated["cases"][0]["invariant_mapping_status"] = "SOMETHING_ELSE"
+    try:
+        vm.m7(mutated)
+        check("Q9 ⇒ 词表外的状态 ⇒ M7 判红", False, "no exception raised")
+    except vm.MatrixError as exc:
+        check("Q9 ⇒ 词表外的状态 ⇒ M7 判红", True)
+        check("Q9 ⇒ 理由点名登记表词表", "registered vocabulary" in str(exc), str(exc))
+
+    # Q9b: 登记表里登记的词表与工具的常量必须一致。
+    registered = vm.mapping_status_vocabulary(md.ROOT / vm.TX_REL)
+    check("Q9b ⇒ 登记表登记了词表", registered == set(vm.MAPPING_STATUSES),
+          str(sorted(registered)))
+    check("Q9b ⇒ 登记表词表含 NO_INVARIANT_MATCH",
+          vm.NO_MATCH_STATUS in registered, str(sorted(registered)))
+
+    # Q3: 声明了空映射，却没有登记进缺口提案的索引表。
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        gap = pathlib.Path(tmp) / "gap.md"
+        gap.write_text("| 缺口 | 用例 |\n|---|---|\n| GAP-00 | PILOT-T1-001 |\n",
+                       encoding="utf-8")
+        original = vm.GAP_REL
+        vm.GAP_REL = str(gap)
+        try:
+            mutated = copy.deepcopy(baseline)
+            orphan = mutated["cases"][0]
+            orphan["case_id"] = "PILOT-XX-999"
+            orphan["invariant_ids"] = []
+            orphan["invariant_mapping_status"] = vm.NO_MATCH_STATUS
+            orphan["invariant_mapping_basis"] = "该断言不对应任何已登记不变量"
+            try:
+                vm.m7(mutated)
+                check("Q3 ⇒ 空映射未登记 ⇒ M7 判红", False, "no exception raised")
+            except vm.MatrixError as exc:
+                check("Q3 ⇒ 空映射未登记 ⇒ M7 判红", True)
+                check("Q3 ⇒ 理由点名缺口提案索引表", "index table" in str(exc), str(exc))
+        finally:
+            vm.GAP_REL = original
+
+    # Q10: 反向 —— 索引表里列了一条矩阵里不是空映射的 case。
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        empty_ids = [c["case_id"] for c in baseline["cases"]
+                     if not c["invariant_ids"]]
+        mapped_id = next(c["case_id"] for c in baseline["cases"]
+                         if c["invariant_ids"])
+        gap = pathlib.Path(tmp) / "gap.md"
+        gap.write_text("| 缺口 | 用例 |\n|---|---|\n| GAP-00 | "
+                       + "、".join(empty_ids + [mapped_id]) + " |\n",
+                       encoding="utf-8")
+        original = vm.GAP_REL
+        vm.GAP_REL = str(gap)
+        try:
+            try:
+                vm.m7(baseline)
+                check("Q10 ⇒ 索引表多列了一条 ⇒ M7 判红", False, "no exception raised")
+            except vm.MatrixError as exc:
+                check("Q10 ⇒ 索引表多列了一条 ⇒ M7 判红", True)
+                check("Q10 ⇒ 理由点名反向不一致",
+                      "do not declare an empty mapping" in str(exc), str(exc))
+        finally:
+            vm.GAP_REL = original
 
     # Q4: 空映射没有显式声明（状态仍是 MAPPED）。
     mutated = copy.deepcopy(baseline)
@@ -774,15 +878,6 @@ def q_m7_bites_bucket_mapping() -> None:
         check("Q4 ⇒ 未声明的空映射 ⇒ M1 判红", True)
         check("Q4 ⇒ 理由点名 NO_INVARIANT_MATCH",
               vm.NO_MATCH_STATUS in str(exc), str(exc))
-
-    # 适配层夹具自己造的矩阵也要过 M7（它按用例贴标签与依据）。
-    fixture_matrix = {"cases": [case(f"FAKE-{i:03d}", f"fake::tests::case_{i}")
-                                for i in range(vm.EXPECTED_CASES)]}
-    try:
-        vm.m7(fixture_matrix)
-        check("Q5 ⇒ 夹具矩阵也过 M7", True)
-    except vm.MatrixError as exc:
-        check("Q5 ⇒ 夹具矩阵也过 M7", False, str(exc))
 
 
 def main() -> int:

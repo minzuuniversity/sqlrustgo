@@ -62,12 +62,12 @@
   },
   "difference_table": {
     "path": "docs/releases/v4.1.0/refactoring/evidence/L1-DIFF-fd849ae20541.md",
-    "sha256": "cf2e88bd63bbb88f483d55573e22e9c9c200ff3bd977c4854ac2e81a45f6a660"
+    "sha256": "94f393929a41becc5260cf4c0eb9be8ba20e5d9f9442a0e763a2abd3250a51de"
   },
   "inputs": {
     "matrix": {
       "path": "docs/releases/v4.1.0/refactoring/TEST_COVERAGE_MATRIX.json",
-      "sha256": "fce4fde0b19181227f21d83936a874a4201b09ccbcec2799ce7fa42ec0641bed"
+      "sha256": "8f581e9fd8a8194c42922fe42efccb7a09e24972a63c1f7b83c5090828daad31"
     },
     "driver": {
       "path": "docs/releases/v4.1.0/refactoring/tools/matrix_driver.py",
@@ -116,7 +116,7 @@
     },
     "identity_rows": "2 条 NOT_RUN 行：matrix.actual == receipt.actual（逐字相等）—— 驱动的短理由，本就不含机器路径。",
     "authoritative_full_text": "L1-RERUN-fd849ae20541.json 的 actual / command 是权威全文；矩阵只留摘要，便于人读。",
-    "validator_note": "verify_matrix.py 从不校验 actual（它查 case_id / invariant_ids / invariant_mapping_status / invariant_mapping_basis / execution_status / 词表 / red_identity，以及 M7 的空映射登记），因此这条派生不变式与任何门禁都不冲突，不需要改校验器。",
+    "validator_note": "verify_matrix.py 从不校验 actual（它查 case_id / invariant_ids / invariant_mapping_status / invariant_mapping_basis / execution_status / 词表 / red_identity，以及 M7 的映射形式与空映射登记），因此这条派生不变式与任何门禁都不冲突，不需要改校验器。",
     "how_to_check": "python3 - <<'PY'\nimport json, re, pathlib\nEV = pathlib.Path(\"docs/releases/v4.1.0/refactoring/evidence\")\ncases = json.load(open(\"docs/releases/v4.1.0/refactoring/TEST_COVERAGE_MATRIX.json\"))[\"cases\"]\nreceipt = {v[\"matrix_index\"]: v for v in json.load(open(EV / \"L1-RERUN-fd849ae20541.json\"))}\nbad = []\nfor i, c in enumerate(cases):\n    if c[\"feature\"] not in (\"T1\", \"T2\", \"T3\"):\n        continue\n    v = receipt[i]\n    if v[\"execution_status\"] == \"PASS\":\n        cmd, tail = v[\"actual\"].rsplit(\" → \", 1)\n        expected = f\"{re.search(r'--suite (\\S+)', cmd).group(1)}: {tail}\"\n    else:\n        expected = v[\"actual\"]\n    if c[\"actual\"] != expected:\n        bad.append(c[\"case_id\"])\nprint(\"matrix actual derivation:\", \"OK (44/44)\" if not bad else f\"MISMATCH {bad}\")\nPY"
   },
   "verification": {
@@ -129,7 +129,7 @@
       },
       "difference_table": {
         "path": "docs/releases/v4.1.0/refactoring/evidence/L1-DIFF-fd849ae20541.md",
-        "sha256": "cf2e88bd63bbb88f483d55573e22e9c9c200ff3bd977c4854ac2e81a45f6a660",
+        "sha256": "94f393929a41becc5260cf4c0eb9be8ba20e5d9f9442a0e763a2abd3250a51de",
         "matches_file_on_disk": true
       },
       "artifact_raw_log": {
@@ -144,7 +144,7 @@
       },
       "input_matrix": {
         "path": "docs/releases/v4.1.0/refactoring/TEST_COVERAGE_MATRIX.json",
-        "sha256": "fce4fde0b19181227f21d83936a874a4201b09ccbcec2799ce7fa42ec0641bed",
+        "sha256": "8f581e9fd8a8194c42922fe42efccb7a09e24972a63c1f7b83c5090828daad31",
         "matches_file_on_disk": true
       },
       "input_driver": {
@@ -169,34 +169,36 @@
   "task10_amendment": {
     "note": "Task 10（逐用例重做 invariant 映射）改了矩阵与矩阵门禁，本记录里随之变化的摘要在此登记；执行结果（逐条状态）一个字未动。",
     "amended_at": "2026-11-24",
+    "revision": 2,
     "what_changed": [
       "TEST_COVERAGE_MATRIX.json 的 invariant_ids 按 75 条逐用例重建（原来按 feature 分桶），source.declared_invariant 改成逐用例的精确断言文本，并新增 invariant_mapping_basis；red_identity / assertion_* / execution_status / actual / artifact_sha256 逐字节未动。",
-      "verify_matrix.py 新增 M7（分桶映射检测），矩阵门禁契约由 6/6 变为 7/7；test_matrix_driver.py 新增 Q1–Q5 夹具证明 M7/M1 会咬住分桶映射。",
-      "本文件（差异表）追加 §七 补记，说明映射层改动不影响逐条状态。"
+      "修订 1（评审后）：三条 bespoke 探针（PILOT-T5-101 / PILOT-T6-001B / PILOT-T6-002B）的测试源码不在本仓，第一轮按**标签**贴的 id 已撤下，改为空映射并登记缺口提案 GAP-14；于是有源码派生覆盖的用例由 15 条降为 12 条，空映射由 60 条增为 63 条。",
+      "verify_matrix.py 的 M7 收紧（近似依据的相似度阈值、共享 id 的逐案说明与规模上限、映射状态词表登记在 TRANSACTION_INVARIANTS.md 并被读回比对、缺口提案索引表双向对齐），矩阵门禁契约保持 7/7；test_matrix_driver.py 新增 Q1–Q10 夹具。",
+      "本文件（差异表）追加 §七 补记与 §7.4 修订 1，说明映射层改动不影响逐条状态。"
     ],
     "digests_moved": [
       {
-        "where": "difference_table",
-        "old_sha256": "501d673d12cd27976687623b85b137566d373ad288ecf803f5a568ff08037e10",
-        "new_sha256": "cf2e88bd63bbb88f483d55573e22e9c9c200ff3bd977c4854ac2e81a45f6a660",
+        "where": "verification.digests.difference_table",
+        "old_sha256": "cf2e88bd63bbb88f483d55573e22e9c9c200ff3bd977c4854ac2e81a45f6a660",
+        "new_sha256": "94f393929a41becc5260cf4c0eb9be8ba20e5d9f9442a0e763a2abd3250a51de",
         "recomputed_by": "sha256sum <path>（与 verification.command 同一算法）"
       },
       {
-        "where": "input_matrix",
-        "old_sha256": "e598fa7472cb8826ab679e1fe3592dd7fb4ea6199e37ed74ef73db9d2b3d5287",
-        "new_sha256": "fce4fde0b19181227f21d83936a874a4201b09ccbcec2799ce7fa42ec0641bed",
+        "where": "verification.digests.input_matrix",
+        "old_sha256": "fce4fde0b19181227f21d83936a874a4201b09ccbcec2799ce7fa42ec0641bed",
+        "new_sha256": "8f581e9fd8a8194c42922fe42efccb7a09e24972a63c1f7b83c5090828daad31",
         "recomputed_by": "sha256sum <path>（与 verification.command 同一算法）"
       },
       {
         "where": "inputs.matrix",
-        "old_sha256": "e598fa7472cb8826ab679e1fe3592dd7fb4ea6199e37ed74ef73db9d2b3d5287",
-        "new_sha256": "fce4fde0b19181227f21d83936a874a4201b09ccbcec2799ce7fa42ec0641bed",
+        "old_sha256": "fce4fde0b19181227f21d83936a874a4201b09ccbcec2799ce7fa42ec0641bed",
+        "new_sha256": "8f581e9fd8a8194c42922fe42efccb7a09e24972a63c1f7b83c5090828daad31",
         "recomputed_by": "sha256sum <path>（与 verification.command 同一算法）"
       },
       {
         "where": "difference_table",
-        "old_sha256": "501d673d12cd27976687623b85b137566d373ad288ecf803f5a568ff08037e10",
-        "new_sha256": "cf2e88bd63bbb88f483d55573e22e9c9c200ff3bd977c4854ac2e81a45f6a660",
+        "old_sha256": "cf2e88bd63bbb88f483d55573e22e9c9c200ff3bd977c4854ac2e81a45f6a660",
+        "new_sha256": "94f393929a41becc5260cf4c0eb9be8ba20e5d9f9442a0e763a2abd3250a51de",
         "recomputed_by": "sha256sum <path>（与 verification.command 同一算法）"
       }
     ],

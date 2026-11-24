@@ -428,7 +428,7 @@
       "feature": "T1",
       "invariant_ids": [],
       "invariant_mapping_status": "NO_INVARIANT_MATCH",
-      "invariant_mapping_basis": "断言的是事务号写入后的回显，主体是单字段的写入生效，不是回滚恢复；登记表中没有以该回显为主体的不变量。",
+      "invariant_mapping_basis": "断言的是 FileStorage::set_current_tx_id 的回显（current_tx_id() == 42 且 in_transaction() 为 true），主体是单个事务号字段的写入生效；它不比较任何被撤销的状态量，登记表的 18 条里没有一条以该回显为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "file_storage::tests::test_set_current_tx_id",
@@ -790,7 +790,7 @@
       "feature": "T1",
       "invariant_ids": [],
       "invariant_mapping_status": "NO_INVARIANT_MATCH",
-      "invariant_mapping_basis": "断言只证明「回滚这件事被写进了 WAL」，没有比较任何被撤销的状态量，所以无法判定 INV-01 的「撤销」；登记表中也没有以 WAL 回滚条目类型为主体的不变量。",
+      "invariant_mapping_basis": "断言的是 WalManager 的日志写入面：log_begin、log_insert、log_rollback 三次调用之后 recover() 读回 3 条记录，且第 3 条的 entry_type 是 Rollback。被比较的量是条目条数与末条的类型，没有任何存储状态被比较，所以判定不了「撤销」；18 条不变量中也没有以 WAL 回滚条目类型为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "wal_legacy::tests::test_wal_manager_log_rollback",
@@ -934,7 +934,7 @@
       "feature": "T1",
       "invariant_ids": [],
       "invariant_mapping_status": "NO_INVARIANT_MATCH",
-      "invariant_mapping_basis": "断言的是事务号写入后的回显，主体是单字段写入生效，不是回滚恢复；登记表中没有以该回显为主体的不变量。",
+      "invariant_mapping_basis": "断言的是 WalStorage 这一层上 set_current_tx_id(42) 之后 current_tx_id() 回显 42 且 in_transaction() 为 true，主体是 WAL 包装层把事务号透传给内层存储；既没有数据写入也没有前后状态比较，18 条不变量中无一条以这种透传回显为主体。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "wal_storage::tests::test_wal_set_current_tx_id",
@@ -1006,7 +1006,7 @@
       "feature": "T1",
       "invariant_ids": [],
       "invariant_mapping_status": "NO_INVARIANT_MATCH",
-      "invariant_mapping_basis": "断言只证明「回滚这件事被写进了 WAL」，没有比较被撤销的行是否消失，所以无法判定 INV-01；登记表中也没有以 WAL 回滚条目条数为主体的不变量。",
+      "invariant_mapping_basis": "断言的是 WalStorage 这一层落进 WAL 的回滚标记：begin、insert、rollback 三步之后 recover() 读回的记录里 entry_type == Rollback 的恰好 1 条。被比较的量只是回滚标记的条数，被插入的那一行是否消失并未被比较，18 条不变量中同样没有以回滚标记条数为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "wal_storage::tests::test_wal_storage_rollback",
@@ -1663,7 +1663,7 @@
         "INV-14"
       ],
       "invariant_mapping_status": "MAPPED",
-      "invariant_mapping_basis": "断言的是「后端接受了删除就必须真的删掉并报出真实条数」，其反面（能力不足却返回成功 = 静默成功）正是 INV-14「capability 不足写前拒绝」所禁止的；覆盖边界：本条钉住「真生效」这一面，「写前拒绝」那一面由 PILOT-T4-104 断言。",
+      "invariant_mapping_basis": "BinaryTableStorageV2 的 delete 必须报出真实删除条数：插了一行之后 delete 返回 1，而桩实现恒给 Ok(0)。这种「能力不足却仍然返回成功」的静默成功被 INV-14「capability 不足写前拒绝」直接禁止。本条只钉住 delete 的真生效那一面；写前拒绝那一面由 PILOT-T4-104 断言。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "tf_t4_02_delete_reports_real_count",
@@ -1701,7 +1701,7 @@
         "INV-14"
       ],
       "invariant_mapping_status": "MAPPED",
-      "invariant_mapping_basis": "断言的是「后端接受了更新就必须真的更新并报出真实条数」，其反面（能力不足却返回成功 = 静默成功）正是 INV-14「capability 不足写前拒绝」所禁止的；覆盖边界：本条钉住「真生效」这一面，「写前拒绝」那一面由 PILOT-T4-104 断言。",
+      "invariant_mapping_basis": "BinaryTableStorageV2 的 update 必须报出真实受影响行数：插了一行之后 update 返回 1，桩实现却只给 Ok(0)。INV-14「capability 不足写前拒绝」禁止的正是这种静默成功。本条只钉住 update 的真生效那一面；写前拒绝那一面由 PILOT-T4-104 断言。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "tf_t4_03_update_reports_real_count",
@@ -2123,7 +2123,7 @@
       "feature": "T5",
       "invariant_ids": [],
       "invariant_mapping_status": "NO_INVARIANT_MATCH",
-      "invariant_mapping_basis": "断言的是索引自身键值对的增删，主体是数据结构操作；没有 RowStore 与发布/撤销语义（INV-15），也不涉及事务或可见性不变量。",
+      "invariant_mapping_basis": "断言的是 BTreeIndex 删掉一个键之后容器里还剩几个键值对（delete(1) 为 true 且 len() == 0），主体是索引容器自身的增删；用例里没有 RowStore、没有发布/撤销动作，因此 INV-15（索引与同一 committed RowStore 发布/撤销一致）不成立，其余 17 条也没有一条以索引容器自身的增删为主体。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::index::tests::test_btree_index_delete",
@@ -2152,7 +2152,7 @@
       "feature": "T5",
       "invariant_ids": [],
       "invariant_mapping_status": "NO_INVARIANT_MATCH",
-      "invariant_mapping_basis": "断言的是索引自身键值对的逐条删除，主体是数据结构操作；没有 RowStore 与发布/撤销语义（INV-15），也不涉及事务或可见性不变量。",
+      "invariant_mapping_basis": "断言的是 BTreeIndex 连续删三个键时每次 delete 返回 true、对应 search 变 None、len 依次 2→1→0，主体是索引容器逐条删除的自洽；同样没有 RowStore 与发布/撤销语义，INV-15 不成立，其余 17 条也没有以「逐条删除的计数序列」为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::index::tests::test_btree_index_delete_multiple",
@@ -2181,7 +2181,7 @@
       "feature": "T5",
       "invariant_ids": [],
       "invariant_mapping_status": "NO_INVARIANT_MATCH",
-      "invariant_mapping_basis": "断言的是索引的条目计数，主体是数据结构操作；没有 RowStore 与发布/撤销语义（INV-15），也不涉及事务或可见性不变量。",
+      "invariant_mapping_basis": "断言的是 BTreeIndex 插入两个键之后 len() == 2 且 is_empty() 为假，主体是索引容器的条目计数；没有 RowStore、没有发布/撤销语义，INV-15 不成立，其余 17 条也没有以「插入后的条目计数」为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::index::tests::test_btree_index_insert",
@@ -2210,7 +2210,7 @@
       "feature": "T5",
       "invariant_ids": [],
       "invariant_mapping_status": "NO_INVARIANT_MATCH",
-      "invariant_mapping_basis": "断言的是 100 次批量插入之后索引的条目计数，主体是数据结构操作；没有 RowStore 与发布/撤销语义（INV-15），也不涉及事务或可见性不变量。",
+      "invariant_mapping_basis": "断言的是 BTreeIndex 批量插入 100 个键之后 len() == 100，主体是索引容器在一次批量写入后的条目数；用例不涉及任何 committed RowStore，INV-15 的主体（与同一 committed RowStore 的发布/撤销一致）不成立，其余 17 条也没有以批量插入计数为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::index::tests::test_btree_index_insert_multiple",
@@ -2239,7 +2239,7 @@
       "feature": "T5",
       "invariant_ids": [],
       "invariant_mapping_status": "NO_INVARIANT_MATCH",
-      "invariant_mapping_basis": "断言的是索引自身的键查找，主体是数据结构操作；没有 RowStore 与发布/撤销语义（INV-15），也不涉及事务或可见性不变量。",
+      "invariant_mapping_basis": "断言的是 BTreeIndex 按键查找的回显（search(5) == Some(500) 等，未插入的 999 返回 None），主体是索引容器的键查找；不涉及 RowStore 的发布或撤销，INV-15 不成立，其余 17 条也没有以按键查找回显为主体的不变量。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "bplus_tree::index::tests::test_btree_index_search_after_insert",
@@ -2469,12 +2469,9 @@
     {
       "case_id": "PILOT-T6-001B",
       "feature": "T6",
-      "invariant_ids": [
-        "INV-12",
-        "INV-07"
-      ],
-      "invariant_mapping_status": "MAPPED",
-      "invariant_mapping_basis": "探针源码不可读，映射只能依据标签与声明目的，属暂定映射：崩溃恢复的主体包含「未提交态不得进入 recovery 可见基线」（INV-07）与「恢复失败不得进入 Recovered、重试不得空成功」（INV-12）两条；副签前须先把探针源码迁入仓内再复核。",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "本用例是 bespoke 探针 (crash-recovery-kill-9)，源码不在本仓且 probe_registry 未绑定该标签（执行状态 NOT_RUN），因此无法读出它断言了什么；标签「崩溃恢复」与声明目的都不能作为判据，Step 2 要求以源码为准，故 invariant_ids 留空并记入缺口提案。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "(crash-recovery-kill-9)",
@@ -2501,11 +2498,9 @@
     {
       "case_id": "PILOT-T6-002B",
       "feature": "T6",
-      "invariant_ids": [
-        "INV-10"
-      ],
-      "invariant_mapping_status": "MAPPED",
-      "invariant_mapping_basis": "探针源码不可读，映射只能依据标签与声明目的，属暂定映射：撕裂写要判定的正是「证书依据 fsync 的 generation 而不是 flush 布尔」，对应 INV-10；原映射里的 INV-11 被收窄掉，因为标签与声明目的都没有给出 WAL 段 reclaim 或 segment 切换可恢复的主张。副签前须先迁入探针源码再复核。",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "本用例是 bespoke 探针 (checkpoint-torn-write)，源码不在本仓且 probe_registry 未绑定该标签（执行状态 NOT_RUN），同样无法读出断言；声明目的「checkpoint 安全性」不足以判定它是否触及 INV-10 或 INV-12，按 Step 2 的源码口径只能留空并记入缺口提案。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "(checkpoint-torn-write)",
@@ -2532,11 +2527,9 @@
     {
       "case_id": "PILOT-T5-101",
       "feature": "T5",
-      "invariant_ids": [
-        "INV-01"
-      ],
-      "invariant_mapping_status": "MAPPED",
-      "invariant_mapping_basis": "唯一可读的证据是 red_identity 里登记的失败断言形式（left == right，比较的是回滚后的值与旧值），它正是 INV-01「rollback 精确恢复原多重集」的可证伪形式；原映射里的 INV-05 被收窄掉，因为归因文本没有记录任何多行/多表/trigger 的原子性主张。映射为暂定：探针源码未迁入仓内，副签前须先补源码复核。",
+      "invariant_ids": [],
+      "invariant_mapping_status": "NO_INVARIANT_MATCH",
+      "invariant_mapping_basis": "本用例的探针源码未随基线迁入仓内（未注册为 cargo test target），无法从源码判定它实际断言了什么；red_identity 里只有失败断言的位置与归因文本，不足以据此认定它覆盖 INV-01。Step 2 要求以测试源码为依据，故 invariant_ids 留空，另记入缺口提案，待探针源码迁入后重新判定。",
       "source": {
         "kind": "EXISTING_PILOT_UNCOMMITTED_OR_LISTED_TEST",
         "test_name": "(odku-rollback-noop)",

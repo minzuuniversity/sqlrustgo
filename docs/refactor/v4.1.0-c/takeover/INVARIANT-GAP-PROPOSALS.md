@@ -7,7 +7,7 @@
 > **作业**：`V410-READINESS-IMPLEMENTATION-PLAN` / Task 10（逐用例重做 invariant 映射并修复 38 条不可判定断言）
 > **工作区**：`/Volumes/workspace/dev/wt-v410-base`（分支 `base/v4.1.0-frozen`）
 > **上游输入**：`docs/refactor/v4.1.0-c/takeover/ORACLE-REVIEW-LOG-T1.md` §5（38 条待修清单）与 §6（结构性根因）
-> **日期**：2026-11-24
+> **日期**：2026-11-24（**修订 1**：撤下三条「靠标签贴出来」的映射，见 §0.4）
 
 ---
 
@@ -21,8 +21,11 @@ Task 10 对**全部 75 条**逐条重做：读 `source.test_name` 指向的测�
 
 > **不得为了 `invariant_ids` 非空而贴一个不对应的 id。**
 > 真的对不上就留空 `[]`，并在这里登记。
+>
+> **「标签」不是判据。** `source.declared_invariant`（声明目的）、feature 归属、探针标签，
+> 都不能替代「读测试源码」。**源码读不到，就当作对不上**（§0.4）。
 
-结果：**75 条里只有 15 条能落到已登记的不变量上，60 条对不上任何一条**。
+结果：**75 条里只有 12 条能落到已登记的不变量上，63 条对不上任何一条**。
 这不是「映射做坏了」，而是**登记表本身的覆盖面小于试点用例集**——Task 5 的分桶映射把这一点掩盖了。
 
 ### 0.1 数字
@@ -30,11 +33,13 @@ Task 10 对**全部 75 条**逐条重做：读 `source.test_name` 指向的测�
 | 项 | 值 |
 |---|---|
 | 矩阵场景总数 | 75 |
-| 逐条重做后**有**对应不变量 | **15**（T1 7 / T2 1 / T4 4 / T5 1 / T6 2） |
-| 逐条重做后**无**对应不变量（`invariant_ids == []`） | **60** |
-| 其中 `invariant_ids` 发生变化的 | 64 |
-| 其中 `invariant_ids` 未变的 | 11（T1-003/004/006/007/102、T2-001、T4-101/102/103/104、T6-001B） |
-| 18 条不变量中**零覆盖**的 | **11** 条：INV-03、INV-05、INV-06、INV-08、INV-09、INV-11、INV-13、INV-15、INV-16、INV-17、INV-18 |
+| 逐条重做后**有**对应不变量 | **12** 条用例 → **5** 条不变量（13 个 id-实例） |
+| 逐条重做后**无**对应不变量（`invariant_ids == []`） | **63** |
+| 其中 `invariant_ids` 相对 Task 5 **发生变化**的 | **65** |
+| 其中 `invariant_ids` **未变**的 | 10（T1-003/004/006/007/102、T2-001、T4-101/102/103/104） |
+| 18 条不变量中**有源码派生覆盖**的 | **5**（INV-01/02/04/07/14） |
+| 18 条不变量中**零覆盖**的 | **13**（INV-03/05/06/08/09/10/11/12/13/15/16/17/18） |
+| `source.declared_invariant` 的取值种数 | 13 → **75**（不再有任何分桶标签） |
 
 ### 0.2 零覆盖的不变量意味着什么
 
@@ -45,7 +50,9 @@ Task 10 对**全部 75 条**逐条重做：读 `source.test_name` 指向的测�
 | INV-06 | undo 失败不返回成功，不丢未完成 cursor，不允许继续 commit | 无 |
 | INV-08 | 同步模式 ACK 前 durable_lsn >= commit_lsn，两 commit 入口语义相同 | 无 |
 | INV-09 | durable 决定后发布失败不是「确定未提交」；OutcomeUnknown 需查询/幂等键 | 无 |
-| INV-11 | reclaim 保留 active/replica/PITR 需要日志；segment 切换可恢复 | 无（唯一沾边的 `PILOT-T6-002B` 的标签是「checkpoint 撕裂写」，不给出日志段 reclaim 或 segment 切换的主张，故已收窄掉） |
+| INV-10 | checkpoint 证书基于 fsync 数据/目录的 generation，不是 flush 调用布尔 | 无（唯一沾边的 `(checkpoint-torn-write)` 探针源码不在仓内，**标签不能算覆盖**，见 §0.4） |
+| INV-11 | reclaim 保留 active/replica/PITR 需要日志；segment 切换可恢复 | 无 |
+| INV-12 | Recovery 失败不得进入 Recovered，重试不能空成功 | 无（唯一沾边的 `(crash-recovery-kill-9)` 探针源码不在仓内，**标签不能算覆盖**，见 §0.4） |
 | INV-13 | approved 隔离语义由真实并发 + 版本/物理主账联合证明 | 无 |
 | INV-15 | 索引/聚类/cache 与同一 committed RowStore 发布/撤销一致 | 无 |
 | INV-16 | 旧格式迁移、重复值 redo 幂等、备份/复制/PITR 共享恢复身份 | 无 |
@@ -58,20 +65,48 @@ Task 10 对**全部 75 条**逐条重做：读 `source.test_name` 指向的测�
 而 `crates/storage/src/buffer_pool.rs` 里没有任何 flush / 写回 / fsync 路径。
 所以「cache 与 committed RowStore 的撤销一致」这条要求，基线**做不到**，试点也没有一条用例去钉它。
 
-### 0.3 反过来：**有**覆盖的 7 条
+### 0.3 有**源码派生**覆盖的 5 条（12 条用例）
 
 | 不变量 | 覆盖它的 case | 覆盖的形态 |
 |---|---|---|
-| INV-01 | PILOT-T1-003 / 004 / 006 / 007 / 102、PILOT-T5-101（6 条） | 4 条逐行或按基数比较回滚前后的行多重集；T1-102 比较 undo_log_len；T5-101 的探针源码未迁入（暂定） |
+| INV-01 | PILOT-T1-003 / 004 / 006 / 007 / 102（5 条） | 逐行或按基数比较回滚前后的行多重集；T1-102 比较 undo_log_len |
 | INV-02 | PILOT-T2-001（1 条） | 同一 key 的 5 个 row_id 全部存活 |
 | INV-04 | PILOT-T1-101 / 102（2 条） | rollback_to 只弹出 cursor 之后的 undo |
-| INV-07 | PILOT-T1-014、PILOT-T6-001B（2 条） | PITR 重放不应用未提交事务的行（探针侧为暂定） |
-| INV-10 | PILOT-T6-002B（1 条） | checkpoint 撕裂写探针（暂定） |
-| INV-12 | PILOT-T6-001B（1 条） | 崩溃恢复探针（暂定） |
+| INV-07 | PILOT-T1-014（1 条） | PITR 重放不应用未提交事务的行 |
 | INV-14 | PILOT-T4-101 / 102 / 103 / 104（4 条） | 静默成功检测（真生效）+ 非事务后端写前拒绝 |
 
-**三条「暂定」映射**（探针源码不在仓内）分别是 `PILOT-T5-101`（INV-01）、`PILOT-T6-001B`（INV-12、INV-07）、
-`PILOT-T6-002B`（INV-10），副签前须先把探针源码迁入仓内再复核（见 §3）。
+> **口径**：这里的「覆盖」**只算源码派生**——每一条都是读测试源码之后判定的。
+> 按标签贴出来的 id **不计入**（§0.4）。
+
+### 0.4 修订 1：撤下三条「靠标签贴出来」的映射
+
+Task 10 第一轮曾给三条 bespoke 探针贴了 id，依据是**探针标签与声明目的**：
+
+| case_id | 曾经贴的 id | 撤下的理由 |
+|---|---|---|
+| `PILOT-T5-101` `(odku-rollback-noop)` | INV-01 | 探针源码不在本仓（未注册为 cargo test target）。唯一可读的是 `red_identity` 里登记的失败断言位置与归因文本，**不是测试源码** |
+| `PILOT-T6-001B` `(crash-recovery-kill-9)` | INV-12、INV-07 | 探针源码不在本仓，`probe_registry` 未绑定该标签（执行状态 NOT_RUN） |
+| `PILOT-T6-002B` `(checkpoint-torn-write)` | INV-10、INV-11 | 同上 |
+
+**这三条正是本任务要消灭的缺陷类别**：Task 7 发现「`invariant_ids` 是按 feature 分桶贴的，从来没有按用例核对过」，
+而按**标签**贴 id 是同一枚硬币的另一面——标签本身就是分桶的产物。
+Step 2 要求「读该 case 的 `source.test_name` 指向的测试函数源码」；源码读不到，就**没有可核对的断言**，
+按任务书自己的兜底条款（「若某个测试函数实际断言的内容不对应任何现有不变量，`invariant_ids` 留空 `[]`
+并把该 case 记入待新建的不变量提案清单」）处置。
+
+**后果（必须明说）**：
+
+- 映射用例由 15 降为 **12**，空映射由 60 增为 **63**；
+- **INV-10 与 INV-12 的唯一「覆盖」本来就是标签派生的**，撤下之后它们变成**零覆盖**；
+  有源码派生覆盖的不变量由 7 条降为 **5 条**（INV-01/02/04/07/14）；
+- 零覆盖的不变量由 11 条增为 **13 条**；
+- **Task 9 的放行判据必须用「源码派生覆盖」这个数**：有源码派生覆盖的用例是 **12 条**，
+  L1 的 44 条里是 **8 条**，L1 的 42 条 PASS 里是 **6 条**
+  （`PILOT-T1-003/004/006/007/014`、`PILOT-T2-001`）。
+  「L1 42 条 PASS」**不等于**「42 条不变量覆盖」。
+
+三条探针连同它们的标签、声明目的与曾经的 id 一并登记在 §1 的 **GAP-14**，
+**待探针源码迁入仓内后重新判定**。
 
 ---
 
@@ -144,12 +179,12 @@ INV-16 讲的是**迁移/redo 幂等/恢复身份**。这些用例只数条目�
 
 ### GAP-05 · 无断言 / 空过 / 恒真断言（4 条）——**这一组不是「缺一条不变量」，是「缺一条真断言」**
 
-| case_id | 实际断言 | 问题 |
-|---|---|---|
-| PILOT-T1-009 | **没有任何断言**（函数体只有 `set_current_tx_id(42);`） | 空过也成立，无法证伪 |
-| PILOT-T3-002 | `assert!(!s.dirty)`，但从未写入过数据，dirty 从未被置真 | 对「flush 清 dirty」是空过 |
-| PILOT-T3-003 | **没有任何断言**（只有 create_table 与 flush() 两个 unwrap） | 空过也成立 |
-| PILOT-T5-008 | `assert!(result.is_none() || result.is_some())` | **恒真式**，任何返回值都通过 |
+| case_id | 实际断言 | 问题 | 在 Task 7 的 38 条内？ |
+|---|---|---|---|
+| PILOT-T1-009 | **没有任何断言**（函数体只有 `set_current_tx_id(42);`） | 空过也成立，无法证伪 | 是 |
+| PILOT-T3-002 | `assert!(!s.dirty)`，但从未写入过数据，dirty 从未被置真 | 对「flush 清 dirty」是空过 | 是 |
+| PILOT-T3-003 | **没有任何断言**（只有 create_table 与 flush() 两个 unwrap） | 空过也成立 | 是 |
+| PILOT-T5-008 | `assert!(result.is_none() || result.is_some())` | **恒真式**，任何返回值都通过 | **否**（Task 7 只判了 L1 的 44 条；本轮全 75 条重做时新发现） |
 
 **处置建议（需属主裁决）**：这 4 条**不应该靠新增不变量来覆盖**，而应该改测试本体：
 
@@ -159,14 +194,16 @@ INV-16 讲的是**迁移/redo 幂等/恢复身份**。这些用例只数条目�
 4. `PILOT-T5-008` —— 恒真断言，建议换成对 `insert_key_value` 返回值的具体断言。
 
 **在改掉之前，这 4 条对任何不变量都不构成证据，`invariant_ids` 留空。**
+其中 3 条在 Task 7 的 38 条清单内（所以「38 条里 35 条修到可判定、3 条仍不可判定」这个统计只算这 3 条），
+`PILOT-T5-008` 不在那 38 条内。
 
 ### GAP-06 · MVCC 快照可见性与版本回收（4 条）
 
 | case_id | 实际断言 |
 |---|---|
 | PILOT-T2-003 | 空表 begin_snapshot() == 0，scan_visible(0,0) 为空 |
-| PILOT-T2-004 | find_visible(&[], 0, 0) 与 find_visible(&[], u64::MAX, 0) 都为 None |
-| PILOT-T2-005 | 10 个版本 ⇒ version_count()==10；gc(latest, 3) ⇒ dropped==6、version_count()==4 |
+| PILOT-T2-004 | find_visible(&[], 0, 0) 与 find_visible(&[], u64::MAX, 0) 都返回 None |
+| PILOT-T2-005 | 10 个版本 ⇒ version_count()==10；gc(latest, lag=3) ⇒ dropped==6、version_count()==4 |
 | PILOT-T2-006 | 缺失 PK → None；PK=1 在 ts1/ts2 取到 [10,20]/[99]；ts3 墓碑 → None |
 
 **草案**：`INV-23`（候选）快照可见性必须与版本链一致：在某个快照上只能看到该快照时刻已提交且未被墓碑遮蔽的版本；GC 只能回收不再被任何可见快照需要的版本。
@@ -257,8 +294,8 @@ INV-14 讲的是**能力不足**时必须写前拒绝。已登记的 4 条 INV-1
 | PILOT-T6-002 | 新建 CheckpointManager 的 last_checkpoint() 为 None |
 | PILOT-T6-003 | from_json(to_json(meta)) 后 lsn/timestamp/tx_count 相等 |
 | PILOT-T6-004 | interval=3600s、max_wal_size=100MB 下 needs_checkpoint() 为 false |
-| PILOT-T6-005 | record_checkpoint 后 last_checkpoint().lsn == 1000 |
-| PILOT-T6-006 | save_metadata 后 load_metadata 得到 lsn==2000、tx_count==100 |
+| PILOT-T6-005 | record_checkpoint(meta) 之后 last_checkpoint().lsn == 1000 |
+| PILOT-T6-006 | save_metadata(meta) 之后 load_metadata() 得到 lsn==2000、tx_count==100 |
 
 **草案**：`INV-29`（候选）checkpoint 元数据必须可无损往返；保留策略必须按份数生效且可核对；触发条件必须由配置显式决定。
 
@@ -284,9 +321,27 @@ INV-15 要求「索引/聚类/cache 与同一 committed RowStore 发布/撤销�
 因此在当前基线上，INV-15 这一族要么**不可满足**，要么必须先改生产语义——两者都不是本任务能做的（硬边界：不得写内核逻辑）。
 **请属主裁决**：是修改 INV-15 的措辞、还是把缓存的撤销一致性排进后续 C01-10/11 的范围。
 
+### GAP-14 · 探针源码不在仓内，无法从源码判定（3 条）——**「标签不是判据」的代价**
+
+| case_id | 探针 | 状况 | 曾经（**已撤回**）贴过的 id |
+|---|---|---|---|
+| PILOT-T5-101 | `(odku-rollback-noop)` | 探针源未随基线迁入（未注册为 cargo test target），执行状态 NOT_RUN；`red_identity.source_sha256` 显式为 null（`identity_gap`） | INV-01（+ 原来的 INV-05） |
+| PILOT-T6-001B | `(crash-recovery-kill-9)` | bespoke 探针，`probe_registry` 未绑定该标签，执行状态 NOT_RUN | INV-12 + INV-07 |
+| PILOT-T6-002B | `(checkpoint-torn-write)` | bespoke 探针，`probe_registry` 未绑定该标签，执行状态 NOT_RUN | INV-10 + INV-11 |
+
+**为什么对不上**：这三条**没有可读的测试源码**，因此无法判定它们「实际断言了什么」。
+标签与声明目的不是判据（§0.4），所以 `invariant_ids` 留空。
+
+**草案**：**不提议新不变量**——提议的是**处置**：
+把这三条的**探针源码迁入仓内**（注册为 `[[test]]` 或落到 `crates/storage/tests/`），
+迁入后按 Step 2 重新逐案判定；若届时仍对不上任何不变量，再进缺口提案。
+
+**这是本轮对属主最需要决策的一条**：按 INV-17 的口径，
+「必需 case 的 NOT_RUN 阻断认证」，而这三条正是「探针未迁入」造成的 NOT_RUN（L1-DIFF §五-3 记的同一类装配缺口）。
+
 ---
 
-## 2. 60 条空映射用例的索引（逐条可查）
+## 2. 63 条空映射用例的索引（逐条可查）
 
 | 缺口 | 用例 |
 |---|---|
@@ -303,22 +358,35 @@ INV-15 要求「索引/聚类/cache 与同一 committed RowStore 发布/撤销�
 | GAP-11 | PILOT-T5-001、PILOT-T5-002、PILOT-T5-003、PILOT-T5-004、PILOT-T5-005、PILOT-T5-006、PILOT-T5-007 |
 | GAP-12 | PILOT-T6-001、PILOT-T6-002、PILOT-T6-003、PILOT-T6-004、PILOT-T6-005、PILOT-T6-006 |
 | GAP-13 | PILOT-T1-002、PILOT-T3-001、PILOT-T3-006 |
+| GAP-14 | PILOT-T5-101、PILOT-T6-001B、PILOT-T6-002B |
 
-合计 60 条（10 + 7 + 3 + 1 + 4 + 4 + 7 + 2 + 2 + 4 + 7 + 6 + 3 = 60）。
+合计 63 条（10 + 7 + 3 + 1 + 4 + 4 + 7 + 2 + 2 + 4 + 7 + 6 + 3 + 3 = 63）。
 
 矩阵里每条空映射的 `invariant_mapping_basis` 都写明了「为什么对不上」，
 `invariant_mapping_status` 一律为 `NO_INVARIANT_MATCH`；
-`verify_matrix.py` 的 M7 会把这份清单与矩阵的空映射逐条对齐。
+`verify_matrix.py` 的 M7 会把这份索引表与矩阵的空映射**双向**对齐：
+表里有而矩阵里不是空映射 → 判红；矩阵里是空映射而表里没有 → 判红。
 
 ---
 
-## 3. 另外两条**暂定映射**（探针源码不在仓内）
+## 3. 三条探针的处置记录（供属主复核）
 
-| case_id | 映射 | 为什么是暂定的 |
-|---|---|---|
-| PILOT-T5-101 `(odku-rollback-noop)` | INV-01 | 唯一可读的证据是 `red_identity` 登记的失败断言 `p2c0_undo_proto.rs:497` 的 `"left == right"`；探针源码不在本仓（未迁移），副签前须先迁入源码复核 |
-| PILOT-T6-001B `(crash-recovery-kill-9)` | INV-12、INV-07 | 探针源码不在本仓（`probe_registry` 未绑定该标签），映射只能依据标签与声明目的 |
-| PILOT-T6-002B `(checkpoint-torn-write)` | INV-10 | 同上；原映射里的 INV-11 被收窄掉，因为标签与声明目的都没有给出 WAL 段 reclaim / segment 切换的主张 |
+| case_id | 标签 | 声明目的 | 本轮处置 | 撤回的 id |
+|---|---|---|---|---|
+| PILOT-T5-101 | `(odku-rollback-noop)` | ODKU 回滚不空转 | `invariant_ids = []`，登记 GAP-14 | INV-01、INV-05 |
+| PILOT-T6-001B | `(crash-recovery-kill-9)` | 崩溃恢复 | `invariant_ids = []`，登记 GAP-14 | INV-12、INV-07 |
+| PILOT-T6-002B | `(checkpoint-torn-write)` | checkpoint 安全性 | `invariant_ids = []`，登记 GAP-14 | INV-10、INV-11 |
+
+**撤回理由**（逐条）：这三条的测试源码都不在本仓，因此**无法按 Step 2 判定它们实际断言了什么**；
+Task 5 的分桶映射与本轮第一轮的「按标签贴 id」是同一类错误的不同表现。
+
+**它们不是「没被覆盖」，是「无法判定」**——这两件事在放行口径上必须分开：
+
+- **无法判定** → 该 case 不得计入不变量覆盖（§0.3 的 5 条 / 12 条用例口径已经排除它们）；
+- **没被覆盖** → 有一条可判定的用例存在，但它断言的东西不对应任何已登记不变量。
+
+**待办**：把探针源码迁入仓内 → 重新判定 → 若对不上任何不变量，再进缺口提案。
+迁入之前，这三条在 Task 9 的放行裁决里应按 `NOT_RUN`（装配缺口）处理。
 
 ---
 
@@ -328,6 +396,7 @@ INV-15 要求「索引/聚类/cache 与同一 committed RowStore 发布/撤销�
    而不是补不变量。是否授权本任务之外的改动？
 2. **GAP-13 与 INV-15 的冲突**：基线的缓冲池没有事务性排空、没有写回路径，
    「cache 与 committed RowStore 撤销一致」在当前基线上不可满足。改 INV-15 的措辞，还是排进 C01-10/11？
-3. **18 条不变量里有 10 条零覆盖**：其中 INV-17/INV-18 天然是流程不变量（应由门禁证明，不是单测），
-   INV-03/05/06/08/09/13/15/16 需要的用例在试点集里根本不存在。
+3. **18 条不变量里有 13 条零覆盖**（其中 INV-17/INV-18 天然是流程不变量，应由门禁而非单测证明；
+   INV-03/05/06/08/09/10/11/12/13/15/16 需要的用例在试点集里根本不存在或无法判定）。
    零覆盖的不变量是否应当阻断阶段出口（按 INV-17 的口径应当阻断）？
+   **另外**：GAP-14 的三条探针源码要不要迁入仓内？这决定它们是「NOT_RUN（装配缺口）」还是「可判定」。

@@ -25,9 +25,25 @@ Seven assertions:
       identity (`test_fn`, `package_or_target`, `source_sha256`, `rc`,
       `attribution`)
   M7  the mapping is per case, not per bucket: every case carries an
-      `invariant_mapping_basis`, no two cases that share one declared
-      invariant and one id set share one copied basis, and every case with an
-      empty mapping is listed in the gap-proposal record
+      `invariant_mapping_basis`, no two cases carry a near-identical basis,
+      every case that claims an invariant id names that id in its own basis
+      and no single id is claimed by more than a third of the matrix, the
+      `invariant_mapping_status` vocabulary is the one registered in
+      `TRANSACTION_INVARIANTS.md`, and every case with an empty mapping is
+      listed in the gap-proposal record's index table -- in both directions
+
+WHAT "7/7 PASS" MEANS
+----------------------
+M7 checks the **form** of the mapping, not its substance.  A green M7 says:
+every case carries its own sentence, no sentence is a copy of another, no one
+invariant id is spread over the matrix, the status vocabulary is the
+registered one, and the empty mappings are registered.  It does **not** say
+that a mapping is *correct* -- that the sentence really describes what the
+test asserts, and that the invariant id really corresponds to that assertion.
+That is a human (Oracle / countersigner) review item, and it is what the
+matrix's `assertion_review_verdict` fields exist for.  Treat a green M7 as
+"the mapping is well-formed and per case", never as "the mapping is
+verified".
 
 The corpus of M4 is the *id column* of the two registry documents: an
 invariant id is the first cell of a table row.  A token that only occurs in
@@ -62,8 +78,14 @@ and the honest result is that most of the pilot cases assert a property the
 id list -- which M1 used to forbid outright -- so M1's *purpose* (no case may
 carry no invariant without saying so) is kept while its *form* now accepts a
 declared empty mapping, and M7 makes the declaration auditable: a basis per
-case, no copied basis inside a bucket, and every empty mapping listed in
-`INVARIANT-GAP-PROPOSALS.md`.
+case, no copied basis, a shared id justified case by case, the status
+vocabulary read back from the registry, and every empty mapping listed in the
+index table of `INVARIANT-GAP-PROPOSALS.md` -- in both directions.
+
+M7 verifies the *form* of that mapping.  Whether a mapping is substantively
+right -- whether the sentence describes what the test really asserts and
+whether the id really corresponds to that assertion -- is a human (Oracle /
+countersigner) review item, and a green M7 is not a statement about it.
 
 The invariants are raised explicitly instead of being written as `assert`
 statements, because `python -O` strips `assert` and would turn this gate into
@@ -73,6 +95,8 @@ a no-op that prints "7/7 PASS" for anything.  The tool refuses to run under
 from __future__ import annotations
 
 import argparse
+import difflib
+import itertools
 import json
 import pathlib
 import re
@@ -94,6 +118,22 @@ GAP_REL = "docs/refactor/v4.1.0-c/takeover/INVARIANT-GAP-PROPOSALS.md"
 NO_MATCH_STATUS = "NO_INVARIANT_MATCH"
 # The per-case field that says *why* a case carries the ids it carries.
 BASIS_FIELD = "invariant_mapping_basis"
+# The closed vocabulary of `invariant_mapping_status`.  It is *registered* in
+# TRANSACTION_INVARIANTS.md (under the heading below) so that a consumer of the
+# matrix can parse the field without reading this tool; M7 checks that the
+# registry and this copy still agree.
+MAPPING_STATUSES = ("MAPPED", "NO_INVARIANT_MATCH")
+MAPPING_VOCAB_HEADING = "## 矩阵映射状态词表"
+
+# Two per-case bases that are this similar (after normalisation) are the same
+# sentence with cosmetic differences -- that is the copy-paste signature of a
+# bucket mapping.  The comparison is on normalised text so that punctuation and
+# whitespace cannot hide a copy.
+BASIS_SIMILARITY_LIMIT = 0.90
+# One invariant id may not be claimed by more than this share of the matrix.
+# Past that point the mapping is a bucket, not a mapping: the original defect
+# was one label covering 28 of 30 cases in one feature.
+MAX_ID_CLAIM_SHARE = 1 / 3
 
 EXPECTED_CASES = 75
 
@@ -400,49 +440,155 @@ def m6(matrix):
             f"five-element RED identity")
 
 
+def normalise_basis(text):
+    """Strip whitespace and punctuation so cosmetic edits cannot hide a copy."""
+    return re.sub(r"[\s，。；：、（）()「」\"'`·]+", "", text)
+
+
+def basis_similarity(a, b):
+    """How similar two per-case bases are, on normalised text."""
+    return difflib.SequenceMatcher(None, normalise_basis(a),
+                                    normalise_basis(b)).ratio()
+
+
+def mapping_status_vocabulary(path):
+    """The `invariant_mapping_status` vocabulary, read from the registry.
+
+    The vocabulary is registered in TRANSACTION_INVARIANTS.md so a consumer of
+    the matrix can parse the field without reading this tool.  This function
+    reads it back, so the registry and the tool cannot drift apart silently.
+    """
+    statuses = set()
+    in_section = False
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if stripped.startswith("#"):
+            in_section = stripped.startswith(MAPPING_VOCAB_HEADING)
+            continue
+        if not in_section or not stripped.startswith("|"):
+            continue
+        cells = [cell.strip().strip("`") for cell in stripped.strip("|").split("|")]
+        token = cells[0] if cells else ""
+        if token and re.fullmatch(r"[A-Z][A-Z_]*", token):
+            statuses.add(token)
+    return statuses
+
+
+def gap_index_cases(path):
+    """The case ids the gap record's index table lists.
+
+    Only table rows count: a case id mentioned in prose is not a registration.
+    """
+    ids = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped.startswith("|"):
+            continue
+        cells = [cell.strip() for cell in stripped.strip("|").split("|")]
+        if not cells or not re.fullmatch(r"GAP-\d+", cells[0]):
+            continue
+        ids.update(re.findall(r"PILOT-[A-Za-z0-9\-]+", " ".join(cells[1:])))
+    return ids
+
+
 def m7(matrix):
     """The mapping must be per case, not per bucket.
 
-    Three properties, all of them about the *shape* of the mapping rather
-    than about the invariants themselves:
+    WHAT THIS CHECK IS, AND WHAT IT IS NOT
+    ---------------------------------------
+    M7 verifies the **form** of the mapping.  It can tell that every case
+    carries its own sentence, that no sentence is a copy of another, that no
+    single invariant id is spread over the whole matrix, and that every empty
+    mapping is registered.  It cannot tell whether a mapping is *substantively*
+    right -- whether the sentence really describes what the test asserts, and
+    whether the invariant id really corresponds to that assertion.  That is a
+    human (Oracle / countersigner) review item, and it is exactly what the
+    `assertion_review_verdict` fields in the matrix are for.  A green M7 is
+    therefore **not** a statement that the mapping is verified.
+
+    Five properties:
 
       (a) every case carries a basis -- one sentence that says which part of
           which invariant its test actually asserts.  A bucket mapping has no
           per-case sentence, so this is the check that catches it.
 
-      (b) no two cases that share one declared invariant *and* one id set
-          share one copied basis.  A bucket mapping re-uses a single label
-          and a single id set, and a basis pasted over the whole group is the
-          same defect wearing a different hat.
+      (b) no two cases carry near-identical bases.  The comparison is on
+          normalised text (no punctuation, no whitespace) with a similarity
+          threshold, so a copy cannot be hidden behind cosmetic rewording.
 
-      (c) every case whose id list is empty is listed in the gap-proposal
-          record, so the hole is readable without diffing the matrix.
+      (c) a shared invariant id must be justified per case: every case that
+          claims an id has to name that id in its own basis, and no single id
+          may be claimed by more than a third of the matrix -- past that point
+          the mapping is a bucket, not a mapping.
+
+      (d) the `invariant_mapping_status` vocabulary is the one registered in
+          TRANSACTION_INVARIANTS.md, and the registry and this tool agree.
+
+      (e) every case with an empty mapping is listed in the gap record's index
+          table, and every case in that table really has an empty mapping --
+          both directions, so the file cannot drift out of sync.
     """
     cases = cases_of(matrix)
 
+    # (a) one basis per case
     missing = [c.get("case_id") for c in cases if not basis_of(c)]
     require(not missing,
             f"{len(missing)} case(s) carry no {BASIS_FIELD}: the mapping must "
             f"say per case why it holds the ids it holds: {missing[:5]}")
 
-    buckets: dict[tuple, list] = {}
-    for case in cases:
-        text = (case.get("source") or {}).get("declared_invariant")
-        key = (text, tuple(case.get("invariant_ids") or []))
-        buckets.setdefault(key, []).append(case)
-    copied = []
-    for (text, ids), members in buckets.items():
-        if len(members) < 2:
-            continue
-        bases = {basis_of(m) for m in members}
-        if len(bases) == 1:
-            copied.append({"declared_invariant": text,
-                           "invariant_ids": list(ids),
-                           "case_ids": [m.get("case_id") for m in members]})
-    require(not copied,
-            f"{len(copied)} bucket(s) share one declared invariant, one id set "
-            f"and one copied basis: {copied[:2]}")
+    # (b) no copy-pasted basis, cosmetic rewording included
+    copies = []
+    for left, right in itertools.combinations(cases, 2):
+        ratio = basis_similarity(basis_of(left), basis_of(right))
+        if ratio >= BASIS_SIMILARITY_LIMIT:
+            copies.append((left.get("case_id"), right.get("case_id"),
+                           round(ratio, 4)))
+    require(not copies,
+            f"{len(copies)} pair(s) of cases carry a near-identical basis "
+            f"(similarity >= {BASIS_SIMILARITY_LIMIT}); a per-case basis that "
+            f"is the same sentence twice is a bucket mapping: {copies[:3]}")
 
+    # (c) a shared id must be justified per case
+    by_id: dict[str, list] = {}
+    for case in cases:
+        for iid in case.get("invariant_ids") or []:
+            by_id.setdefault(iid, []).append(case)
+    ceiling = max(1, int(len(cases) * MAX_ID_CLAIM_SHARE))
+    over = [(iid, len(members)) for iid, members in sorted(by_id.items())
+            if len(members) > ceiling]
+    require(not over,
+            f"{len(over)} invariant id(s) are claimed by more than {ceiling} "
+            f"case(s); one id may not carry more than a third of the matrix: "
+            f"{over[:3]}")
+    uncited = [(c.get("case_id"), iid) for iid, members in sorted(by_id.items())
+               for c in members if iid not in basis_of(c)]
+    require(not uncited,
+            f"{len(uncited)} case(s) claim an invariant id their own basis "
+            f"does not name; a shared id must be justified per case: "
+            f"{uncited[:5]}")
+
+    # (d) the mapping-status vocabulary is the registered one
+    registry = ROOT / TX_REL
+    if not registry.is_file():
+        skip("M7/vocabulary", f"{TX_REL} does not exist")
+        vocabulary = set(MAPPING_STATUSES)
+    else:
+        vocabulary = mapping_status_vocabulary(registry)
+        require(vocabulary,
+                f"{TX_REL} declares no invariant_mapping_status vocabulary "
+                f"under the heading '{MAPPING_VOCAB_HEADING}'; the matrix's "
+                f"mapping status cannot be parsed without it")
+        require(set(MAPPING_STATUSES) == vocabulary,
+                f"the tool's mapping-status vocabulary {sorted(MAPPING_STATUSES)} "
+                f"does not match the registered one {sorted(vocabulary)} in "
+                f"{TX_REL}")
+    unknown = sorted({c.get("invariant_mapping_status") for c in cases}
+                     - vocabulary)
+    require(not unknown,
+            f"{len(unknown)} case(s) carry an invariant_mapping_status outside "
+            f"the registered vocabulary {sorted(vocabulary)}: {unknown}")
+
+    # (e) the gap record and the matrix agree, in both directions
     empty = [c for c in cases if not c.get("invariant_ids")]
     listed = "no empty mapping to register"
     if empty:
@@ -451,13 +597,18 @@ def m7(matrix):
             skip("M7/gap-proposals", f"{GAP_REL} does not exist")
             listed = f"{len(empty)} empty mapping(s), the gap record is missing"
         else:
-            record = path.read_text(encoding="utf-8")
-            unlisted = [c.get("case_id") for c in empty
-                        if c.get("case_id") not in record]
+            registered = gap_index_cases(path)
+            unlisted = sorted(c.get("case_id") for c in empty
+                              if c.get("case_id") not in registered)
             require(not unlisted,
                     f"{len(unlisted)} case(s) declare an empty mapping but are "
-                    f"not listed in {GAP_REL}: {unlisted[:5]}")
-            listed = f"{len(empty)} empty mapping(s), all listed in {GAP_REL}"
+                    f"not listed in the index table of {GAP_REL}: {unlisted[:5]}")
+            stale = sorted(registered - {c.get("case_id") for c in empty})
+            require(not stale,
+                    f"{len(stale)} case(s) are listed in the index table of "
+                    f"{GAP_REL} but do not declare an empty mapping: {stale[:5]}")
+            listed = (f"{len(empty)} empty mapping(s), all listed in the index "
+                      f"table of {GAP_REL}")
 
     labels: dict[str, list] = {}
     for case in cases:
@@ -466,10 +617,14 @@ def m7(matrix):
     shared = {text: members for text, members in labels.items() if len(members) > 1}
     divergent = sum(1 for members in shared.values()
                     if len({tuple(m.get("invariant_ids") or []) for m in members}) > 1)
-    return (f"{len(cases)} case(s) carry a per-case basis; "
-            f"{listed}; "
-            f"{len(shared)} declared-invariant label(s) are still shared, "
-            f"{divergent} of them with divergent id sets")
+    claims = ", ".join(f"{iid}×{len(members)}" for iid, members in sorted(by_id.items()))
+    return (f"{len(cases)} case(s) carry a per-case basis (max pairwise similarity "
+            f"< {BASIS_SIMILARITY_LIMIT}); {listed}; "
+            f"{len(by_id)} invariant id(s) claimed, each justified per case "
+            f"[{claims}]; {len(shared)} declared-invariant label(s) still shared, "
+            f"{divergent} of them with divergent id sets; "
+            f"FORM ONLY -- substantive agreement with the test source is a "
+            f"human/Oracle review item")
 
 
 def main():

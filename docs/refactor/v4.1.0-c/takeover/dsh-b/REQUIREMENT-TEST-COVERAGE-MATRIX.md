@@ -14,7 +14,7 @@
 | 矩阵立场 | `source_claims_are_not_acceptance: true`（来源声明不等于验收） |
 | 必需字段 | case_id/feature/invariant_ids/source/seed/backend/assembly/base_sha/expected/actual/execution_status/artifact_sha256 |
 | 装配状态 | 全部 `UNVERIFIED_DO_NOT_INFER_FROM_DEFAULT_FACTORY` |
-| **invariant 映射（2026-11-24 Task 10 重做）** | **逐用例**重建：75 条里有对应不变量的 **15** 条，空映射（`invariant_mapping_status = NO_INVARIANT_MATCH`）**60** 条，每条带 `invariant_mapping_basis`；映射门禁 `verify_matrix.py` 由 **6/6** 变 **7/7**（新增 M7 分桶映射检测）。**逐条 `execution_status` 未动**（仍为 PASS=42 / NOT_RUN=2 + 其余 31 条 NOT_RUN） |
+| **invariant 映射（2026-11-24 Task 10 重做，含修订 1）** | **逐用例**重建：75 条里**有源码派生覆盖**的 **12** 条，空映射（`invariant_mapping_status = NO_INVARIANT_MATCH`）**63** 条，每条带 `invariant_mapping_basis`；18 条不变量里**有源码派生覆盖**的只有 **5** 条（INV-01/02/04/07/14），**零覆盖 13** 条。映射门禁 `verify_matrix.py` 由 **6/6** 变 **7/7**（新增 M7 分桶映射检测；**M7 只验形式** —— 映射与测试源码是否实质相符是人/Oracle 的事，绿灯不等于「映射已验证」）。**逐条 `execution_status` 未动**（仍为 PASS=42 / NOT_RUN=2 + 其余 31 条 NOT_RUN） |
 
 ## DSH-B 执行计划（把 0 → 75）
 
@@ -28,12 +28,15 @@
 > **2026-11-24 Task 10 状态注记（不改写上面任何一条执行结论）**：矩阵的 `invariant_ids` 原先是**按 feature 分桶**贴的
 > （`declared_invariant` 相同的整组用同一组 id），Task 7 在 44 条 L1 上判定出 38 条不可判定；
 > Task 10 对**全部 75 条**逐条重做（读测试源码 → 判定实际断言 → 找真正对应的不变量），结果：
-> **只有 15 条能落到 `TRANSACTION_INVARIANTS.md` 的 18 条不变量上，其余 60 条对不上任何一条**，
-> 空映射逐条登记在 `docs/refactor/v4.1.0-c/takeover/INVARIANT-GAP-PROPOSALS.md`（13 组缺口提案 + 属主待裁决问题）。
+> **只有 12 条能落到 `TRANSACTION_INVARIANTS.md` 的 18 条不变量上，其余 63 条对不上任何一条**
+> （其中 3 条是 bespoke 探针、**源码不在仓内**；按「标签不是判据」的口径只能留空 —— 修订 1 已撤下第一轮按标签贴的 id），
+> 空映射逐条登记在 `docs/refactor/v4.1.0-c/takeover/INVARIANT-GAP-PROPOSALS.md`（**14 组**缺口提案 + 属主待裁决问题）。
+> **Task 9 的放行判据必须用「源码派生覆盖」这个数**：全部 **12** 条 / L1 的 44 条里 **8** 条 /
+> L1 的 42 条 PASS 里 **6** 条 —— 「42 条 PASS」**不等于**「42 条不变量覆盖」。
 > **本注记不改写执行事实**：42 条 PASS / 2 条 NOT_RUN 与 §一 的复跑结果一字未动，
 > `red_identity` / `assertion_*` / `execution_status` / `actual` / `artifact_sha256` 全部逐字节保留。
-> 映射门禁的契约由 **6/6 变 7/7**（`verify_matrix.py` 新增 M7：分桶映射检测；
-> M1 的判定**形式**放宽为「至少一个 id **或**显式声明空映射并给出依据」，语义目标不变）。
+> 映射门禁的契约由 **6/6 变 7/7**（`verify_matrix.py` 新增 M7：分桶映射检测；**M7 只验形式**）；
+> M1 的判定**形式**放宽为「至少一个 id **或**显式声明空映射并给出依据」，语义目标不变。
 > Oracle 签署步骤**仍然 BLOCKED**（副签人待属主指定），详见 `ORACLE-REVIEW-LOG-T1.md` §10。
 
 ## D-001~004 映射状态（诚实记录）

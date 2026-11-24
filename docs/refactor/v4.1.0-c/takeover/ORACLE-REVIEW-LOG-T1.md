@@ -450,9 +450,12 @@ Oracle 签署步骤 BLOCKED 的残余项如下，请在 Task 9 的放行裁决�
    （一句可被独立复核的话：测试函数断言了哪条不变量的哪一面，或者为什么对不上）。
 2. **75 条 `source.declared_invariant` 改成逐用例的精确断言文本** —— 指明**比较哪个量**、**比较关系是什么**、
    **覆盖范围到哪为止**（原来 13 种分桶标签现在 75 条各不相同）。
-3. **38 条按 §5 的逐条建议修断言文本**（R1 改文本 / R2 先收窄映射再改文本 / R3 见 10.4）。
-4. **新增 `verify_matrix.py` 的 M7（分桶映射检测）**，矩阵门禁契约 **6/6 → 7/7**。
-5. 新建 `docs/refactor/v4.1.0-c/takeover/INVARIANT-GAP-PROPOSALS.md`（60 条空映射的缺口提案）。
+3. **38 条按 §5 的逐条建议修断言文本**（分档与档名的对应见 10.3 开头；R3 两条见 10.4）。
+4. **新增 `verify_matrix.py` 的 M7（分桶映射检测）**，矩阵门禁契约 **6/6 → 7/7**；M7 **只验形式**，
+   「映射与测试源码是否实质相符」是人（Oracle / 副签人）的事 —— 工具的 docstring 里写明了这一点。
+5. 新建 `docs/refactor/v4.1.0-c/takeover/INVARIANT-GAP-PROPOSALS.md`（**63** 条空映射的缺口提案）。
+6. **把 `invariant_mapping_status` 的词表登记进 `TRANSACTION_INVARIANTS.md`**（M4 读的登记表），
+   矩阵的消费者不必读工具就能解析这个字段。
 
 **没做（硬边界）**
 
@@ -467,11 +470,12 @@ Oracle 签署步骤 BLOCKED 的残余项如下，请在 Task 9 的放行裁决�
 |---|---|
 | 矩阵场景总数 | 75 |
 | `invariant_ids` **发生变化**的 | **64** |
-| `invariant_ids` **未变**的 | 11（T1-003 / T1-004 / T1-006 / T1-007 / T1-102、T2-001、T4-101 / T4-102 / T4-103 / T4-104、T6-001B） |
-| 重建后**有**对应不变量 | **15**（T1 7 / T2 1 / T4 4 / T5 1 / T6 2） |
-| 重建后**无**对应不变量（`invariant_ids == []`） | **60** —— 全部登记在 `INVARIANT-GAP-PROPOSALS.md` |
+| `invariant_ids` **未变**的 | 10（T1-003 / T1-004 / T1-006 / T1-007 / T1-102、T2-001、T4-101 / T4-102 / T4-103 / T4-104） |
+| 重建后**有**对应不变量 | **12**（T1 7 / T2 1 / T4 4） |
+| 重建后**无**对应不变量（`invariant_ids == []`） | **63** —— 全部登记在 `INVARIANT-GAP-PROPOSALS.md` |
 | `source.declared_invariant` 的取值种数 | 13 → **75**（不再有任何分桶标签） |
-| 18 条不变量中**零覆盖**的 | **11**（INV-03/05/06/08/09/11/13/15/16/17/18） |
+| 18 条不变量中**有源码派生覆盖**的 | **5**（INV-01/02/04/07/14） |
+| 18 条不变量中**零覆盖**的 | **13**（INV-03/05/06/08/09/10/11/12/13/15/16/17/18） |
 
 **映射变化的形态**（这是 Task 7 说的结构性缺陷的直接后果）：
 
@@ -481,14 +485,42 @@ Oracle 签署步骤 BLOCKED 的残余项如下，请在 Task 9 的放行裁决�
 | T2 | 6 条共用 `INV-02` | INV-02 × 1 | 5 |
 | T3 | 8 条共用 `INV-07 + INV-10` | 无 | 8 |
 | T4 | 14 条共用 `INV-14` | INV-14 × 4 | 10 |
-| T5 | 8 条共用 `INV-05 + INV-15`，1 条 `INV-01 + INV-05` | INV-01 × 1 | 8 |
-| T6 | 6 条共用 `INV-08 + INV-07`，2 条 bespoke | INV-12+INV-07、INV-10 | 6 |
+| T5 | 8 条共用 `INV-05 + INV-15`，1 条 `INV-01 + INV-05` | 无 | 9 |
+| T6 | 6 条共用 `INV-08 + INV-07`，2 条 bespoke | 无（源码不可读，见 10.11） | 8 |
 
-**结论**：分桶映射不是「少贴了几个 id」，而是**贴错了主体**。75 条里真正落在 18 条不变量上的只有 15 条；
-其余 60 条断言的是登记表根本没写的东西（事务标志、WAL 计数、索引 CRUD、checkpoint 元数据、缓冲池计数……）。
+**结论**：分桶映射不是「少贴了几个 id」，而是**贴错了主体**。75 条里真正落在 18 条不变量上的只有 **12** 条；
+其余 **63** 条断言的是登记表根本没写的东西（事务标志、WAL 计数、索引 CRUD、checkpoint 元数据、缓冲池计数……），
+**或者**它们的断言压根读不出来（3 条 bespoke 探针，见 **10.11**）。
 把 18 条不变量当成「所有用例的公共标签」，本身就是错的。
 
+> **修订 1（2026-11-24，评审后）**：本表原为「15 条有映射 / 60 条空映射 / 7 条不变量有覆盖 / 11 条零覆盖」。
+> 评审指出其中 3 条（`PILOT-T5-101`、`PILOT-T6-001B`、`PILOT-T6-002B`）是**靠标签贴出来的**，
+> 属于本任务要消灭的缺陷类别，已撤下 —— 详见 **10.11**。
+> **Task 9 的放行判据必须用「源码派生覆盖」这个数**：有源码派生覆盖的用例 **12** 条，
+> L1 的 44 条里 **8** 条，L1 的 42 条 PASS 里 **6** 条
+> （`PILOT-T1-003/004/006/007/014`、`PILOT-T2-001`）。
+
 ### 10.3 38 条修复后的可判定性预判（逐条）
+
+**分档对照（§5 的「修复路径」分桶 ↔ 任务书 Step 3 的档名）—— 先对齐，再动手**：
+
+| §5 的修复路径分桶（§5 末尾的统计） | 条数 | 任务书档名 | 任务书 Step 3 的动作 | 本轮处置 |
+|---|---|---|---|---|
+| 改断言文本 | 32 | **R1** | 补全断言文本，指明比较哪些字段 / 哪个状态 / 哪个边界 | 全部按 §5 的逐条建议改写 `source.declared_invariant` |
+| 需改测试（补断言 / 断言与声明相反 / 空过 / 无断言） | 4 | **R2** | 先按 Step 2 收窄 `invariant_ids`，再修断言文本 | 逐条：**T1-009 / T3-002 / T3-003** → 文本如实写明「无断言 / 空过」+ 映射留空（GAP-05）；**T1-101 → 收窄为 INV-04 + 文本改写**（它不是「无断言」，它的断言真实存在，只是与原声明相反） |
+| 需改映射（收窄 `invariant_ids`）+ 改断言文本 | 2 | **R3** | 见 Step 5（`PILOT-T3-001`、`PILOT-T3-006`） | 见 **10.4**：被测能力在冻结基线上不存在 → 映射留空（GAP-13）+ 文本改写；**测试体未改** |
+
+> **任务书 Step 1 的括号注与它自己的条数是矛盾的**（已如实登记，未粉饰）：
+> Step 1 写「R2 4 条『需改映射 + 改断言文本』、R3 2 条『需改测试』」，
+> 但 §5 的统计是「改断言文本 32 / 需改测试 4 / 需改映射 + 改断言文本 2」，
+> 而 Step 3 的 R2 动作（「先按 Step 2 收窄 `invariant_ids`，再修断言文本」）与 Step 5（R3 = `PILOT-T3-001` /
+> `PILOT-T3-006`）又都指向 §5 的那两个分桶。**本节按「条数 + Step 3 / Step 5 的动作」对齐**（即上表），
+> 并在此显式声明，免得读者按 Step 1 的括号注去数会对不上。
+
+> **GAP-05 的 4 条里只有 3 条在这 38 条之内**：`PILOT-T1-009`、`PILOT-T3-002`、`PILOT-T3-003` 在 §5 的清单里；
+> `PILOT-T5-008`（恒真断言 `assert!(result.is_none() || result.is_some())`）是本轮**全 75 条**重做时
+> **新发现**的，不属于 Task 7 的 38 条（Task 7 只判了 L1 的 44 条）。
+> 所以下面「38 条里 35 条可判定 / 3 条仍不可判定」这个统计**只算那 3 条**，T5-008 不影响它。
 
 **判定口径**沿用 §1.1 的 (a)(b)(c)(d)：(a) 被比较的可观测量由断言文本所指机制直接决定；
 (b) 断言可证伪；(c) 不与登记表原文抵触；(d) 断言主体与登记表原文是**同一个**主体。
@@ -590,24 +622,42 @@ INV-15 在冻结基线上**不可满足**，且**零覆盖**。处置方向（�
 
 ### 10.6 M7 与 7/7 契约
 
-`verify_matrix.py` 新增 **M7：分桶映射检测**，三条子判定：
+**M7 只验形式，不验实质。** 这是修订 1 之后必须写在最前面的句话：
+
+> M7 能证明：每条 case 都带自己的依据、没有两条依据是同一句话（连改一个字都不行）、
+> 没有一条 id 铺满矩阵、共享的 id 逐案各自说明、状态词表是登记表里登记的那一套、
+> 空映射与缺口提案索引表**双向**对齐。
+> M7 **不能**证明：一条映射与测试源码**实质**相符。
+> 「7/7 PASS」**绝不等于**「映射已被验证」——后者是人（Oracle / 副签人）的事，
+> 也正是矩阵里 `assertion_review_verdict` 那些字段的用途。
+> 工具的 docstring 里也写了同一段话。
+
+`verify_matrix.py` 的 **M7：分桶映射检测**，五条子判定（修订 1 之后）：
 
 1. **每条 case 都必须有 `invariant_mapping_basis`** —— 分桶映射没有逐用例的一句话，这是抓它的主判据；
-2. **同一标签 + 同一 id 集合的 case 不得共用同一句依据** —— 「贴一个 id 再把同一句话抄一遍」是同一个缺陷换个帽子；
-3. **每条空映射的 case 必须登记在 `INVARIANT-GAP-PROPOSALS.md` 里** —— 洞要能被人在文档里看见，而不是只能 diff 矩阵。
+2. **没有两条 case 的依据是同一句话** —— 比较在**规范化**文本（去空白、去标点）上做，相似度 ≥ 0.90 即判红；
+   「抄一遍再改一个字」也判红（夹具 Q2b 专门钉这一条）；
+3. **共享的 id 必须逐案说明**：主张某条 id 的 case 必须在**自己的**依据里点名这条 id；
+   并且**一条 id 不得被三分之一的矩阵以上主张**（超过这个规模，映射就不是映射而是分桶了 ——
+   原缺陷的形状是「一句标签覆盖 30 条里的 28 条」）；
+4. **`invariant_mapping_status` 的词表是登记表里登记的那一套**：
+   词表登记在 `TRANSACTION_INVARIANTS.md`（M4 读的登记表）的「矩阵映射状态词表」一节，
+   工具每次运行都把登记表读回来与自己的常量比对，**工具与登记表不能各说各话**；
+5. **空映射与缺口提案索引表双向对齐**：矩阵里每条空映射都必须在索引表里（且必须出现在**表格行**里，
+   散落在正文里不算）；索引表里每一条也必须在矩阵里是空映射。
 
 同时 **M1 的形式**变了（**语义目标不变**）：原来「每条 case 必须至少有一个 invariant id」，
 现在「每条 case 必须至少有一个 id，**或者**显式声明 `invariant_mapping_status == "NO_INVARIANT_MATCH"`
 并给出逐用例依据」。
 这是任务书 Step 2 的直接要求（「`invariant_ids` 留空 `[]`」）与「M1–M6 语义不变」之间的**唯一冲突点**：
-不留这一条，75 条里 60 条诚实留空就会把 M1 判红，门禁永远到不了 7/7。
+不留这一条，75 条里 63 条诚实留空就会把 M1 判红，门禁永远到不了 7/7。
 **M1 的反空过意图被保留**：M1 仍然拒绝「静默地没有映射」，只是把「显式声明的没有映射」也认了；
 M4 的全局反空过（所有 case 一个 id 都不引用）**原样保留**。
 
 **一条绑定上的诚实披露**：`INVARIANT-GAP-PROPOSALS.md` 与本日志一样位于 `takeover/` 顶层，
 **不在 handoff manifest 的哈希范围内**（`MANIFEST_ROOTS` 只覆盖 `handoff/`、`takeover/dsh-b/`、
 `docs/releases/v4.1.0/refactoring/`，见 §9 R-T7-3）。
-后果：M7 的第 3 条子判定能发现「某条空映射的 case 被从缺口提案里删掉」，
+后果：M7 的第 5 条子判定能发现「某条空映射的 case 被从缺口提案里删掉」，
 但**发现不了**「缺口提案里的论证文字被改写」——矩阵本身在范围内、是被绑定的，缺口提案不是。
 要把它纳入哈希范围属主专属（C1），本任务不越权。
 
@@ -616,7 +666,7 @@ M4 的全局反空过（所有 case 一个 id 都不引用）**原样保留**。
 | 位置 | 处理 |
 |---|---|
 | `docs/releases/v4.1.0/refactoring/tools/verify_matrix.py`（docstring、argparse、`0/6 PASS` ×2、checks 元组） | **已改为 7/7**，新增 M7 |
-| `docs/releases/v4.1.0/refactoring/tools/test_matrix_driver.py`（工具自带的夹具） | 新增 Q1–Q5 夹具，逐条证明 M7/M1 会咬住分桶映射；夹具自造的矩阵也改成逐用例贴标签与依据 |
+| `docs/releases/v4.1.0/refactoring/tools/test_matrix_driver.py`（工具自带的夹具） | 新增 **Q1–Q10** 夹具，逐条证明 M7/M1 会咬住分桶映射（含「改一个字」「模板化依据」「一条 id 铺满矩阵」「词表外状态」「反向不一致」） |
 | 本日志 §8 | **保留原样**（历史运行记录），加了一句指明「当时的门禁是 M1–M6，现在的契约是 M1–M7（见 §10）」 |
 | `verify_sha_scope.py` 的「6/6 PASS」 | **不动** —— 那是 SHA 范围门禁自己的 6 条，与矩阵门禁无关 |
 | `L1-BINDING-fd849ae20541.json` / `L1-DIFF-fd849ae20541.md` / `dsh-b/REQUIREMENT-TEST-COVERAGE-MATRIX.md` | **实测不含「6/6」**（逐字检索过），见 10.8 |
@@ -625,17 +675,29 @@ M4 的全局反空过（所有 case 一个 id 都不引用）**原样保留**。
 
 ```
 $ python3 docs/releases/v4.1.0/refactoring/tools/verify_matrix.py
-[M1] PASS  15 case(s) carry at least one invariant id, 60 declare an empty mapping (NO_INVARIANT_MATCH) with a per-case basis
+[M1] PASS  12 case(s) carry at least one invariant id, 63 declare an empty mapping (NO_INVARIANT_MATCH) with a per-case basis
 [M2] PASS  75 case(s), mapping status MAPPED/NO_INVARIANT_MATCH
 [M3] PASS  75 case(s), 75 distinct case_id(s)
-[M4] PASS  7 distinct id(s) referenced, all declared in docs/releases/v4.1.0/refactoring/TRANSACTION_INVARIANTS.md
+[M4] PASS  5 distinct id(s) referenced, all declared in docs/releases/v4.1.0/refactoring/TRANSACTION_INVARIANTS.md
 [M5] PASS  75 case(s) use the contract/pilot vocabulary; the mapping covers 9 word(s) and keeps the RED words on KNOWN_FAIL
 [M6] PASS  4 KNOWN_FAIL case(s), every one carries the five-element RED identity
-[M7] PASS  75 case(s) carry a per-case basis; 60 empty mapping(s), all listed in docs/refactor/v4.1.0-c/takeover/INVARIANT-GAP-PROPOSALS.md; 0 declared-invariant label(s) are still shared, 0 of them with divergent id sets
+[M7] PASS  75 case(s) carry a per-case basis (max pairwise similarity < 0.9); 63 empty mapping(s), all listed in the index table of docs/refactor/v4.1.0-c/takeover/INVARIANT-GAP-PROPOSALS.md; 5 invariant id(s) claimed, each justified per case [INV-01×5, INV-02×1, INV-04×2, INV-07×1, INV-14×4]; 0 declared-invariant label(s) are still shared, 0 of them with divergent id sets; FORM ONLY -- substantive agreement with the test source is a human/Oracle review item
 7/7 PASS                                   # exit 0
 
 $ python3 docs/releases/v4.1.0/refactoring/tools/test_matrix_driver.py
 ...
+Q. M7 必须咬住分桶映射
+  [OK]   Q5 ⇒ 基线矩阵过 M7
+  [OK]   Q1 ⇒ 缺依据 ⇒ M7 判红
+  [OK]   Q2 ⇒ 分桶签名 ⇒ M7 判红
+  [OK]   Q2b ⇒ 改一个字也判红
+  [OK]   Q6 ⇒ 模板化依据 ⇒ M7 判红
+  [OK]   Q7 ⇒ 一条 id 铺满矩阵 ⇒ M7 判红
+  [OK]   Q8 ⇒ 依据没点名所主张的 id ⇒ M7 判红
+  [OK]   Q9 ⇒ 词表外的状态 ⇒ M7 判红
+  [OK]   Q3 ⇒ 空映射未登记 ⇒ M7 判红
+  [OK]   Q10 ⇒ 索引表多列了一条 ⇒ M7 判红
+  [OK]   Q4 ⇒ 未声明的空映射 ⇒ M1 判红
 OK: matrix_driver 夹具全部通过              # exit 0
 ```
 
@@ -673,7 +735,77 @@ mapping_status / execution_status / 词表 / red_identity」这句**已过时**�
 
 | 编号 | 残余项 | 需要谁裁决 | 影响 |
 |---|---|---|---|
-| R-T10-1 | **75 条里 60 条映射为空**：试点用例集断言的内容有 60 条在 18 条不变量里没有对应物；11 条不变量零覆盖 | **属主**（裁决是补不变量、还是把这些用例从「不变量覆盖」口径里摘出去） | 按 INV-17 的口径「必需 case 的 NOT_RUN 等状态阻断认证」，零覆盖的不变量同样会阻断阶段出口；`INVARIANT-GAP-PROPOSALS.md` §4 给了三个具体问题 |
+| R-T10-1 | **75 条里 63 条映射为空**：试点用例集断言的内容有 63 条在 18 条不变量里没有对应物（其中 3 条是源码不可读的 bespoke 探针）；**13 条**不变量零覆盖。有**源码派生**覆盖的只有 **12** 条用例（L1 的 44 条里 8 条、L1 的 42 条 PASS 里 6 条） | **属主**（裁决是补不变量、还是把这些用例从「不变量覆盖」口径里摘出去） | 按 INV-17 的口径「必需 case 的 NOT_RUN 等状态阻断认证」，零覆盖的不变量同样会阻断阶段出口；`INVARIANT-GAP-PROPOSALS.md` §4 给了三个具体问题 |
 | R-T10-2 | **INV-15 在冻结基线上不可满足**：BufferPool 没有事务性排空、没有 flush/fsync 路径；`PILOT-T1-002` 钉住的是反面 | **属主**（改 INV-15 措辞，还是排进 C01-10/11） | `PILOT-T1-002`、`PILOT-T3-001`、`PILOT-T3-006` 三条无法映射到任何已登记不变量 |
 | R-T10-3 | **3 条用例的断言体本身是空的/恒真的**：`PILOT-T1-009`（无断言）、`PILOT-T3-002`（空过）、`PILOT-T3-003`（无断言），另有 `PILOT-T5-008` 是恒真式（不在 Task 7 的 38 条内，本轮新发现） | **属主**（另开一次授权改这 4 条测试体） | 这 4 条对任何不变量都不构成证据；改文本救不回来 |
 | R-T10-4 | **M1 的判定形式被放宽**（接受显式声明的空映射） | **属主**（确认口径） | 门禁契约由 6/6 变 7/7；M1 仍拒绝静默空映射，M4 的全局反空过原样保留 |
+| R-T10-5 | **3 条 bespoke 探针的源码不在仓内**：`PILOT-T5-101`、`PILOT-T6-001B`、`PILOT-T6-002B`。本轮第一轮曾按**标签与声明目的**给它们贴过 id（那正是本任务要消灭的缺陷类别），已全部撤下、改为空映射并登记 `INVARIANT-GAP-PROPOSALS.md` 的 **GAP-14** | **属主**（要不要把这三条的探针源码迁入仓内；不迁入则它们永远只能是 `NOT_RUN`，且 INV-10 / INV-12 永远零覆盖） | 按 INV-17 的口径「必需 case 的 NOT_RUN 阻断认证」；这也是 L1-DIFF §五-3 记的同一类**装配缺口** |
+
+
+### 10.11 修订 1（评审后）：撤下标签派生的映射、收紧 M7、登记词表
+
+> **日期**：2026-11-24（Task 10 修复轮 1）
+> **触发**：Task 10 的评审（0 Critical / 4 Important / 4 Minor）+ 控制者的裁定 R43–R46。
+> **性质**：本节记录本轮对 §10 的**修订**；§0–§9（Task 7 的判定记录与 Oracle 的 BLOCKED 状态）**一字未改**。
+
+#### 10.11.1 R43：撤下三条「靠标签贴出来」的映射
+
+`PILOT-T5-101`、`PILOT-T6-001B`、`PILOT-T6-002B` 的测试源码**不在本仓**（探针未迁入 / `probe_registry` 未绑定），
+因此**无法按 Step 2 判定它们实际断言了什么**。本轮第一轮给它们贴的 id 依据的是**探针标签与声明目的** ——
+这与 Task 5 那个「按 feature 分桶贴 id」的缺陷是同一类错误（标签本身就是分桶的产物）。
+
+**处置**：三条全部改为 `invariant_ids = []`、`invariant_mapping_status = NO_INVARIANT_MATCH`，
+依据改写为「源码不可读 → 按 Step 2 的源码口径只能留空」，并登记进 `INVARIANT-GAP-PROPOSALS.md`
+的 **GAP-14**（新增的第 14 组）。**若属主想保留任何一条映射供其权衡，它必须被排除在一切覆盖统计之外。**
+
+**后果（已在 §10.2、缺口提案 §0.1/§0.3/§0.4 与本节各处同步）**：
+
+| 指标 | 修订前 | 修订后 |
+|---|---|---|
+| 有映射的用例 | 15 | **12** |
+| 空映射的用例 | 60 | **63** |
+| 有**源码派生**覆盖的不变量 | 7（INV-01/02/04/07/10/12/14） | **5**（INV-01/02/04/07/14） |
+| 零覆盖的不变量 | 11 | **13**（INV-10 与 INV-12 归零） |
+| L1 44 条里有源码派生覆盖 | 8 | 8（不变） |
+| L1 42 条 PASS 里有源码派生覆盖 | 6 | 6（不变） |
+
+**Task 9 的放行判据必须用「源码派生覆盖」这个数**：**12**（全部）/ **8**（L1）/ **6**（L1 的 PASS）。
+
+#### 10.11.2 R44：38 条的分档对照（§5 的分桶 ↔ 任务书的档名）
+
+见 §10.3 开头的那张对照表。**要点**：任务书 Step 1 的括号注（「R2 4 条 = 需改映射+改断言文本、
+R3 2 条 = 需改测试」）与它自己的条数、以及与 §5 的逐条行，都**对不上**；
+本轮按「条数 + Step 3 / Step 5 的动作」对齐，并在 §10.3 明写这行映射，避免读者按括号注去数会对不上。
+
+同时澄清一处口径：**GAP-05 的 4 条里只有 3 条在这 38 条之内**
+（`PILOT-T1-009`、`PILOT-T3-002`、`PILOT-T3-003`）；`PILOT-T5-008`（恒真断言）是本轮全 75 条重做时新发现的。
+所以「38 条里 35 条可判定 / 3 条仍不可判定」这个统计**只算那 3 条**，T5-008 不影响它。
+
+#### 10.11.3 R45：M7 从「形式门」升级成「不靠改写就能咬住」的形式门
+
+| 修订前 | 修订后 |
+|---|---|
+| (b) 同一 `(declared_invariant, ids)` 桶内，依据**逐字相等**才算抄 | (b) **全局**比较：规范化文本（去空白、去标点）上的相似度 ≥ **0.90** 即判红；「抄一遍再改一个字」也判红（夹具 Q2b） |
+| 无「一条 id 铺满矩阵」的约束 | (c) 主张某条 id 的 case 必须在**自己的**依据里点名它；且**一条 id 不得被三分之一的矩阵以上主张**（原缺陷的形状是「一句标签覆盖 30 条里的 28 条」） |
+| (c) 空映射只要在缺口提案文件里出现（全文子串） | (e) 空映射与缺口提案的**索引表**（表格行）**双向**对齐：表里有而矩阵里不是空映射 → 判红；矩阵里是空映射而表里没有 → 判红 |
+
+**并且**：工具的 docstring 里新增了 **WHAT "7/7 PASS" MEANS** 一节，明写
+「M7 验的是**形式**；一条映射与测试源码是否**实质**相符，是人（Oracle / 副签人）的事；
+绿灯 M7 **不是**「映射已被验证」的陈述」。M7 自己的返回串里也带着这句。
+
+#### 10.11.4 R46：`NO_INVARIANT_MATCH` 登记进登记表
+
+`invariant_mapping_status` 的**封闭词表**（`MAPPED` / `NO_INVARIANT_MATCH`）登记在
+`docs/releases/v4.1.0/refactoring/TRANSACTION_INVARIANTS.md` 的「矩阵映射状态词表」一节 ——
+那是 **M4 读的登记表**，矩阵的消费者不必读工具就能解析这个字段。
+M7 每次运行都把登记表里的词表**读回来**与工具的常量 `MAPPING_STATUSES` 比对，
+**工具与登记表不能各说各话**；并要求矩阵里每条 case 的状态都在该词表内（夹具 Q9 / Q9b）。
+
+#### 10.11.5 本轮**没有**改变的
+
+- `red_identity`、任何 `assertion_*` 字段、`execution_status`、`actual`、`artifact_sha256`
+  **逐字节未动**（§10.5）；
+- **没有任何 Rust 代码改动**（`git diff -- crates/ tests/ src/` 为空），所以 44 条的
+  `assertion_source_sha256` 仍然成立；
+- **Oracle 签署步骤仍然 BLOCKED**，本节不产生任何签名；
+- 38 条的可判定性统计（35 可判定 / 3 不可判定）不变 —— 被撤下的三条探针**不在那 38 条里**。
