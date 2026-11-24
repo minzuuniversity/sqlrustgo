@@ -34,9 +34,12 @@
 #   A control  intact tree ⇒ gate exits 0
 #   B fault   the guard marker is removed from `pub fn execute_insert`
 #             ⇒ the gate must go red (its [1/4] count drops below 3)
-#   C hole    a NEW unguarded DML entry point is added instead ⇒ the gate
-#             stays green.  Informational: it documents the hole above.
-#             This arm never changes the fixture's verdict.
+#
+# The OTHER direction — a NEW unguarded DML entry point that is ADDED — is
+# NOT caught by this gate, and that claim is proved by a separate
+# characterization fixture (the machine-readable known hole on this gate's
+# ledger row):
+#     audit/v4.1.0/neg/fx22-arch3-added-bypass-invisible-characterization.sh
 #
 # Part of the v4.1.0 readiness plan (Task 8).  NOT a gate: it never runs in
 # ci_gate.sh, never changes the gate denominator (168).  It mutates a
@@ -51,10 +54,10 @@ GATE="scripts/gate/check_arch3_no_bypass.sh"
 TARGET="src/execution_engine_methods.rs"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=audit/v4.1.0/neg/fx_two_layer.sh
-. "$HERE/fx_two_layer.sh"
+# shellcheck source=audit/v4.1.0/neg/neg_two_layer.sh
+. "$HERE/neg_two_layer.sh"
 
-# restore() is the shared one (fx_two_layer.sh): it puts the scratch tree back
+# restore() is the shared one (neg_two_layer.sh): it puts the scratch tree back
 # and does not delete the evidence run directory this fixture belongs to.
 restore() {
     fx_restore "$T"
@@ -100,39 +103,6 @@ TWO_LAYER_RC=$?
 echo "----- fx17 gate output (tail 12) -----"
 tail -12 "$FX_RUN_DIR"/001-*.stdout 2>/dev/null || true
 echo "----- end -----"
-
-# --- arm C (informational): does ADDING a bypass turn the gate red? ---------
-if [ "$TWO_LAYER_RC" -eq 0 ]; then
-    restore
-    python3 - "$T/$TARGET" <<'PY'
-import sys
-path = sys.argv[1]
-src = open(path, encoding="utf-8").read()
-anchor = "    pub fn execute_update("
-add = ('    // fx17 arm C: a NEW DML entry point that bypasses ExecutionEngine\'s\n'
-       '    // VtuGuard path assertion.\n'
-       '    pub fn execute_insert_raw(&mut self, insert: &InsertStatement)\n'
-       '        -> SqlResult<ExecutorResult>\n'
-       '    {\n'
-       '        crate::engine_dml::execute_insert(self, insert)\n'
-       '    }\n\n')
-if anchor not in src:
-    sys.exit("fx17 arm C: anchor not found")
-open(path, "w", encoding="utf-8").write(src.replace(anchor, add + anchor, 1))
-PY
-    C_LOG="$(mktemp)"
-    ( cd "$T" && timeout 300 bash "$GATE" ) >"$C_LOG" 2>&1
-    C_RC=$?
-    echo "----- fx17 arm C (ADD a bypass instead) rc=$C_RC -----"
-    tail -6 "$C_LOG"
-    rm -f "$C_LOG"
-    if [ "$C_RC" -eq 0 ]; then
-        echo "fx17 arm C: the gate stayed GREEN after a bypass was ADDED -> KNOWN HOLE of $GATE (it only notices a REMOVED marker); informational, does not change this fixture's verdict"
-    else
-        echo "fx17 arm C: the gate went red after a bypass was ADDED (rc=$C_RC) -> the gate does detect added bypasses"
-    fi
-    restore
-fi
 
 if [ "$TWO_LAYER_RC" -ne 0 ]; then
     echo "$FX_ID: could not run the two-layer check -> INCONCLUSIVE"

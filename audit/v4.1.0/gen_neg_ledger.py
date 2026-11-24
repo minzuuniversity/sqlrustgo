@@ -12,13 +12,26 @@ Not a gate: it never runs in ci_gate.sh and never changes the denominator.
 """
 import json, pathlib, re, sys
 
-REPO = pathlib.Path("/Volumes/workspace/dev/sqlrustgo/.worktrees/410")
+# The repository root, derived from this file's own location: the generator
+# must be able to write into WHICHEVER checkout it is run from, otherwise
+# "the ledger is reproducible from a clean checkout" is false in a second
+# sense (it used to point at one machine's worktree).
+REPO = pathlib.Path(__file__).resolve().parents[2]
 CAT = REPO / "docs/releases/v4.1.0/GATE_CATALOG.jsonl"
 OUT = REPO / "docs/releases/v4.1.0/NEG_FIXTURES_v4.1.0.jsonl"
+# Two evidence runs, because two different batches of fixtures were executed in
+# two different runs:
+#   RUN  -- the historical batch (fx01..fx08, fx14, the self-test ones)
+#   RUN8 -- the v4.1.0 readiness plan's Task 8 batch (fx02 re-run + fx15..fx20
+#           and their two characterization companions fx21/fx22)
+# Both are arguments so that a re-run against another tree can name its own
+# runs; the defaults are the ones the committed ledger cites.
 RUN = sys.argv[1] if len(sys.argv) > 1 else "20261105-negfix-003"
+RUN8 = sys.argv[2] if len(sys.argv) > 2 else "20261124-task8-alpha-negfix-001"
 ISSUE = "issue#5598"
 NEG = "audit/v4.1.0/neg/"
 LOG_FX = "audit/v4.1.0/runs/%s/logs/003-neg-fixtures.stdout" % RUN
+LOG_FX8 = "audit/v4.1.0/runs/%s/logs/003-neg-fixtures.stdout" % RUN8
 LOG_ST = "audit/v4.1.0/runs/%s/logs/004-neg-selftests.stdout" % RUN
 NAME = re.compile(r"SOAK|PERF|COMPAT|TPCH|STABILITY|CRASH|UPGRADE|CHAOS|QPS|SYSBENCH", re.I)
 
@@ -33,8 +46,6 @@ scope = sorted({g for g, r in cat.items()
 MUT = {
  "scripts/gate/check_gate_executability.sh": ("fx01-executability-missing-script.sh", "static",
    "STAGE_CONFIG 的 required gate 脚本被删掉时 C1 存在性判据变红（实测门禁 rc=1）。该门禁另有 A/B/C 三臂自带 selftest（scripts/gate/gate_executability.py）"),
- "scripts/gate/check_anti_ignore_gate.sh": ("fx02-anti-ignore-registry-drift.sh", "static",
-   "往 tests/*.rs 加一个真实 #[ignore] 而不登记进 tests/baseline/ignore_registry.json ⇒ registry drift 判据变红（实测 rc=1）"),
  "scripts/gate/check_drift_not_pass.sh": ("fx03-drift-not-pass-new-antipattern.sh", "static",
    "新增一个用 `cargo test ... > log 2>&1 || true` 吞退出码的门禁脚本 ⇒ 相对 tests/baseline/drift_baseline.json 出现新反例，门禁变红（实测 rc=1）"),
  "scripts/gate/check_tests_dont_write_archived_evidence.sh": ("fx04-tests-write-archived-evidence.sh", "static",
@@ -45,6 +56,40 @@ MUT = {
    "删掉 CROSS-VERSION-DEBT.md 全部候选路径 ⇒ 按缺文档 exit 1（实测 rc=1）"),
  "scripts/gate/check_docs_links.sh": ("fx07-docs-links-broken.sh", "static",
    "在入口文档 README.md 加一条指向不存在路径的 markdown 链接 ⇒ 变红（实测 rc=1）"),
+}
+# The Task 8 batch (v4.1.0 readiness plan): six ALPHA-stage rows whose evidence
+# is the Task 8 evidence run.  fx02 is in here because the Task 8 round
+# re-ran it (it was extended with a two-layer proof and a discriminating
+# assertion), so its evidence_run/evidence_log must point at the run that
+# actually executed it.
+#
+# Every row here states the property the fixture ACTUALLY established.  Where
+# the fixture also proved the opposite (the gate cannot see some failure mode),
+# that is recorded as a **known hole** -- a field the ledger validator checks
+# (the referenced fixture must declare `# expect: green-characterization`) --
+# and never as a `catches` claim.
+MUT8 = {
+ "scripts/gate/check_anti_ignore_gate.sh": ("fx02-anti-ignore-registry-drift.sh", "static",
+   "往 tests/*.rs 加一个真实 #[ignore] 而不登记进 tests/baseline/ignore_registry.json ⇒ registry drift 判据变红；夹具另断言门禁报出的 drift 数字随注入的 #[ignore] 变化（该门禁在冻结基线上本来就是红的：树里 136 个真实 #[ignore] vs 登记表登记 135）", None, None),
+ "scripts/gate/check_alpha_v410.sh": ("fx15-alpha-v410-composite-entry-doc-missing.sh", "composite",
+   "删掉 docs/releases/v4.1.0/STAGE.yaml 后 composite 的 ENTRY_STATUS 变成非 0、并打印 'STATUS: ALPHA GATE BLOCKED'（改前是 ALPHA ENTRY PASS / ALPHA QUALITY BLOCKED）⇒ entry-doc-missing 可证伪；两层 RED 同源于一次 run_gates.py execute 的 results.jsonl",
+   "删 docs/releases/v4.1.0/STAGE.yaml 后 composite 必须变红（其 entry 分量已由 fx08 证伪）；composite 实测 200s 未跑完，需要热构建泳道", None),
+ "scripts/gate/check_arch3_no_bypass.sh": ("fx17-arch3-no-bypass-dml-guard-dropped.sh", "cargo",
+   "ExecutionEngine 的 DML 调用不再声明自己的路径（assert_path_for_dml marker 被摘掉）后门禁的 marker 计数掉到 2 < 3 ⇒ dml-guard-dropped 可证伪。反方向（新增一处绕过 DML 调用）门禁看不见，单独由 fx22 证明并记成 known_hole",
+   "ExecutionEngine 的 DML 调用不再声明自己的路径（assert_path_for_dml marker 被摘掉）⇒ 必须变红",
+   ("audit/v4.1.0/neg/fx22-arch3-added-bypass-invisible-characterization.sh",
+    "门禁只数 marker（src/execution_engine*.rs 里 assert_path_for_dml 计数 >= 3、三个 EE DML 函数各自带 marker、openclaw 端点 marker >= 2、marker 函数是 pub），**新增**一处绕过 DML 调用不改变其中任何一项 ⇒ 实测新增后门禁仍然绿（fx22）。改判据属属主决策（#5595 / #5598）")),
+ "scripts/gate/check_arch_invariants.sh": ("fx16-arch-invariants-invariant-impl-removed.sh", "cargo",
+   "摘掉 C-ARCH-05 的实现对象 src/execution_engine.rs 后，门禁必须 fail closed（'cannot be evaluated - target file not found'）⇒ invariant-impl-removed 可证伪",
+   "摘掉一条 invariant 的实现 ⇒ 必须变红", None),
+ "scripts/gate/check_g1_tpch_baseline.sh": ("fx20-g1-tpch-baseline-hash-tampered.sh", "runtime",
+   "篡改 tests/tpch_hashes_v380.json 的 SF1 基线数字后，门禁比对的就是被篡改的那个数 ⇒ hash-tampered 可证伪。对照是绿的：冻结基线上门禁 exit 0、算出的哈希等于基线数字 7439ce80…，所以红可归因于篡改",
+   "篡改 SF1 基线数字 ⇒ 必须变红；需要 SF1 数据集与热 target", None),
+ "scripts/gate/check_sql_corpus_gate.sh": ("fx19-sql-corpus-gate-corpus-truncated.sh", "cargo",
+   "截断语料库（sql_corpus/**/*.sql 全部截成 0 字节）后语料量到 0.0% 通过率、门禁判 'FAIL: pass rate 0.0% < 80.0% threshold' ⇒ corpus-truncated 可证伪。篡改 expected 输出对该门禁不可见，单独由 fx21 证明并记成 known_hole",
+   "截断语料库 ⇒ 必须变红",
+   ("audit/v4.1.0/neg/fx21-sql-corpus-expected-tamper-invisible-characterization.sh",
+    "语料 harness 解析 `-- EXPECT: rows <n>` 时取 expect.split_whitespace().next()（第一个词是 'rows'），parse 必然失败 ⇒ expected_rows 一直是 None ⇒ success 回落到 unwrap_or(true) ⇒ **期望行数从来没有被比较过**。实测篡改 1476 条 EXPECT 后门禁仍报 98.2% 仍然绿（fx21）。改 harness 就是改门禁在量什么，属属主决策（#5595 / #5598）")),
 }
 SELF = {
  "scripts/gate/check_commit_message.sh": ("scripts/gate/check_commit_message.sh",
@@ -59,17 +104,13 @@ UNF = {
    "脚本末尾是 `exit 0  # 不阻塞，因为是改进项`：夹具把 crates/ 里的 DriftGate 引用全部改名后，门禁自己打印 `FAIL (0 references - path not established)`，退出码仍是 0 ⇒ 这道 GA required gate 结构上不可能变红。改判定属 AGENTS 3.2，且会让 GA 清单立刻红，属 owner 决策（#5595 / #5598）"),
 }
 PEND = {
- "scripts/gate/check_alpha_v410.sh": ("composite", "删 docs/releases/v4.1.0/STAGE.yaml 后 composite 必须变红（其 entry 分量已由 fx08 证伪）；composite 实测 200s 未跑完，需要热构建泳道"),
  "scripts/gate/check_anti_fabrication.sh": ("cargo", "删掉一条降级声明的 run 引用，或把白名单里一条已知失败测试改成真实失败 ⇒ 必须变红；先要 cargo check 热 target"),
- "scripts/gate/check_arch3_no_bypass.sh": ("cargo", "新增一处绕过 ExecutionEngine 的 DML 调用 ⇒ 必须变红"),
- "scripts/gate/check_arch_invariants.sh": ("cargo", "摘掉一条 invariant 的实现 ⇒ 必须变红"),
  "scripts/gate/check_arch_sem_debt.sh": ("cargo", "把语义债表里一条 CLOSED 改回 ACTIVE 且无计划 ⇒ 必须变红"),
  "scripts/gate/check_backup_restore.sh": ("runtime", "让 backup→restore 往返丢行（截断备份）⇒ 必须变红；需要构建产物"),
  "scripts/gate/check_beta_gate.sh": ("composite", "把 BETA 覆盖率实测降到 COVERAGE_MIN_BETA 之下 ⇒ 必须变红"),
  "scripts/gate/check_coverage_v312.sh": ("cargo", "把某个 crate 的覆盖率表替换成低于阈值的值 ⇒ 必须变红；llvm-cov 实测 >720s 未跑完"),
  "scripts/gate/check_full_gate_verification.sh": ("cargo", "让它调用的某道子门禁必然变红（复用 fx04 的夹具文件），composite 必须报该子门禁 FAIL 而不是吞掉退出码"),
  "scripts/gate/check_g16_compatibility.sh": ("external", "把一个兼容性用例期望改错或断掉 oracle ⇒ 必须变红；需要外部 MySQL/Oracle"),
- "scripts/gate/check_g1_tpch_baseline.sh": ("runtime", "喂空结果集或篡改 SF1 基线数字 ⇒ 必须变红；需要 SF1 数据集与热 target"),
  "scripts/gate/check_gate_self_verification.sh": ("cargo", "注入一个 `0 tests run` 的 cargo test 目标 ⇒ 必须按它自己声明的 V1 判红"),
  "scripts/gate/check_int2_no_orphan.sh": ("cargo", "把孤岛 executor 的引用改名清零 ⇒ 必须变红"),
  "scripts/gate/check_int3_single_expr.sh": ("cargo", "恢复 expr crate 的第二实现 ⇒ 必须变红"),
@@ -81,7 +122,6 @@ PEND = {
  "scripts/gate/check_p23_hash_chain.sh": ("runtime", "截断 hash chain 中段 ⇒ 必须变红"),
  "scripts/gate/check_rc_ga_gate.sh": ("composite", "删掉一条 GA required gate 的执行点 ⇒ 必须变红。注意 GATE_CATALOG 里它的 neg_fixture=True 是关键字误命中（命中的是 `ADR-004-negative-evidence.md` 这个文件名），不是夹具"),
  "scripts/gate/check_sem1_savepoint.sh": ("runtime", "让 SAVEPOINT 回滚漏放锁 ⇒ 必须变红"),
- "scripts/gate/check_sql_corpus_gate.sh": ("cargo", "截断语料库或篡改 expected 输出 ⇒ 必须变红"),
 }
 EXTRA = {
  "scripts/gate/check_4019_sysbench_baseline.sh": ("external", "把 sysbench 跑成 0 TPS 的空会话 ⇒ 必须变红"),
@@ -116,6 +156,18 @@ for gate, (fx, cost, note) in sorted(MUT.items()):
     rows.append({"gate": gate, "stages": cat[gate].get("stages") or [], "class": cat[gate]["class"],
                  "kind": "mutation-verified", "fixture_id": fx[:-3], "fixture": NEG + fx,
                  "evidence_run": RUN, "evidence_log": LOG_FX, "cost": cost, "note": note})
+
+for gate, (fx, cost, note, target, hole) in sorted(MUT8.items()):
+    row = {"gate": gate, "stages": cat[gate].get("stages") or [], "class": cat[gate]["class"],
+           "kind": "mutation-verified", "fixture_id": fx[:-3], "fixture": NEG + fx,
+           "evidence_run": RUN8, "evidence_log": LOG_FX8, "cost": cost, "note": note}
+    if target:
+        row["target"] = target
+        row["close_run"] = ISSUE
+    if hole:
+        row["known_hole"] = hole[0]
+        row["known_hole_reason"] = hole[1]
+    rows.append(row)
 
 for r in rows:
     if r["gate"] == "scripts/gate/check_int_debt.sh":

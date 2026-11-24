@@ -69,7 +69,7 @@ GATES=(
     "scripts/gate/check_anti_ignore_gate.sh|audit/v4.1.0/neg/fx02-anti-ignore-registry-drift.sh"
     "scripts/gate/check_arch_invariants.sh|audit/v4.1.0/neg/fx16-arch-invariants-invariant-impl-removed.sh"
     "scripts/gate/check_arch3_no_bypass.sh|audit/v4.1.0/neg/fx17-arch3-no-bypass-dml-guard-dropped.sh"
-    "scripts/gate/check_sql_corpus_gate.sh|audit/v4.1.0/neg/fx19-sql-corpus-gate-expected-tampered.sh"
+    "scripts/gate/check_sql_corpus_gate.sh|audit/v4.1.0/neg/fx19-sql-corpus-gate-corpus-truncated.sh"
     "scripts/gate/check_g1_tpch_baseline.sh|audit/v4.1.0/neg/fx20-g1-tpch-baseline-hash-tampered.sh"
     "scripts/gate/check_alpha_v410.sh|audit/v4.1.0/neg/fx15-alpha-v410-composite-entry-doc-missing.sh"
     "scripts/gate/check_coverage_v312.sh|audit/v4.1.0/neg/fx18-coverage-v312-crate-coverage-below-threshold.sh"

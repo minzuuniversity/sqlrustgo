@@ -20,6 +20,13 @@
 # number, the gate's expectation changes with it.  That is the claim
 # "篡改 SF1 基线数字 ⇒ 必须变红" in its checkable form.
 #
+# The control arm must be GREEN, and it is: measured on the frozen base the
+# gate prints "G1 PASS: TPC-H 22/22 baseline verified, hash=7439ce80..." and
+# exits 0, i.e. the computed hash EQUALS the baseline number in
+# tests/tpch_hashes_v380.json.  So the red that follows the tamper is
+# attributable to the tamper; a red control would mean the red was already
+# there (R50) and the fixture would report INCONCLUSIVE.
+#
 # The TPC-H fixture data (8 .tbl files) is required by the gate and is
 # present in this environment (~/sqlrustgo-tpch/data).  Without it the gate
 # reports INCOMPLETE (exit 2), which this fixture reports as INCONCLUSIVE
@@ -38,10 +45,10 @@ GATE="scripts/gate/check_g1_tpch_baseline.sh"
 HASH_FILE="tests/tpch_hashes_v380.json"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=audit/v4.1.0/neg/fx_two_layer.sh
-. "$HERE/fx_two_layer.sh"
+# shellcheck source=audit/v4.1.0/neg/neg_two_layer.sh
+. "$HERE/neg_two_layer.sh"
 
-# restore() is the shared one (fx_two_layer.sh): it puts the scratch tree back
+# restore() is the shared one (neg_two_layer.sh): it puts the scratch tree back
 # and does not delete the evidence run directory this fixture belongs to.
 restore() {
     fx_restore "$T"
@@ -89,6 +96,15 @@ case "$CTL_MATCH" in
 esac
 [ "$CTL_EXPECTED" = "$ORIG_HASH" ] && CTL_SAW_ORIG=1
 echo "$FX_ID: control named the original baseline number: $CTL_SAW_ORIG (control rc=$CTL_RC)"
+# The control must be GREEN: this gate is green on the frozen baseline (the
+# computed hash equals the baseline number), so the red that follows the
+# tamper is attributable to the tamper.  A red control would mean the red
+# was already there (R50).
+if [ "$CTL_RC" -ne 0 ]; then
+    echo "$FX_ID: the gate is ALREADY RED on the intact tree (control rc=$CTL_RC) -> the mutation cannot be attributed to the red -> INCONCLUSIVE"
+    restore
+    exit 4
+fi
 
 # --- inject the fault --------------------------------------------------------
 python3 - "$T/$HASH_FILE" "$TAMPERED_HASH" <<'PY'

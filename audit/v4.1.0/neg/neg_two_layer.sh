@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# fx_two_layer.sh — the shared "two-layer RED" mechanism for the ALPHA
+# neg_two_layer.sh — the shared "two-layer RED" mechanism for the ALPHA
 # negative fixtures (Task 8 of the v4.1.0 readiness plan).
 #
 # WHAT THIS IS
@@ -34,7 +34,7 @@
 #
 # USAGE (from a fixture script)
 # ------------------------------
-#   . "$(dirname "${BASH_SOURCE[0]}")/fx_two_layer.sh"
+#   . "$(dirname "${BASH_SOURCE[0]}")/neg_two_layer.sh"
 #   fx_two_layer_run "$T" "scripts/gate/check_xxx.sh" "fxNN-..." 1800
 #   # afterwards:
 #   $FX_GATE_STATE   PASS | FAIL | INCOMPLETE | MISSING

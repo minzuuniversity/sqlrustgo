@@ -1,42 +1,45 @@
 #!/usr/bin/env bash
-# fx19-sql-corpus-gate-expected-tampered.sh — negative fixture for
+# fx19-sql-corpus-gate-corpus-truncated.sh — negative fixture for
 # scripts/gate/check_sql_corpus_gate.sh
-# fixture-id: fx19-sql-corpus-gate-expected-tampered
+# fixture-id: fx19-sql-corpus-gate-corpus-truncated
 # expect: red
 # fault: truncate the SQL corpus — every sql_corpus/**/*.sql file is cut to
 #        zero length, so the corpus no longer contains a single case.
 #
-# WHY THIS IS THE MUTATION (and what the ledger's other option turned out
-# to be)
-# -------------------------------------------------------------------
-# The ledger's target for this gate is "截断语料库**或**篡改 expected 输出 ⇒
-# 必须变红".  Both halves were tried; only one of them can red the gate,
-# and the reason is worth recording:
+# WHAT THIS ESTABLISHES, AND WHAT IT DOES NOT
+# -------------------------------------------
+# This fixture establishes exactly one property: **a truncated corpus makes the
+# gate red** (the corpus measures 0.0% ⇒ "FAIL: pass rate 0.0% < 80.0%
+# threshold").
 #
-#   * "篡改 expected 输出" — the corpus' expected output is written as
-#     `-- EXPECT: rows <n>`, and crates/sql-corpus/src/lib.rs parses it with
-#     `expect.split_whitespace().next()` — i.e. it takes the word "rows" and
-#     tries to parse THAT as a number.  The parse fails, `expected_rows`
-#     stays None, and `success` falls back to `unwrap_or(true)`.  So the
-#     expected row count is **never compared**: the corpus gate's pass rate
-#     measures "does the statement execute without error", not "does it
-#     return the expected rows".  Arm C below demonstrates this on the real
-#     gate (it stays GREEN after 1476 EXPECT directives are tampered).
-#     That is a real defect of the corpus harness, but fixing it would
-#     change what the gate measures — a gate change, which is the owner's
-#     call, not this task's.
-#   * "截断语料库" — the corpus is truncated to zero length ⇒ the corpus
-#     test has no case to report ⇒ the gate cannot extract a pass rate ⇒
-#     the gate must fail closed ("could not extract pass rate from corpus
-#     output").  This is the mutation this fixture uses, and it is cheap:
-#     the corpus is *data*, so no Rust source changes and cargo has nothing
-#     to rebuild.
+# It does NOT establish "tampering the corpus' expected output makes the gate
+# red" — that property is FALSE, and the proof is a separate characterization
+# fixture:
+#     audit/v4.1.0/neg/fx21-sql-corpus-expected-tamper-invisible-characterization.sh
+# It is recorded on this gate's ledger row as a **known hole** (the
+# machine-readable form), not as a `catches` claim.  Reason (measured):
+# crates/sql-corpus/src/lib.rs parses `-- EXPECT: rows <n>` with
+# `expect.split_whitespace().next()` — i.e. it takes the word "rows" and tries
+# to parse THAT as a number.  The parse fails, `expected_rows` stays None, and
+# `success` falls back to `unwrap_or(true)`.  The expected row count is
+# therefore never compared: this gate's pass rate measures "does the statement
+# execute without error", not "does it return the expected rows".
+#
+# WHY THIS IS CHEAP
+# -----------------
+# The gate runs `cargo test --release -p sqlrustgo-sql-corpus --test corpus_test
+# test_sql_corpus_all` and reads "N% pass rate" out of the output.  The
+# corpus is *data*: changing a `.sql` file does not change any Rust source,
+# so cargo has nothing to rebuild and the release binary is reused.
+#
+# The corpus format (crates/sql-corpus/src/lib.rs) is:
+#   `-- === CASE: <name>`   starts a case
+#   `-- EXPECT: rows <n>`   the case succeeds iff the statement returned n
+#                           rows (`success = rows_returned == expected_rows`)
 #
 # Arms:
 #   A control  intact tree ⇒ the gate exits 0 with a real pass rate
-#   B fault   the corpus is truncated ⇒ the gate must go red (fail closed)
-#   C hole    the EXPECT directives are tampered instead ⇒ the gate stays
-#             GREEN.  Informational: it records the hole above.
+#   B fault   the corpus is truncated ⇒ the gate must go red
 #
 # Part of the v4.1.0 readiness plan (Task 8).  NOT a gate: it never runs in
 # ci_gate.sh, never changes the gate denominator (168).  It mutates a
@@ -45,15 +48,15 @@
 
 set -uo pipefail
 
-T="${1:?usage: fx19-sql-corpus-gate-expected-tampered.sh <scratch-tree>}"
-FX_ID="fx19-sql-corpus-gate-expected-tampered"
+T="${1:?usage: fx19-sql-corpus-gate-corpus-truncated.sh <scratch-tree>}"
+FX_ID="fx19-sql-corpus-gate-corpus-truncated"
 GATE="scripts/gate/check_sql_corpus_gate.sh"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=audit/v4.1.0/neg/fx_two_layer.sh
-. "$HERE/fx_two_layer.sh"
+# shellcheck source=audit/v4.1.0/neg/neg_two_layer.sh
+. "$HERE/neg_two_layer.sh"
 
-# restore() is the shared one (fx_two_layer.sh): it puts the scratch tree back
+# restore() is the shared one (neg_two_layer.sh): it puts the scratch tree back
 # and does not delete the evidence run directory this fixture belongs to.
 restore() {
     fx_restore "$T"
@@ -74,48 +77,6 @@ if [ "$CTL_RC" -ne 0 ]; then
     echo "$FX_ID: the gate is already red on the intact tree (rc=$CTL_RC) -> INCONCLUSIVE (the mutation would not be attributable)"
     restore
     exit 4
-fi
-
-# --- arm C (informational): tamper the EXPECT directives ---------------------
-# Done BEFORE arm B so that the tree is intact again for arm B.
-python3 - "$T/sql_corpus" <<'PY'
-import os, re, sys
-root = sys.argv[1]
-pat = re.compile(r"^(--\s*EXPECT:\s*)(\S+)(.*)$")
-n = 0
-for dirpath, _dirs, files in os.walk(root):
-    for fn in files:
-        if not fn.endswith(".sql"):
-            continue
-        p = os.path.join(dirpath, fn)
-        try:
-            lines = open(p, encoding="utf-8", errors="replace").read().split("\n")
-        except OSError:
-            continue
-        out, hit = [], False
-        for l in lines:
-            m = pat.match(l)
-            if m:
-                out.append("%s999999%s" % (m.group(1), m.group(3)))
-                hit = True
-                n += 1
-            else:
-                out.append(l)
-        if hit:
-            open(p, "w", encoding="utf-8").write("\n".join(out))
-print("fx19 arm C: tampered %d EXPECT directives" % n)
-PY
-C_LOG="$(mktemp)"
-( cd "$T" && timeout 1800 bash "$GATE" ) >"$C_LOG" 2>&1
-C_RC=$?
-echo "----- fx19 arm C (tampered EXPECT directives) rc=$C_RC -----"
-grep -E "pass rate" "$C_LOG" | tail -2 || true
-rm -f "$C_LOG"
-restore
-if [ "$C_RC" -eq 0 ]; then
-    echo "fx19 arm C: the gate stayed GREEN after 1476 expected-output directives were tampered -> KNOWN HOLE of $GATE / of crates/sql-corpus/src/lib.rs: the corpus writes '-- EXPECT: rows <n>' but the harness parses expect.split_whitespace().next() (the word 'rows'), so expected_rows stays None and the row count is never compared. Informational; does not change this fixture's verdict."
-else
-    echo "fx19 arm C: the gate went red after the EXPECT tamper (rc=$C_RC) -> the expected output IS compared"
 fi
 
 # --- inject the fault: truncate the corpus -----------------------------------

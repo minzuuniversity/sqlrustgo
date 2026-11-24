@@ -46,10 +46,10 @@ ENTRY="scripts/gate/check_alpha_entry_v4.10.sh"
 DOC="docs/releases/v4.1.0/STAGE.yaml"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=audit/v4.1.0/neg/fx_two_layer.sh
-. "$HERE/fx_two_layer.sh"
+# shellcheck source=audit/v4.1.0/neg/neg_two_layer.sh
+. "$HERE/neg_two_layer.sh"
 
-# restore() is the shared one (fx_two_layer.sh): it puts the scratch tree back
+# restore() is the shared one (neg_two_layer.sh): it puts the scratch tree back
 # and does not delete the evidence run directory this fixture belongs to.
 restore() {
     fx_restore "$T"

@@ -85,7 +85,7 @@ CATCHES = {
     "scripts/gate/check_alpha_v410.sh": ["entry-doc-missing"],
     "scripts/gate/check_arch_invariants.sh": ["invariant-impl-removed"],
     "scripts/gate/check_arch3_no_bypass.sh": ["dml-guard-dropped"],
-    "scripts/gate/check_sql_corpus_gate.sh": ["expected-tampered"],
+    "scripts/gate/check_sql_corpus_gate.sh": ["corpus-truncated"],
     "scripts/gate/check_g1_tpch_baseline.sh": ["hash-tampered"],
 }
 
