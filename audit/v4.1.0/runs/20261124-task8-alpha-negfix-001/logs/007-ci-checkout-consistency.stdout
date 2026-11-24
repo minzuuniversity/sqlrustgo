@@ -1,0 +1,13 @@
+=== CI checkout consistency gate ===
+[OK]   C1 no workflow downloads actions/checkout from GitHub
+[OK]   C2 every checkout step matches the canonical implementation
+[OK]   C2 every checkout step matches the canonical implementation
+[OK]   C2 every checkout step matches the canonical implementation
+[OK]   C2 every checkout step matches the canonical implementation
+[OK]   C3 ci.yml: checkout inputs are within the allowed value set
+[OK]   C3 gate.yml: checkout inputs are within the allowed value set
+[OK]   C3 ci-trusted-baseline.yml: checkout inputs are within the allowed value set
+[OK]   C3 ci-alpha-stage.yml: checkout inputs are within the allowed value set
+[OK]   C4 every non-gated workflow carries an exemption with a reason
+[OK]   C5 no step runs a repository script before its checkout step
+=== ALL CHECKS PASS ===

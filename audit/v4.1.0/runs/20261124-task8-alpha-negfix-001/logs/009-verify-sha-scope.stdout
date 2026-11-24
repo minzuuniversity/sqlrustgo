@@ -1,0 +1,8 @@
+[S1] PASS  18 task(s), all base_sha == fd849ae205; artifact_context.source_code_base_sha == e9ff21fca3 (unchanged)
+[S2] PASS  75 case(s), all base_sha == fd849ae205
+[S3] PASS  18 record(s), all base_commit == fd849ae205, task_id order identical to the DAG
+[S4] PASS  base_sha == fd849ae205, adr_base_commit == 45da6968ae (unchanged)
+[S5] PASS  141 historical record(s) byte-identical to the frozen baseline fd849ae205; 135 frozen_commit binding(s) compared against 45da6968ae, all unchanged
+[S6] PASS  the tracked evidence/rerun-summary-20261120.json still points at e9ff21fca3; the out-of-repo pilot copy is byte-identical
+note: 6 historical record(s) were added after 45da6968ae; their bytes are covered by the frozen-baseline comparison
+6/6 PASS

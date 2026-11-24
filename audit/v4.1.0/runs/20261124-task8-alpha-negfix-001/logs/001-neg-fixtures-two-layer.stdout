@@ -1,0 +1,42 @@
+verify_neg_fixtures: scratch tree = /Volumes/workspace/dev/wt-v410-base
+verify_neg_fixtures: logs          = /tmp/task8-neg-logs3
+
+===== scripts/gate/check_anti_ignore_gate.sh  <-  audit/v4.1.0/neg/fx02-anti-ignore-registry-drift.sh =====
+  fixture_rc=0 gate_state=FAIL gate_rc=1 stage_verdict=FAIL
+  gate=RED stage=RED
+
+===== scripts/gate/check_arch_invariants.sh  <-  audit/v4.1.0/neg/fx16-arch-invariants-invariant-impl-removed.sh =====
+  fixture_rc=0 gate_state=FAIL gate_rc=1 stage_verdict=FAIL
+  gate=RED stage=RED
+
+===== scripts/gate/check_arch3_no_bypass.sh  <-  audit/v4.1.0/neg/fx17-arch3-no-bypass-dml-guard-dropped.sh =====
+  fixture_rc=0 gate_state=FAIL gate_rc=1 stage_verdict=FAIL
+  gate=RED stage=RED
+
+===== scripts/gate/check_sql_corpus_gate.sh  <-  audit/v4.1.0/neg/fx19-sql-corpus-gate-expected-tampered.sh =====
+  fixture_rc=0 gate_state=FAIL gate_rc=1 stage_verdict=FAIL
+  gate=RED stage=RED
+
+===== scripts/gate/check_g1_tpch_baseline.sh  <-  audit/v4.1.0/neg/fx20-g1-tpch-baseline-hash-tampered.sh =====
+  fixture_rc=0 gate_state=FAIL gate_rc=1 stage_verdict=FAIL
+  gate=RED stage=RED
+
+===== scripts/gate/check_alpha_v410.sh  <-  audit/v4.1.0/neg/fx15-alpha-v410-composite-entry-doc-missing.sh =====
+  fixture_rc=0 gate_state=FAIL gate_rc=1 stage_verdict=FAIL
+  gate=RED stage=RED
+
+===== scripts/gate/check_coverage_v312.sh  <-  audit/v4.1.0/neg/fx18-coverage-v312-crate-coverage-below-threshold.sh =====
+  fixture_rc=4 gate_state=FAIL gate_rc=1 stage_verdict=FAIL
+  gate=INCONCLUSIVE stage=INCONCLUSIVE
+
+===== verify_neg_fixtures summary =====
+  scripts/gate/check_anti_ignore_gate.sh         gate=RED          stage=RED          fixture_rc=0 gate_rc=1 stage_verdict=FAIL
+  scripts/gate/check_arch_invariants.sh          gate=RED          stage=RED          fixture_rc=0 gate_rc=1 stage_verdict=FAIL
+  scripts/gate/check_arch3_no_bypass.sh          gate=RED          stage=RED          fixture_rc=0 gate_rc=1 stage_verdict=FAIL
+  scripts/gate/check_sql_corpus_gate.sh          gate=RED          stage=RED          fixture_rc=0 gate_rc=1 stage_verdict=FAIL
+  scripts/gate/check_g1_tpch_baseline.sh         gate=RED          stage=RED          fixture_rc=0 gate_rc=1 stage_verdict=FAIL
+  scripts/gate/check_alpha_v410.sh               gate=RED          stage=RED          fixture_rc=0 gate_rc=1 stage_verdict=FAIL
+  scripts/gate/check_coverage_v312.sh            gate=INCONCLUSIVE stage=INCONCLUSIVE fixture_rc=4 gate_rc=1 stage_verdict=FAIL
+
+verify_neg_fixtures: RED=6/7  INCONCLUSIVE=1/7
+verify_neg_fixtures: NOT 7/7 — 1 gate(s) did not reach a two-layer RED. This is reported as INCONCLUSIVE, not as a pass (R50).
