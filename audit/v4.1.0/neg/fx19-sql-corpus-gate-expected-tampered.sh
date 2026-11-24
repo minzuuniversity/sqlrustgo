@@ -155,9 +155,15 @@ if [ "$TWO_LAYER_RC" -ne 0 ]; then
 fi
 
 GATE_TAIL="$(cat "$FX_RUN_DIR"/001-*.stdout "$FX_RUN_DIR"/001-*.stderr 2>/dev/null || true)"
+# The gate has two fail-closed answers to "the corpus measures 0%":
+#   * it cannot extract a pass rate at all -> "could not extract pass rate"
+#   * it extracts 0.0%                       -> "pass rate 0.0% < 80.0% threshold"
+# (the corpus harness prints "Final Summary: N files, M cases, X% pass rate",
+#  so a truncated corpus measures 0.0% rather than nothing).  Both are RED.
+CLOSED=0
 case "$GATE_TAIL" in
     *"could not extract pass rate"*) CLOSED=1 ;;
-    *) CLOSED=0 ;;
+    *"pass rate"*"threshold"*) CLOSED=1 ;;
 esac
 
 restore
@@ -178,7 +184,7 @@ if [ "$FX_STAGE_VERDICT" != "FAIL" ]; then
     exit 3
 fi
 if [ "$CLOSED" -ne 1 ]; then
-    echo "$FX_ID: the gate did not fail closed on the truncated corpus -> FIXTURE-FAIL"
+    echo "$FX_ID: the gate did not answer the truncated corpus with a rate verdict -> FIXTURE-FAIL"
     exit 3
 fi
 
