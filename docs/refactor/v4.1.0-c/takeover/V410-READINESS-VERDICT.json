@@ -1,0 +1,109 @@
+{
+  "format": "v410-readiness-verdict/v1",
+  "generated_by": "Task 9 实施者（V410-READINESS-IMPLEMENTATION-PLAN / Task 9 Step 1）",
+  "generated_at": "2026-11-25T12:07:52+0800",
+  "repo": "/Volumes/workspace/dev/wt-v410-base",
+  "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
+  "develop_tip": "8cbde5b6d33c876fa1197474c46d50142a9823bd",
+  "note": "每条判据的 command 都由 gen_verdict.py 真的执行；observed 是该次执行的退出码与真实输出摘要。判据 6 与判据 8 为 FAIL（见各自的归因）。计划正文验收段写的「11 条 PASS + 1 条 WAIVED」是 Task 7/10 之前的乐观预期；差额来自判据 6 与判据 8 两条，以实测为准（R63）。",
+  "summary": {
+    "total": 12,
+    "pass": 9,
+    "fail": 2,
+    "waived": 1,
+    "fail_criteria": [
+      6,
+      8
+    ]
+  },
+  "criteria": [
+    {
+      "id": 1,
+      "criterion": "BASE（内容基线）唯一、develop tip 是其祖先、含 BASE 的分支已推送",
+      "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_baseline.py --strict  &&  git ls-remote origin refs/heads/base/v4.1.0-frozen  &&  git merge-base --is-ancestor fd849ae20541901d5e59f45cd3ba2c51093f5d5e <remote-tip>  &&  git ls-remote origin refs/heads/develop/v4.1.0  &&  git merge-base --is-ancestor <develop-tip> fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
+      "observed": "exit=0\n[B1] PASS  develop tip 8cbde5b6d3 is an ancestor of HEAD\n[B2] PASS  base_sha fd849ae205, tree_sha 72d378e8e5, source_ref base/v4.1.0-frozen and frozen_at all match the repository\n[B3] PASS  123 material file(s) + 56 runtime-contract file(s) imported over develop, all still present in HEAD\n[B4] PASS  ledger complete (applied 1 / path-import 1 / already-present 3); the frozen path-import directory holds 56 file(s)\n4/4 PASS -- COMPLETE: every assertion ran\ngit ls-remote origin refs/heads/base/v4.1.0-frozen -> e007fe711403e767b64a958772965fa397579fc1 (exit=0)\ngit merge-base --is-ancestor fd849ae20541901d5e59f45cd3ba2c51093f5d5e e007fe711403e767b64a958772965fa397579fc1 -> exit=0 (是)\ngit ls-remote origin refs/heads/develop/v4.1.0 -> ea285c5fda77e7790e965ae482e3c1b015fabc10 (exit=0)\ngit merge-base --is-ancestor ea285c5fda77e7790e965ae482e3c1b015fabc10 fd849ae20541901d5e59f45cd3ba2c51093f5d5e -> exit=1 (否)\n本地分支 tip = 09ba360f6cfbf0be2aa4cf7d2064c4b8b50f7958；远端 base/v4.1.0-frozen tip 是 BASE 的后代 = 是",
+      "verdict": "PASS",
+      "caveats": [
+        "判据按**计划正文 Step 1 的命令**判：verify_baseline.py --strict（4/4）+ `git ls-remote origin refs/heads/base/v4.1.0-frozen` 的 tip 须是 BASE 的后代（成立）。",
+        "**设计稿 §A5 #1 的另一条可核方式**（`git merge-base --is-ancestor origin/develop/v4.1.0 BASE`）在本次实测中**不成立**：远端 develop/v4.1.0 的 tip 已是 ea285c5fda77e7790e965ae482e3c1b015fabc10 —— 它是 BASE 的**后代**而非祖先。原因是本任务运行期间（10:00 与 12:05 之间）develop/v4.1.0 被合并了 `base/v4.1.0-frozen`（PR #5928，merge commit ea285c5fda）。这不是 BASE 的缺陷，而是**冻结分支已被并入 develop**（= O11 事实上已被行动回答）。判据 1 的三项实质条件仍全部成立：BASE 唯一 ✓；**冻结时点的 develop tip** 8cbde5b6d3 是 BASE 的祖先 ✓（BASELINE_FREEZE.json 记录，verify_baseline 的 B1 用的就是它）；含 BASE 的分支已推送 ✓。"
+      ]
+    },
+    {
+      "id": 2,
+      "criterion": "45da6968ae 的 123 个材料文件全在 BASE 树内",
+      "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_baseline.py --strict（断言 B3）",
+      "observed": "exit=0；[B3] PASS  123 material file(s) + 56 runtime-contract file(s) imported over develop, all still present in HEAD\n（同一次运行覆盖 B1/B2/B4，见判据 1）",
+      "verdict": "PASS"
+    },
+    {
+      "id": 3,
+      "criterion": "前向/历史 SHA 分界（前向绑定唯一等于 BASE；历史绑定逐项未变）",
+      "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_sha_scope.py",
+      "observed": "exit=0\n[S1] PASS  18 task(s), all base_sha == fd849ae205; artifact_context.source_code_base_sha == e9ff21fca3 (unchanged)\n[S2] PASS  75 case(s), all base_sha == fd849ae205\n[S3] PASS  18 record(s), all base_commit == fd849ae205, task_id order identical to the DAG\n[S4] PASS  base_sha == fd849ae205, adr_base_commit == 45da6968ae (unchanged)\n[S5] PASS  142 historical record(s) byte-identical to the frozen baseline fd849ae205 (141 frozen + 1 registered addition(s)); 135 frozen_commit binding(s) compared against 45da6968ae, all unchanged\n[S6] PASS  the tracked evidence/rerun-summary-20261120.json still points at e9ff21fca3; the out-of-repo pilot copy is byte-identical\nnote: 7 historical record(s) were added after 45da6968ae; their bytes are covered by the frozen-baseline comparison\n6/6 PASS",
+      "verdict": "PASS"
+    },
+    {
+      "id": 4,
+      "criterion": "ADR 机器字段非空、档位正确、映射满足 A2.2 五条规则",
+      "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_handoff.py --check",
+      "observed": "exit=0\n{\n  \"kind\": \"OFFLINE_DELIVERY_VALIDATION_NOT_EXECUTION_CERTIFICATION\",\n  \"source_run\": \"C-ALPHA-01-HANDOFF-20261120\",\n  \"timestamp\": \"2026-11-25T04:07:51.328294+00:00\",\n\"adr_approval\": \"CONDITIONALLY_APPROVED\"\n\"adr_approval_state\": \"PENDING\"\n未映射清单：docs/refactor/v4.1.0-c/takeover/ADAPTER-MAPPING-PENDING.md —— **非空**（C01-15）；按计划正文 Step 4 的口径「若非空则 A5 #4 不能判 PASS」，属主可据此把本条改判 FAIL。本条按其可核方式（--check 退出码 + 变异臂）判 PASS，该冲突已提交属主裁决（见 V410-OWNER-RULING.md 的顾虑段）。",
+      "verdict": "PASS"
+    },
+    {
+      "id": 5,
+      "criterion": "manifest 零漂移",
+      "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_handoff.py --check（含 manifest 全文件哈希复算）",
+      "observed": "exit=0\n\"hara_hashed_files\": 55\n\"local_links\": 42\n\"task_dag\": \"ACYCLIC_NO_MISSING_DEPENDENCIES\"\nmanifest 绑定文件数 = 314；manifest 自身 sha256 = 8b12989eeeebb96ab14190fd85f5d2cb54af7becda5fc29693e471a1ba6f6a66",
+      "verdict": "PASS"
+    },
+    {
+      "id": 6,
+      "criterion": "已执行切片全部有终态 + Oracle 签署 + 双向差异表",
+      "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_matrix.py  &&  检查 docs/releases/v4.1.0/refactoring/evidence/L1-DIFF-fd849ae20541.md 的表头  &&  统计矩阵的签署字段",
+      "observed": "exit=0\n[M2] PASS  75 case(s), mapping status MAPPED/NO_INVARIANT_MATCH\n[M3] PASS  75 case(s), 75 distinct case_id(s)\n[M4] PASS  5 distinct id(s) referenced, all declared in docs/releases/v4.1.0/refactoring/TRANSACTION_INVARIANTS.md\n[M5] PASS  75 case(s) use the contract/pilot vocabulary; the mapping covers 9 word(s) and keeps the RED words on KNOWN_FAIL\n[M6] PASS  4 KNOWN_FAIL case(s), every one carries the five-element RED identity\n[M7] PASS  75 case(s) carry a per-case basis (max pairwise similarity < 0.9); 63 empty mapping(s), all listed in the index table of docs/refactor/v4.1.0-c/takeover/INVARIANT-GAP-PROPOSALS.md; 5 invariant id(s) claimed, each justified per case [INV-01×5, INV-02×1, INV-04×2, INV-07×1, INV-14×4]; 0 declared-invariant label(s) still shared, 0 of them with divergent id sets; FORM ONLY -- substantive agreement with the test source is a human/Oracle review item\nnote: docs/releases/v4.1.0/refactoring/STORAGE_CAPABILITY_CONTRACT.md declares no invariant id -- the corpus is the id column of the other registry\n7/7 PASS\nL1 切片（feature ∈ T1/T2/T3）=44 条，全部有终态：{'PASS': 42, 'NOT_RUN': 2}\n双向差异表：docs/releases/v4.1.0/refactoring/evidence/L1-DIFF-fd849ae20541.md —— 文件存在=True，表头逐字符匹配=True\n**Oracle 副签：0 条**。assertion_review_verdict 分布 = {'ASSERTION_UNREVIEWABLE': 38, 'JUDGED_PENDING_COUNTERSIGNATURE': 6}；assertion_review_performed_by = {'task7-executor/minimax-m3.1-flash': 44}（= 实施者本人，非属主授权的独立 Reviewer，按 R-ORACLE 不构成签署）。\n⇒ 「有终态」✓、「双向差异表」✓、「Oracle 签署」✗ ⇒ 判据 6 = FAIL（缺口在**签署层**）。",
+      "verdict": "FAIL"
+    },
+    {
+      "id": 7,
+      "criterion": "ALPHA 阶段清单有 CI 执行点",
+      "command": "grep -rn -- '--stage ALPHA' .gitea/workflows/*.yml  +  逐条核对「真实执行 / 非 --dry-run / 退出码可传播 / 触发条件可指认」",
+      "observed": "执行点唯一：ci-alpha-stage.yml（.gitea/workflows/*.yml 全文检索 `--stage ALPHA` 只命中 1 处）\n真实执行（非 --dry-run）：True\n触发条件可指认：True；步骤 if: startsWith(github.ref, 'refs/heads/develop/') = True\n退出码可传播：check_stage.sh 有 set -euo pipefail，门禁 FAIL 时 exit 1",
+      "verdict": "PASS"
+    },
+    {
+      "id": 8,
+      "criterion": "ALPHA 7 道负向夹具两层 RED",
+      "command": "bash audit/v4.1.0/neg/verify_neg_fixtures.sh",
+      "observed": "本次实跑（同一棵树、同一命令），完整日志 /Volumes/workspace/dev/sqlrustgo/.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/task-9-neg-logs/run.log，逐夹具日志 /Volumes/workspace/dev/sqlrustgo/.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/task-9-neg-logs/fixtures//\n退出码=3\nverify_neg_fixtures: RED=5/7  INCONCLUSIVE=2/7\n逐门禁：\n  scripts/gate/check_anti_ignore_gate.sh gate=RED stage=RED\n  scripts/gate/check_arch_invariants.sh gate=RED stage=RED\n  scripts/gate/check_arch3_no_bypass.sh gate=RED stage=RED\n  scripts/gate/check_sql_corpus_gate.sh gate=RED stage=RED\n  scripts/gate/check_g1_tpch_baseline.sh gate=RED stage=RED\n  scripts/gate/check_alpha_v410.sh gate=INCONCLUSIVE stage=INCONCLUSIVE\n  scripts/gate/check_coverage_v312.sh gate=INCONCLUSIVE stage=INCONCLUSIVE",
+      "verdict": "FAIL"
+    },
+    {
+      "id": 9,
+      "criterion": "门禁编目内部自洽",
+      "command": "python3 scripts/gate/gate_registry.py check",
+      "observed": "exit=0\n{\"kind\": \"gate_registry_check\", \"catalog\": \"/Volumes/workspace/dev/wt-v410-base/docs/releases/v4.1.0/GATE_CATALOG.jsonl\", \"check_n\": 168, \"catalog_rows\": 168, \"by_class\": {\"stage_required\": 34, \"ci_reachable\": 51, \"orphan_referenced\": 22, \"dead\": 61}, \"by_disposition\": {\"archive-candidate\": 32, \"keep-rewire\": 12, \"needs-execution-point\": 25, \"needs-external-host\": 12, \"superseded\": 2}, \"fails\": 0}\ngate_registry: OK",
+      "verdict": "PASS"
+    },
+    {
+      "id": 10,
+      "criterion": "外审包三套统计一致（71/71/71）",
+      "command": "python3 /Volumes/workspace/dev/workspaces/dsh-ops/projects/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2/verify_r2_package.py（判据 10 的 10 项断言）",
+      "observed": "exit=0\nevidence_index.json (SSOT): total=71 counts={'VERIFIED': 24, 'REPORTED': 41, 'NOT_RUN': 6}\nPASS  #10 EVIDENCE-INDEX.json 条数 == SSOT  -- index=71 ssot=71\nPASS  #10 EVIDENCE-INDEX.json 等级分布 == SSOT  -- index={'VERIFIED': 24, 'REPORTED': 41, 'NOT_RUN': 6} ssot={'VERIFIED': 24, 'REPORTED': 41, 'NOT_RUN': 6}\nPASS  #10 EVIDENCE-INDEX.json 的 total 字段 == 实测条数  -- field=71 measured=71\nPASS  #10 EVIDENCE-COVERAGE.md 表格行数 == SSOT  -- rows=71 ssot=71\nPASS  #10 EVIDENCE-COVERAGE.md 表格等级分布 == SSOT  -- table={'VERIFIED': 24, 'REPORTED': 41, 'NOT_RUN': 6} ssot={'VERIFIED': 24, 'REPORTED': 41, 'NOT_RUN': 6}\nPASS  #10 EVIDENCE-COVERAGE.md 行 id 无重复且有序\nPASS  #10 EVIDENCE-COVERAGE.md §2 声明的统计 == 实测  -- 合计 **71** 条，等级分布 **VERIFIED 24 / REPORTED 41 / NOT_RUN 6**\nPASS  #10 01-EXECUTIVE-SUMMARY.md 声明的总数 == 实测  -- 证据索引合计 71 条\nPASS  #10 01-EXECUTIVE-SUMMARY.md VERIFIED 计数 == 实测  -- | VERIFIED | 24 |\nPASS  #10 01-EXECUTIVE-SUMMARY.md REPORTED 计数 == 实测  -- | REPORTED | 41 |\nPASS  #10 01-EXECUTIVE-SUMMARY.md NOT_RUN 计数 == 实测  -- | NOT_RUN | 6 |\nFAIL #10：无\nR1 的漂移实测：EVIDENCE-COVERAGE.md 68 条 21/41/6、01-EXECUTIVE-SUMMARY.md 64 条 13/45/6；R2 由 evidence_index.json 单向生成后三套均为 71 条 24/41/6",
+      "verdict": "PASS"
+    },
+    {
+      "id": 11,
+      "criterion": "dead 门禁口径唯一化",
+      "command": "python3 /Volumes/workspace/dev/workspaces/dsh-ops/projects/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2/verify_r2_package.py（判据 11 的全文检索断言）",
+      "observed": "exit=0\nPASS  #11 R2 全文无「61 道…全部有文档引用」  -- 0 命中\nPASS  #11 唯一口径陈述在 04-GATE-GOVERNANCE.md §2（83 = 61 无引用 + 22 有引用）\nFAIL #11：无\n检索式：全部有文档引用 / 全部仍有文档引用 / 全部有正文引用 / 61 道全部有文档引用（排除 4 个构建脚本，它们以旧串为替换锚点）；唯一口径陈述在 04-GATE-GOVERNANCE.md §2",
+      "verdict": "PASS"
+    },
+    {
+      "id": 12,
+      "criterion": "SQLRUSTGO_LOCAL_ONLY 路由 fail-closed —— 本次准入**显式豁免**（O9）",
+      "command": "（显式豁免，不跑校验；事实记录见设计稿 §A5 #12 与 V410-OWNER-RULING.md 的豁免记录）",
+      "observed": "属主裁决 O9（2026-11-23，已裁决）：跨仓库变更不纳入本次准入，显式豁免。\n事实：`SQLRUSTGO_LOCAL_ONLY` 在 sqlrustgo 仓库零命中，存在于 DSH 仓库；DSH 路由器是**策略级** LOCAL_ONLY（router.py:277/290），不存在 per-task 的数据分类维度，「缺分类即 BLOCKED」在本次准入范围内**未成立**。\n豁免记录（含 waiver_id / reason / scope / compensating_control / expires_at / approved_by）写在 V410-OWNER-RULING.md §2.1。",
+      "verdict": "WAIVED"
+    }
+  ]
+}
