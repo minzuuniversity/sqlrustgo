@@ -195,6 +195,45 @@ def sha256_file(path):
     return h.hexdigest()
 
 
+# The lane's self-reported tree identity.
+#
+# `verify_neg_fixtures.sh` prints ONE line on stdout:
+#
+#     verify_neg_fixtures: tree_sha=<40 hex> dirty_files=<n>
+#
+# `tree_sha` identifies the COMMIT the lane measured on; `dirty_files` says how
+# many uncommitted changes that tree carried.  Both are needed: when the
+# scratch tree is not the repository, the dirty check is skipped, so a
+# MODIFIED tree shares its commit's SHA with a pristine one — the SHA alone
+# does not identify what was measured.
+#
+# The line is matched loosely on purpose (the prefix is matched, the values
+# are parsed) and the WHOLE line is returned verbatim so the verdict can
+# quote it: a quoted line can be grepped out of the log by a reader.
+LANE_ID_RE = re.compile(
+    r"^\s*verify_neg_fixtures:\s*tree_sha=([0-9a-f]{40})\s+dirty_files=(\d+)\s*$",
+    re.M,
+)
+
+
+def read_lane_identity(text):
+    """Read the lane's self-reported tree identity out of its log.
+
+    Returns a dict with:
+      line       -- the verbatim `tree_sha=` line, or "" if absent
+      tree_sha   -- the 40-hex commit SHA, or "" if absent
+      dirty_files-- the number of uncommitted changes, or None if absent
+
+    A log that predates the lane learning to speak returns empty values, and
+    the caller falls back to the reconstruction path (and says so).
+    """
+    m = LANE_ID_RE.search(text or "")
+    if not m:
+        return {"line": "", "tree_sha": "", "dirty_files": None}
+    return {"line": m.group(0).strip(), "tree_sha": m.group(1),
+            "dirty_files": int(m.group(2))}
+
+
 def owner_approved_reviewers(repo):
     """Read the owner-approved reviewer list from V410-OWNER-RULING.md.
 
@@ -662,25 +701,43 @@ def main():
     # Two DIFFERENT provenances, and the verdict must not mix them up:
     #   * the lane was run BY THIS SCRIPT  -> the tree is an OBSERVATION
     #     (`git rev-parse HEAD` right before the run);
-    #   * an existing log is reused       -> the tree is a RECONSTRUCTION
-    #     (the log carries no commit SHA at all).
+    #   * an existing log is reused       -> the tree is whatever the LOG
+    #     says, and only if the log says anything.
+    #
+    # Since 2026-11-26 the lane reports its own identity on the line
+    #     verify_neg_fixtures: tree_sha=<40 hex> dirty_files=<n>
+    # so a reused log now CARRIES the tree identity and the verdict no longer
+    # has to reconstruct it.  The fallback to `--neg-run-tree` survives only
+    # for logs written before the lane learned to speak (and then the tree is
+    # labelled a reconstruction, as it always was).
     neg_observed = bool(args.run_neg or not os.path.isfile(neg_log))
     if neg_observed:
         rc8, out8 = run(cmd8, repo, timeout=4 * 3600)
         open(neg_log, "w", encoding="utf-8").write(out8)
         neg_date = time.strftime("%Y-%m-%d")
-        neg_tree = run("git rev-parse HEAD", repo)[1].strip()
         neg_sha = sha256_file(neg_log)
+        # The lane printed its own identity; prefer it over our own guess.
+        lane_id = read_lane_identity(out8)
+        neg_tree = lane_id["tree_sha"] or run("git rev-parse HEAD", repo)[1].strip()
+        neg_dirty = lane_id["dirty_files"]
         neg_tree_origin = "本次运行：HEAD 即实测树（观测值）。"
         neg_src_line = "【本次运行（脚本内实跑）的实测值】"
     else:
         out8 = open(neg_log, encoding="utf-8").read()
         neg_date = args.neg_run_date
-        neg_tree = args.neg_run_tree
         neg_sha = sha256_file(neg_log)
-        neg_tree_origin = ("**推定/重构值**（不是从日志里读出来的）："
-                           "日志本身**不含**树身份 —— `run.log` 里没有任何 40 位十六进制串，"
-                           "只有 `scratch tree = <路径>` 与逐夹具判决。")
+        lane_id = read_lane_identity(out8)
+        neg_dirty = lane_id["dirty_files"]
+        if lane_id["tree_sha"]:
+            neg_tree = lane_id["tree_sha"]
+            neg_tree_origin = ("**观测值**（从泳道日志里逐字读出的 `tree_sha=` 行，"
+                               "不是本脚本复算的）：`verify_neg_fixtures.sh` 自 2026-11-26 "
+                               "起在日志头部自报被测树的身份。")
+        else:
+            neg_tree = args.neg_run_tree
+            neg_tree_origin = ("**推定/重构值**（不是从日志里读出来的）："
+                               "该日志早于泳道自报树身份的版本 —— 日志里没有任何 "
+                               "40 位十六进制串，只有 `scratch tree = <路径>` 与逐夹具判决。")
         neg_src_line = "【沿用 %s 的实测值】" % neg_date
     summ = re.search(r"verify_neg_fixtures: RED=(\d+)/7\s+INCONCLUSIVE=(\d+)/7", out8)
     red = int(summ.group(1)) if summ else -1
@@ -708,6 +765,10 @@ def main():
                     "本次 FAIL 判定不受影响。改动路径全表：%s"
                     % (neg_tree, len(changed_rows), red,
                        "；".join("%s %s" % (st, p) for st, p in changed_rows) or "（空）"))
+    # The tree identity line, quoted VERBATIM from the log.  Quoting it (not
+    # paraphrasing it) is what makes the identity checkable by a reader: the
+    # same string can be found in the log with `grep`.
+    id_line = lane_id["line"] or "（该日志没有 `tree_sha=` 行 —— 泳道早于自报身份的版本）"
     # The note MUST follow the provenance of the tree, not the other way round:
     # claiming "this tree is a reconstruction" about an OBSERVED tree would be
     # false, and claiming "e2d98149d2 was wrong" about a tree that never ran
@@ -717,13 +778,39 @@ def main():
             "【作者陈述，非本次命令输出】**实测日期：%s；实测树：`%s`**\n"
             "**该树身份是观测值，不是推定值。** 本次泳道是本脚本自己跑的"
             "（`--run-neg`，或既有日志不存在），跑之前工作树是干净的"
-            "（`verify_sha_scope.py` 拒绝脏树），泳道以仓库自身作 scratch 树 "
-            "⇒ 全程 HEAD = `%s`（本次运行前 `git rev-parse HEAD` 的实测输出）。\n"
+            "（`verify_sha_scope.py` 拒绝脏树）。\n"
+            "泳道日志自报的被测树身份（逐字引用）：`%s`\n"
             "**结论未受影响**：%s\n"
-            "**事实来源**：`git rev-parse HEAD`（本次运行前的实测输出）、"
+            "**事实来源**：泳道日志的 `tree_sha=` 行（观测值）、"
             "`audit/v4.1.0/neg/verify_neg_fixtures.sh`（脏树拒绝逻辑）、"
             "`docs/refactor/v4.1.0-c/takeover/V410-READINESS-STATE.md` §4 的 R63。"
-            % (neg_date, neg_tree, neg_tree, lane_txt))
+            % (neg_date, neg_tree, id_line, lane_txt))
+    elif lane_id["tree_sha"] and neg_dirty == 0:
+        note8 = (
+            "【作者陈述，非本次命令输出】**实测日期：%s；实测树：`%s`**\n"
+            "**该树身份是观测值，不是推定值。** 它是从泳道日志里**逐字读出来**的 —— "
+            "泳道自报身份的那一行：\n"
+            "`%s`\n"
+            "`dirty_files=0` ⇒ 被测树在该 commit 上没有未提交改动 ⇒ 这个 SHA "
+            "**唯一确定**了被测树。\n"
+            "**结论未受影响**：%s\n"
+            "**事实来源**：泳道日志的 `tree_sha=` 行（观测值）、"
+            "`audit/v4.1.0/neg/verify_neg_fixtures.sh`（自报身份与脏树拒绝逻辑）、"
+            "`docs/refactor/v4.1.0-c/takeover/V410-READINESS-STATE.md` §4 的 R63。"
+            % (neg_date, neg_tree, id_line, lane_txt))
+    elif lane_id["tree_sha"]:
+        note8 = (
+            "【作者陈述，非本次命令输出】**实测日期：%s；实测树：`%s`**\n"
+            "**该树身份是部分观测值。** 它是从泳道日志里逐字读出来的：\n"
+            "`%s`\n"
+            "但 `dirty_files=%s` > 0 ⇒ 被测树在该 commit 上**还有未提交改动** ⇒ "
+            "这个 SHA **不唯一确定**被测树（改动的内容没有被记录）。\n"
+            "⚠️ 因此本次测量**只对 HEAD 可迁移**：迁移判定见下（泳道相关路径的 diff）。\n"
+            "**结论未受影响**：%s\n"
+            "**事实来源**：泳道日志的 `tree_sha=` 行（观测值）、"
+            "`audit/v4.1.0/neg/verify_neg_fixtures.sh`（自报身份与脏树拒绝逻辑）、"
+            "`docs/refactor/v4.1.0-c/takeover/V410-READINESS-STATE.md` §4 的 R63。"
+            % (neg_date, neg_tree, id_line, neg_dirty, lane_txt))
     elif neg_tree == NEG_RUN_TREE_DEFAULT:
         note8 = (
             "【作者陈述，非本次命令输出】**实测日期：%s；实测树：`%s`**\n"
@@ -763,14 +850,16 @@ def main():
             "%s完整日志 %s，sha256 `%s`\n"
             "退出码=%d —— 来自脚本自身的退出码语义（`verify_neg_fixtures.sh`：RED_N==7 → 0，否则 → 3）；"
             "**不是**从日志里读的（日志末行的 `NEG_EXIT=` 是空的，不构成证据）。\n"
+            "被测树身份（逐字引用泳道日志的 `tree_sha=` 行）：%s\n"
             "%s\n逐门禁：\n%s\n"
             "%s\n"
-            "⇒ RED=%d/7 ≠ 7/7 ⇒ 判据 8 = FAIL（缺口在**证据层**）。"
+            "⇒ RED=%d/7 ⇒ 判据 8 = %s。"
             % (neg_src_line, neg_log, neg_sha, rc8,
+               id_line,
                summ.group(0) if summ else tail(out8, 4),
                "\n".join("  %s gate=%s stage=%s" % r for r in rows),
                lane_txt,
-               red)),
+               red, "PASS" if red == 7 else "FAIL（缺口在**证据层**）")),
         "note": note8,
         "verdict": "PASS" if red == 7 else "FAIL",
     })

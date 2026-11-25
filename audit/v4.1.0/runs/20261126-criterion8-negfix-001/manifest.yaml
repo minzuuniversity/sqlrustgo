@@ -1,0 +1,76 @@
+schema_version: 1
+run_id: 20261126-criterion8-negfix-001
+source_agent: dsh-b/task9-implementer
+frozen_commit: 5324d2348c78e8fc4b9e8edb4fcece3f0359a6d1
+environment:
+  os: Darwin
+  arch: arm64
+  hostname: Mac-mini-7.local
+  rustc: rustc 1.99.0 (b940084d7 2026-09-28)
+  cargo: cargo 1.99.0 (5f94df478 2026-08-27)
+  env_vars: {}
+  worktree_clean: false
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+  fixture_logs:
+    logs/fixtures/fx02-anti-ignore-registry-drift.log: d929a3b88bacf09dba053288d5b24ce7c312a6d8ce6d80125a16c5e846d9a0fd
+    logs/fixtures/fx15-alpha-v410-composite-entry-doc-missing.log: 1c59d976967a618b9e474f11ddbb710fd5c58547a79b55e1b610ecbdd2181c4b
+    logs/fixtures/fx16-arch-invariants-invariant-impl-removed.log: e24bc199c94c74740ee61b4ffa35cd7f55bded790c57ec8988bc779687977a43
+    logs/fixtures/fx17-arch3-no-bypass-dml-guard-dropped.log: 131f4e9b32c42efaa4ba242df41c4212999dcd74bdae25b667bf5660459d35f8
+    logs/fixtures/fx18-coverage-v312-crate-coverage-below-threshold.log: 8436bce25744fc45db4374e233f2b5260ff451b2b897bd206d2b596002ee5749
+    logs/fixtures/fx19-sql-corpus-gate-corpus-truncated.log: 05dbfd337841cc8abcd1700a848b4885688bff7c83fd2190558ed8c6b141327a
+    logs/fixtures/fx20-g1-tpch-baseline-hash-tampered.log: 2086c67a6486ea345a3068a9caff89d8a1a4cb37cc69b45e12ef3c4caf856b37
+    logs/fixtures/warmup.log: 0c219c056d14865f79b158e64cf14c98c65ee4b69593e2b1bbb402c367df6b42
+  lane_stdout:
+    logs/001-neg-fixtures-two-layer.stdout: 3378f9b5b340f9df60206ca3988dbe9725ec71cb11aa8ffb503575ecc61d9946
+commands:
+- id: neg-fixtures-two-layer
+  name: ALPHA 7 道门禁的两层 RED 逐道验证（本轮含无条件预热与树身份自报）
+  cmd: FX_LOG_DIR=<run>/logs bash audit/v4.1.0/neg/verify_neg_fixtures.sh
+  cwd: .
+  timeout_sec: null
+  commit: 5324d2348c78e8fc4b9e8edb4fcece3f0359a6d1
+- id: neg-ledger-check
+  name: 夹具台账结构/语义/证据落盘对账
+  cmd: python3 audit/v4.1.0/probe_neg_fixtures.py check
+  cwd: .
+  timeout_sec: null
+  commit: 5324d2348c78e8fc4b9e8edb4fcece3f0359a6d1
+- id: honesty-check
+  name: 门禁声明（effect.catches）与夹具账一致性
+  cmd: python3 audit/v4.1.0/honesty.py check
+  cwd: .
+  timeout_sec: null
+  commit: 5324d2348c78e8fc4b9e8edb4fcece3f0359a6d1
+- id: gate-registry-check
+  name: 门禁清单现场重算（分母必须仍是 168）
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: null
+  commit: 5324d2348c78e8fc4b9e8edb4fcece3f0359a6d1
+- id: kanban-render-check
+  name: 看板 MD 台账与 JSONL SSOT 一致（rc=0）
+  cmd: python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
+  cwd: .
+  timeout_sec: null
+  commit: 5324d2348c78e8fc4b9e8edb4fcece3f0359a6d1
+- id: coverage-control-intact-tree
+  name: 覆盖率门禁在完整树上的 go/no-go 测量（stage=ga；须 8/8 crates 可测且均值 >= 85）
+  cmd: SQLRUSTGO_COVERAGE_STAGE=ga bash scripts/gate/check_coverage_v312.sh
+  cwd: .
+  timeout_sec: null
+  commit: 5324d2348c78e8fc4b9e8edb4fcece3f0359a6d1
+results:
+- id: neg-fixtures-two-layer
+  exit_code: 0
+  started_at: '2026-11-26T00:41:00+00:00'
+  finished_at: '2026-11-26T01:18:00+00:00'
+  stdout_path: logs/001-neg-fixtures-two-layer.stdout
+  stdout_sha256: 3378f9b5b340f9df60206ca3988dbe9725ec71cb11aa8ffb503575ecc61d9946
+  stderr_path: logs/001-neg-fixtures-two-layer.stdout
+  stderr_sha256: 3378f9b5b340f9df60206ca3988dbe9725ec71cb11aa8ffb503575ecc61d9946
+notes: '判据 #8 的证据层修复轮。① 覆盖率门禁的基线红只在**测量层**移除（COVERAGE_RED_CHARACTERISATION_TEST_FILES）；RED 特征测试本身仍 RED（#5913/#5914）。②
+  泳道重排（消费 cargo 产物的夹具在前）+ 无条件预热 + 自报树身份（tree_sha + dirty_files）。③ 结果：RED=7/7 INCONCLUSIVE=0/7，退出码 0，零
+  exit_code=124。④ go/no-go 测量：8/8 crates 可测，sqlrustgo-storage=80.93%，average=87.72%（threshold 85），rc=0。'
+evidence_hash: sha256:1132edd5578d29e863a02b7afeea0b64a4a58c68a41e68e01b6d397b978efb80

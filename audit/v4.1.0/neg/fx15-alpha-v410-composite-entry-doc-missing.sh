@@ -74,7 +74,16 @@ fi
 rm -f "$T/$DOC"
 
 # --- run the real gate through the tri-state runner --------------------------
-fx_two_layer_run "$T" "$GATE" "$FX_ID" 7200
+# The budget is 14400s (4 hours), raised from 7200s.  The archived manifests
+# record this fixture hitting the budget twice — rc=124 at 5400s and again at
+# 10800s — before it finally completed, so 7200s was below the measurement's
+# own worst case.  The lane now warms the target before the fixtures run
+# (verify_neg_fixtures.sh) and runs every cargo-consuming fixture before any
+# fixture that touches Rust source, so the rebuild that used to eat the
+# budget is gone.  The budget is still raised: a timeout here is
+# INCONCLUSIVE, never a red (R50), and the cost of raising it is only wall
+# clock.
+fx_two_layer_run "$T" "$GATE" "$FX_ID" 14400
 TWO_LAYER_RC=$?
 echo "----- fx15 gate output (tail 16) -----"
 tail -16 "$FX_RUN_DIR"/001-*.stdout 2>/dev/null || true

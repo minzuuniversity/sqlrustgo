@@ -161,17 +161,60 @@ fn coverage_gate_excludes_the_environment_dependent_tests() {
     // #5579: the exclusion lists live in scripts/gate/common.sh now
     // (COVERAGE_EXCLUDED_TEST_FILES for the machine-dependent crash tests,
     // COVERAGE_PERF_BOUND_TEST_FILES for the wall-clock-bound ones).
+    //
+    // The two `tf_t4_*` files are excluded for a THIRD reason: they are RED
+    // by design (characterisation tests that assert the known
+    // "STUB_SILENT_SUCCESS" defect on purpose). A failing test target makes
+    // `cargo llvm-cov` exit 101 => the crate produces no coverage table =>
+    // the L1_8 sample becomes 7 of 8 => the gate can only say "the
+    // measurement did not happen", never a coverage number. That made the
+    // baseline red for a reason unrelated to coverage, and no mutation of the
+    // coverage tables could be attributed to it.
+    //
+    // The exclusion removes these tests from the MEASUREMENT only. The tests
+    // themselves still run and still fail — they are the RED characterisation
+    // suite (RED-LEDGER #5913/#5914). Nothing here may turn them green.
     let shared = read("scripts/gate/common.sh");
     for f in [
         "crates/storage/tests/crash_commit_fsync_b1.rs",
         "crates/storage/tests/crash_wal_index_b1.rs",
         "crates/storage/tests/fault_coordination.rs",
         "crates/storage/tests/write_path_scaling_5181.rs",
+        "crates/storage/tests/tf_t4_ai_candidate_v1.rs",
+        "crates/storage/tests/tf_t4_stub_silent_success.rs",
     ] {
         assert!(
             shared.contains(f),
             "the coverage measurement must exclude the environment-dependent \
              test file {f}"
+        );
+    }
+
+    // The exclusion must be NAMED as its own group, so it can be audited and
+    // so shrinking it is a visible change rather than a silent one.
+    assert!(
+        shared.contains("COVERAGE_RED_CHARACTERISATION_TEST_FILES"),
+        "the RED-by-design characterisation tests must live in their own \
+         named exclusion group in scripts/gate/common.sh"
+    );
+    // The exclusion set must be PRINTED in the coverage report — an
+    // exclusion that cannot be seen cannot be audited (R2).
+    assert!(
+        shared.contains("coverage_print_excluded_tests"),
+        "the coverage report must print the excluded test set so the \
+         exclusion is visible in the report itself"
+    );
+    // The RED characterisation tests must still be RED: the exclusion is a
+    // measurement exclusion, not a `#[ignore]` in disguise.
+    for f in [
+        "crates/storage/tests/tf_t4_ai_candidate_v1.rs",
+        "crates/storage/tests/tf_t4_stub_silent_success.rs",
+    ] {
+        let code = code_only(&read(f));
+        assert!(
+            !code.contains("#[ignore"),
+            "{f} is a RED characterisation test — it must NOT be turned into \
+             an ignored test to make the coverage gate green"
         );
     }
 }

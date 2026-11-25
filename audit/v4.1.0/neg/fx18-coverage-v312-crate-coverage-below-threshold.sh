@@ -2,28 +2,57 @@
 # fx18-coverage-v312-crate-coverage-below-threshold.sh — negative fixture for
 # scripts/gate/check_coverage_v312.sh
 # fixture-id: fx18-coverage-v312-crate-coverage-below-threshold
-# expect: inconclusive
+# expect: red
 #
-# WHY "inconclusive" AND NOT "red"
-# ---------------------------------
-# This fixture cannot establish its property in this tree, and saying so is the
-# honest outcome (R50/R58): the coverage gate is ALREADY RED on the intact
-# tree -- `sqlrustgo-storage` produces no coverage table at all because the
-# RED characterisation tests imported by the readiness plan's earlier tasks
+# WHAT CHANGED AND WHY THIS IS NOW A RED FIXTURE
+# ------------------------------------------------
+# The fixture used to be `expect: inconclusive` because the coverage gate was
+# ALREADY RED on the intact tree -- `sqlrustgo-storage` produced no coverage
+# table at all, because the RED characterisation tests imported by the
+# readiness plan's earlier tasks
 # (crates/storage/tests/tf_t4_ai_candidate_v1.rs, tf_t4_stub_silent_success.rs)
-# fail BY DESIGN, so `cargo llvm-cov` exits 101 and the L1_8 sample is 7 of 8.
-# The gate's red therefore exists before this fixture injects anything, and the
-# red cannot be attributed to the injection.
+# fail BY DESIGN, so `cargo llvm-cov` exited 101 and the L1_8 sample was 7 of 8.
+# The gate's red therefore existed before this fixture injected anything, and
+# the red could not be attributed to the injection.
 #
-# The fixture still does its job as far as it can: it measures the mutated
-# crate's coverage table (93.31% -> 20.42%, i.e. the defect DOES replace the
-# table with a below-threshold value), it runs the gate, and it proves the
-# attribution is impossible.  Then it reports INCONCLUSIVE (exit 4) instead of
-# claiming a red it cannot attribute.
+# That baseline red has now been REMOVED AT THE MEASUREMENT LAYER ONLY:
+# `scripts/gate/common.sh` gained `COVERAGE_RED_CHARACTERISATION_TEST_FILES`,
+# which excludes those two files' test functions from the coverage
+# measurement (libtest `--skip`), so `sqlrustgo-storage` measures normally
+# and the L1_8 sample is 8 of 8.
 #
-# The ledger row of this gate therefore stays kind=pending-fixture and carries
-# no `effect.catches` claim: nobody may say "this gate catches a below-threshold
-# coverage table" until a run can actually show it.
+# WHAT THE EXCLUSION DOES NOT DO (R7):
+#
+#   * it does NOT turn the RED characterisation tests green -- they still run
+#     and still fail (RED-LEDGER #5913/#5914);
+#   * it does NOT relax any threshold;
+#   * it does NOT touch `coverage_verdict` -- any other reason for a crate
+#     being unmeasurable still FAILS the gate and still names the crate.
+#
+# So the control arm below must now be GREEN on the intact tree, and the
+# mutation arm's red IS attributable to the injection.  If the control arm
+# is not green, the fixture reports INCONCLUSIVE (exit 4) -- it never claims a
+# red it cannot attribute.
+#
+# THE STAGE BAR IS PINNED TO `ga` (85), EXPLICITLY
+# -----------------------------------------------
+# This fixture measures the gate at the **GA** bar, not the ALPHA bar:
+# `SQLRUSTGO_COVERAGE_STAGE=ga` is exported below and the gate output is
+# asserted to contain `stage=ga`.  Two reasons:
+#
+#   * at the ALPHA bar (50) the target's mutation is arithmetically unable to
+#     reach the threshold: the other seven crates already average ~86.64%, so
+#     the L1_8 average cannot fall below 50 by changing ONE crate -- it would
+#     need a negative coverage;
+#   * the number that matters is the GA bar, because
+#     `check_coverage_v312.sh` defaults to `ga` when the caller says nothing
+#     (the strictest bar, by #5581's design) -- `scripts/gate/check_stage.sh`
+#     is the only caller that overrides it, and it overrides it to the
+#     DETECTED stage (alpha) for the ALPHA stage list.
+#
+# The `stage=ga` assertion pins WHICH bar the measurement was made at; it
+# does not copy the threshold number (the SSOT owns the number).
+#
 # fault: replace one crate's coverage table with a value below the threshold
 #        — sqlrustgo-transaction's measured line coverage is driven down by
 #        adding code that no test ever executes, so its coverage table reads
@@ -56,37 +85,10 @@
 # failure) would be a different failure and is rejected by this fixture.
 #
 # Cost: the gate measures eight crates with `cargo llvm-cov`, which is the
-# expensive lane of this ledger (its own note says ">720s 未跑完").  A run
-# that hits the timeout is reported as INCONCLUSIVE, never as a red (R50).
-#
-# TWO MEASURED FACTS THAT MAKE THIS FIXTURE INCONCLUSIVE TODAY (both are
-# findings, not excuses; neither is repaired here — repairing either one
-# changes what the gate measures, which is the owner's call):
-#
-# 1. **The gate is red at baseline in this tree.**  `sqlrustgo-storage`
-#    produces NO coverage table at all: the RED characterisation tests the
-#    readiness plan's earlier tasks imported
-#    (crates/storage/tests/tf_t4_ai_candidate_v1.rs and
-#    tf_t4_stub_silent_success.rs) fail BY DESIGN (they assert the
-#    "STUB_SILENT_SUCCESS" defect on purpose), and a failing test target
-#    makes `cargo llvm-cov` exit 101.  The L1_8 sample is therefore 7 of 8
-#    and the gate takes its fail-closed path: "FAIL: measured 7 of 8 crates".
-#    Measured: control rc=1, with $CRATE at 93.31%; after the mutation
-#    $CRATE reads 20.42% — the defect DID replace the crate's coverage table,
-#    but the gate's red was already there, so the red cannot be attributed
-#    to the defect.  The fixture therefore reports INCONCLUSIVE.
-#
-# 2. **At the ALPHA bar the target's mutation is arithmetically unable to
-#    reach the threshold.**  The ALPHA stage runs this gate with
-#    `SQLRUSTGO_COVERAGE_STAGE=alpha` (bar 50; the GA bar is 85).  With the
-#    repository's own recorded per-crate numbers (scripts/gate/common.sh:
-#    parser 86.46, planner 88.91, executor 82.68, transaction 93.29,
-#    storage 80.65, catalog 87.33, optimizer 87.85, types 95.04) the other
-#    seven crates already average 86.64%, so the L1_8 average cannot fall
-#    below 50 by changing ONE crate — it would need a negative coverage.
-#    Only a change in a shared dependency (sqlrustgo-types) could move the
-#    ALPHA bar.  This fixture measures the gate with its own default bar
-#    (85) and says so rather than silently claiming the ALPHA bar.
+# expensive lane of this ledger.  A run that hits the budget is reported as
+# INCONCLUSIVE, never as a red (R50).  The budget below is 3600s per arm
+# (the archived runs recorded rc=124 at 1800s and at 5400s before the lane
+# was warmed; the warm target plus the 3600s budget fits the measurement).
 #
 # Part of the v4.1.0 readiness plan (Task 8).  NOT a gate: it never runs in
 # ci_gate.sh, never changes the gate denominator (168).  It mutates a
@@ -121,29 +123,47 @@ if [ ! -f "$T/$TARGET" ]; then
     exit 4
 fi
 
-# --- control: what does the gate say on the INTACT tree? ---------------------
-# This gate is red at baseline in this environment for a reason that has
-# nothing to do with coverage: `sqlrustgo-storage` cannot be measured at all,
-# because the RED characterisation tests imported by the readiness plan's
-# earlier tasks (crates/storage/tests/tf_t4_ai_candidate_v1.rs,
-# tf_t4_stub_silent_success.rs) fail BY DESIGN.  A failing test target makes
-# `cargo llvm-cov` exit 101 => no coverage table for that crate => the L1_8
-# sample is 7 of 8 => the gate reports "measured 7 of 8 crates" and goes red
-# on its fail-closed path.
+# The threshold bar is PINNED to `ga` (the strictest bar) for BOTH arms.
 #
-# The control therefore decides the fixture's verdict: if the gate is
-# already red without the defect, the defect cannot be attributed to the
-# mutation and the fixture must report INCONCLUSIVE (R50), not a red.
+# `check_coverage_v312.sh` reads `SQLRUSTGO_COVERAGE_STAGE` and defaults to
+# `ga` when it is unset — but "unset" is not a decision, it is an absence of
+# one, and the caller must be able to see which bar the measurement was made
+# at.  Exporting it explicitly here makes the bar part of the fixture's
+# contract instead of an accident of the gate's default.  The threshold
+# NUMBER is not copied into this file: the SSOT owns it
+# (docs/governance/STAGE_CONFIG.yaml → thresholds → COVERAGE_MIN_GA).
+export SQLRUSTGO_COVERAGE_STAGE=ga
+
+# --- control: what does the gate say on the INTACT tree? ---------------------
+# The control arm decides the fixture's verdict: if the gate is already red
+# without the defect, the defect cannot be attributed to the mutation and the
+# fixture must report INCONCLUSIVE (R50), not a red.
+#
+# The baseline red that used to make this arm red is gone: the RED-by-design
+# characterisation tests are excluded from the coverage MEASUREMENT (not from
+# the repository), so `sqlrustgo-storage` measures and the L1_8 sample is 8 of
+# 8.  The control arm must therefore be GREEN (rc=0) on the intact tree.
 echo "----- fx18 control (intact tree) -----"
 CTL_LOG="$(mktemp)"
 CTL_T0=$(date +%s)
-( cd "$T" && timeout 1800 bash "$GATE" ) >"$CTL_LOG" 2>&1
+( cd "$T" && timeout 3600 bash "$GATE" ) >"$CTL_LOG" 2>&1
 CTL_RC=$?
 CTL_T1=$(date +%s)
 echo "control rc=$CTL_RC in $((CTL_T1-CTL_T0))s"
 tail -4 "$CTL_LOG"
 CTL_MUT_PCT="$(grep -m1 -E "$CRATE: [0-9]+\.[0-9]+%" "$CTL_LOG" | grep -oE '[0-9]+\.[0-9]+' || true)"
 echo "$FX_ID: control: $CRATE coverage = ${CTL_MUT_PCT:-<none>}%, gate rc=$CTL_RC"
+
+# The stage bar is PINNED, not inherited: the control arm must have measured
+# at `stage=ga`.  This asserts WHICH bar, not the threshold number — the
+# threshold's number lives in the SSOT and is deliberately not copied here.
+if ! grep -q 'stage=ga' "$CTL_LOG"; then
+    echo "$FX_ID: the control arm did not report 'stage=ga' -> INCONCLUSIVE (the threshold bar must be pinned)"
+    grep -m1 'Coverage criterion' "$CTL_LOG" || true
+    rm -f "$CTL_LOG"
+    restore
+    exit 4
+fi
 rm -f "$CTL_LOG"
 
 # --- inject the fault --------------------------------------------------------
@@ -164,13 +184,12 @@ fi
 echo "$FX_ID: appended $PAD never-executed functions to $TARGET"
 
 # --- run the real gate through the tri-state runner --------------------------
-# The budget is the one this ledger sets (issue #5598): 30 minutes per
-# fixture.  The gate measures eight crates with `cargo llvm-cov`
-# (single-threaded, instrumented) and does NOT finish inside it — the
-# parser crate alone was still measuring after 20 minutes on this machine.
-# A run that hits the budget is reported as INCONCLUSIVE, never as a red
-# (R50): a timeout is not a drift.
-fx_two_layer_run "$T" "$GATE" "$FX_ID" 1800
+# The budget is the one this ledger sets (issue #5598), raised to 3600s per
+# arm: the gate measures eight crates with `cargo llvm-cov`
+# (single-threaded, instrumented) and the archived runs recorded rc=124 at
+# 1800s.  A run that hits the budget is reported as INCONCLUSIVE, never as a
+# red (R50): a timeout is not a drift.
+fx_two_layer_run "$T" "$GATE" "$FX_ID" 3600
 TWO_LAYER_RC=$?
 echo "----- fx18 gate output (tail 30) -----"
 tail -30 "$FX_RUN_DIR"/001-*.stdout 2>/dev/null || true

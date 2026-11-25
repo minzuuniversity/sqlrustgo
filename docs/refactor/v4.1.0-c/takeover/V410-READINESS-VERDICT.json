@@ -1,30 +1,29 @@
 {
   "format": "v410-readiness-verdict/v1",
   "generated_by": "docs/refactor/v4.1.0-c/takeover/gen_verdict.py（Task 9 实施者；控制者裁定 R69：生成器入仓，裁决文件可从已提交的树复现）",
-  "generated_at": "2026-11-25T17:39:21+0800",
-  "generated_at_note": "本 JSON 的**生成**时刻。它**不是**判据 8 的实测时刻（那条泳道耗时 1–2 小时；它的实测日期与树见 criteria[7].note —— 那个树身份是**推定/重构**的，不是从日志里观测到的）。",
-  "repo": "/Volumes/workspace/dev/wt-v410-base",
+  "generated_at": "2026-11-26T02:09:25+0800",
+  "generated_at_note": "本 JSON 的**生成**时刻。它**不是**判据 8 的实测时刻（那条泳道耗时 1–2 小时；它的实测日期与树见 criteria[7].note —— 那个树身份是**显式指定的参数**（`--neg-run-tree`））。",
+  "repo": "/Volumes/workspace/dev/wt-v410-c8",
   "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
   "develop_tip_frozen_at_baseline": "8cbde5b6d33c876fa1197474c46d50142a9823bd",
   "develop_tip_note": "**冻结时点**的 develop tip（= BASE 的 parent，记于 BASELINE_FREEZE.json）。live develop tip 会前移，实测值见 criteria[0].observed。",
-  "note": "每条判据的 `command` 都由本文件（gen_verdict.py，已入仓）真的执行；**`observed` 只放该次执行的退出码与真实输出摘要**（本脚本自己算出来的值标注【本脚本计算】）；**手写的散文一律在 `note`（或判据 1 的 `caveats`）里，并以【作者陈述，非本次命令输出】开头并指向它的事实来源文件** —— 判据 1 的 caveats、判据 4 的 FAIL 依据、判据 6 的判定规则、判据 7 的退出码可传播、判据 8 的树身份、判据 10/11 的口径说明、判据 12 的事实都属于这一类。计划正文验收段写的「11 条 PASS + 1 条 WAIVED」是 Task 7/10 之前的乐观预期，以实测为准（R63）；本次实测的 FAIL 是判据 #4、#6、#8 共 3 条（判据 4（映射层：A2.2 R1 未满足）、判据 6（签署层：Oracle 副签 0 条 / 签署人不合格）、判据 8（证据层：夹具泳道未达 7/7））。",
+  "note": "每条判据的 `command` 都由本文件（gen_verdict.py，已入仓）真的执行；**`observed` 只放该次执行的退出码与真实输出摘要**（本脚本自己算出来的值标注【本脚本计算】）；**手写的散文一律在 `note`（或判据 1 的 `caveats`）里，并以【作者陈述，非本次命令输出】开头并指向它的事实来源文件** —— 判据 1 的 caveats、判据 4 的 FAIL 依据、判据 6 的判定规则、判据 7 的退出码可传播、判据 8 的树身份、判据 10/11 的口径说明、判据 12 的事实都属于这一类。计划正文验收段写的「11 条 PASS + 1 条 WAIVED」是 Task 7/10 之前的乐观预期，以实测为准（R63）；本次实测的 FAIL 是判据 #4、#6 共 2 条（判据 4（映射层：A2.2 R1 未满足）、判据 6（签署层：Oracle 副签 0 条 / 签署人不合格））。",
   "summary": {
     "total": 12,
-    "pass": 8,
-    "fail": 3,
+    "pass": 9,
+    "fail": 2,
     "waived": 1,
     "fail_criteria": [
       4,
-      6,
-      8
+      6
     ]
   },
   "criteria": [
     {
       "id": 1,
       "criterion": "BASE（内容基线）唯一、develop tip 是其祖先、含 BASE 的分支已推送",
-      "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_baseline.py --strict\ngit ls-remote origin refs/heads/base/v4.1.0-frozen\ngit merge-base --is-ancestor fd849ae20541901d5e59f45cd3ba2c51093f5d5e 046970b088a85e1d18ece64ab69de67efae0fbba\ngit ls-remote origin refs/heads/develop/v4.1.0\ngit merge-base --is-ancestor 899d182dfb7789e9441b3d8c20998c3475c27f9b fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "observed": "exit=0\n[B1] PASS  develop tip 8cbde5b6d3 is an ancestor of HEAD\n[B2] PASS  base_sha fd849ae205, tree_sha 72d378e8e5, source_ref base/v4.1.0-frozen and frozen_at all match the repository\n[B3] PASS  123 material file(s) + 56 runtime-contract file(s) imported over develop, all still present in HEAD\n[B4] PASS  ledger complete (applied 1 / path-import 1 / already-present 3); the frozen path-import directory holds 56 file(s)\n4/4 PASS -- COMPLETE: every assertion ran\ngit ls-remote origin refs/heads/base/v4.1.0-frozen -> 046970b088a85e1d18ece64ab69de67efae0fbba (exit=0)\ngit merge-base --is-ancestor fd849ae20541901d5e59f45cd3ba2c51093f5d5e 046970b088a85e1d18ece64ab69de67efae0fbba -> exit=0 (是)\ngit ls-remote origin refs/heads/develop/v4.1.0 -> 899d182dfb7789e9441b3d8c20998c3475c27f9b (exit=0)\ngit merge-base --is-ancestor 899d182dfb7789e9441b3d8c20998c3475c27f9b fd849ae20541901d5e59f45cd3ba2c51093f5d5e -> exit=1 (否)\n本地分支 tip = b219e89edf264f0a450ae131a470902080d19011；远端 base/v4.1.0-frozen tip 是 BASE 的后代 = 是",
+      "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_baseline.py --strict\ngit ls-remote origin refs/heads/base/v4.1.0-frozen\ngit merge-base --is-ancestor fd849ae20541901d5e59f45cd3ba2c51093f5d5e 936610b6d08aea3fef7156a0d0c8723cc36d581c\ngit ls-remote origin refs/heads/develop/v4.1.0\ngit merge-base --is-ancestor ead02c4f6146a7da34c9a44e2b49128e0c44177a fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
+      "observed": "exit=0\n[B1] PASS  develop tip 8cbde5b6d3 is an ancestor of HEAD\n[B2] PASS  base_sha fd849ae205, tree_sha 72d378e8e5, source_ref base/v4.1.0-frozen and frozen_at all match the repository\n[B3] PASS  123 material file(s) + 56 runtime-contract file(s) imported over develop, all still present in HEAD\n[B4] PASS  ledger complete (applied 1 / path-import 1 / already-present 3); the frozen path-import directory holds 56 file(s)\n4/4 PASS -- COMPLETE: every assertion ran\ngit ls-remote origin refs/heads/base/v4.1.0-frozen -> 936610b6d08aea3fef7156a0d0c8723cc36d581c (exit=0)\ngit merge-base --is-ancestor fd849ae20541901d5e59f45cd3ba2c51093f5d5e 936610b6d08aea3fef7156a0d0c8723cc36d581c -> exit=0 (是)\ngit ls-remote origin refs/heads/develop/v4.1.0 -> ead02c4f6146a7da34c9a44e2b49128e0c44177a (exit=0)\ngit merge-base --is-ancestor ead02c4f6146a7da34c9a44e2b49128e0c44177a fd849ae20541901d5e59f45cd3ba2c51093f5d5e -> exit=1 (否)\n本地分支 tip = e3aea8b36a064ceb7da1c34a16a58335b5a07008；远端 base/v4.1.0-frozen tip 是 BASE 的后代 = 是",
       "verdict": "PASS",
       "caveats": [
         "【作者陈述，非本次命令输出】判据按**计划正文 Step 1 的命令**判：`verify_baseline.py --strict` + `git ls-remote origin refs/heads/base/v4.1.0-frozen` 的 tip 须是 BASE 的后代；这两条的实测结果见 `observed`。",
@@ -42,7 +41,7 @@
       "id": 3,
       "criterion": "前向/历史 SHA 分界（前向绑定唯一等于 BASE；历史绑定逐项未变）",
       "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_sha_scope.py",
-      "observed": "exit=0\n[S1] PASS  18 task(s), all base_sha == fd849ae205; artifact_context.source_code_base_sha == e9ff21fca3 (unchanged)\n[S2] PASS  75 case(s), all base_sha == fd849ae205\n[S3] PASS  18 record(s), all base_commit == fd849ae205, task_id order identical to the DAG\n[S4] PASS  base_sha == fd849ae205, adr_base_commit == 45da6968ae (unchanged)\n[S5] PASS  142 historical record(s) byte-identical to the frozen baseline fd849ae205 (141 frozen + 1 registered addition(s)); 135 frozen_commit binding(s) compared against 45da6968ae, all unchanged\n[S6] PASS  the tracked evidence/rerun-summary-20261120.json still points at e9ff21fca3; the out-of-repo pilot copy is byte-identical\nnote: 7 historical record(s) were added after 45da6968ae; their bytes are covered by the frozen-baseline comparison\n6/6 PASS",
+      "observed": "exit=0\n[S1] PASS  18 task(s), all base_sha == fd849ae205; artifact_context.source_code_base_sha == e9ff21fca3 (unchanged)\n[S2] PASS  75 case(s), all base_sha == fd849ae205\n[S3] PASS  18 record(s), all base_commit == fd849ae205, task_id order identical to the DAG\n[S4] PASS  base_sha == fd849ae205, adr_base_commit == 45da6968ae (unchanged)\n[S5] PASS  143 historical record(s) byte-identical to the frozen baseline fd849ae205 (141 frozen + 2 registered addition(s)); 135 frozen_commit binding(s) compared against 45da6968ae, all unchanged\n[S6] PASS  the tracked evidence/rerun-summary-20261120.json still points at e9ff21fca3; the out-of-repo pilot copy is byte-identical\nnote: 8 historical record(s) were added after 45da6968ae; their bytes are covered by the frozen-baseline comparison\n6/6 PASS",
       "verdict": "PASS"
     },
     {
@@ -57,7 +56,7 @@
       "id": 5,
       "criterion": "manifest 零漂移",
       "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_handoff.py --check（含 manifest 全文件哈希复算；与判据 4 同一条命令、同一次运行）",
-      "observed": "exit=0\n\"hara_hashed_files\": 55\n\"local_links\": 43\n\"task_dag\": \"ACYCLIC_NO_MISSING_DEPENDENCIES\"\nmanifest 绑定文件数 = 314；manifest 自身 sha256 = 16f87dff194a215dcb3f466befe6f4a1041b582f0d4e307fa1149c6f9b970973\n\"mutation_rejections\"（**10 条**变异臂全部被拒）：cycle, missing, unapproved_dispatch, unapproved_adr, human_gate_removed, cloud_policy, later_stage_task, native_extra_field, tier_overreach, unapproved_adr_still_proposed\n（判据 5 与判据 4 跑的是**同一条** `verify_handoff.py --check`，证据同源。）",
+      "observed": "exit=0\n\"hara_hashed_files\": 55\n\"local_links\": 43\n\"task_dag\": \"ACYCLIC_NO_MISSING_DEPENDENCIES\"\nmanifest 绑定文件数 = 314；manifest 自身 sha256 = 9133bf5e7a7bc107f7f8feb749847567cd041d354b467af8a38036de45ffa536\n\"mutation_rejections\"（**10 条**变异臂全部被拒）：cycle, missing, unapproved_dispatch, unapproved_adr, human_gate_removed, cloud_policy, later_stage_task, native_extra_field, tier_overreach, unapproved_adr_still_proposed\n（判据 5 与判据 4 跑的是**同一条** `verify_handoff.py --check`，证据同源。）",
       "verdict": "PASS"
     },
     {
@@ -80,15 +79,15 @@
       "id": 8,
       "criterion": "ALPHA 7 道负向夹具两层 RED",
       "command": "bash audit/v4.1.0/neg/verify_neg_fixtures.sh",
-      "observed": "【沿用 2026-11-25 的实测值】完整日志 /Volumes/workspace/dev/sqlrustgo/.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/task-9-neg-logs/run.log，sha256 `bcc3ecb05601ee149b936dea710703166647ebecd0bc705c3c64f5f357191e07`\n退出码=3 —— 来自脚本自身的退出码语义（`verify_neg_fixtures.sh`：RED_N==7 → 0，否则 → 3）；**不是**从日志里读的（日志末行的 `NEG_EXIT=` 是空的，不构成证据）。\nverify_neg_fixtures: RED=5/7  INCONCLUSIVE=2/7\n逐门禁：\n  scripts/gate/check_anti_ignore_gate.sh gate=RED stage=RED\n  scripts/gate/check_arch_invariants.sh gate=RED stage=RED\n  scripts/gate/check_arch3_no_bypass.sh gate=RED stage=RED\n  scripts/gate/check_sql_corpus_gate.sh gate=RED stage=RED\n  scripts/gate/check_g1_tpch_baseline.sh gate=RED stage=RED\n  scripts/gate/check_alpha_v410.sh gate=INCONCLUSIVE stage=INCONCLUSIVE\n  scripts/gate/check_coverage_v312.sh gate=INCONCLUSIVE stage=INCONCLUSIVE\n【本脚本计算】两棵树之间有 **2** 个泳道相关路径改动：audit/v4.1.0/gen_neg_ledger.py, audit/v4.1.0/test_gen_neg_ledger.py ⇒ RED=5/7 的测量**不可**直接迁移到 HEAD\n⇒ RED=5/7 ≠ 7/7 ⇒ 判据 8 = FAIL（缺口在**证据层**）。",
-      "note": "【作者陈述，非本次命令输出】**实测日期：2026-11-25；实测树：`09ba360f6cfbf0be2aa4cf7d2064c4b8b50f7958`**\n**该树身份是推定/重构，不是观测值。** **推定/重构值**（不是从日志里读出来的）：日志本身**不含**树身份 —— `run.log` 里没有任何 40 位十六进制串，只有 `scratch tree = <路径>` 与逐夹具判决。\n重构依据（两个互相独立的事实，均可复算 —— 适用于本次沿用的那次运行）：\n(1) `git reflog --date=iso`：HEAD 从 2026-11-25 09:16:07（09ba360f6c 的提交时刻）到 2026-11-25 12:08:52（e2d98149d2 的提交时刻）一直是 `09ba360f6c`；\n(2) 泳道日志的 mtime 是 2026-11-25 12:07:40 —— **早于** e2d98149d2 作为提交存在的那一刻。泳道以仓库自身作 scratch 树，且 `verify_neg_fixtures.sh` 在脏树上**拒绝启动**，所以全程 HEAD = `09ba360f6c`。\n**先前写的 `e2d98149d2…` 是错的**：那是泳道跑完之后才被创建的那个提交，它被当成了「写裁决文件那一刻的 tip」，而不是泳道实际跑过的那棵树 —— 这正是 C5（证据必须绑定完整 commit SHA，跨 SHA 证据不可继承）的缺陷类，且出现在**属主要签的那份**文件里。\n**结论未受影响**：【本脚本计算】两棵树之间有 **2** 个泳道相关路径改动：audit/v4.1.0/gen_neg_ledger.py, audit/v4.1.0/test_gen_neg_ledger.py ⇒ RED=5/7 的测量**不可**直接迁移到 HEAD\n**事实来源**：`git reflog`、泳道日志的 mtime、`audit/v4.1.0/neg/verify_neg_fixtures.sh`（脏树拒绝逻辑）、`docs/refactor/v4.1.0-c/takeover/V410-READINESS-STATE.md` §4 的 R63。",
-      "verdict": "FAIL"
+      "observed": "【沿用 2026-11-26 的实测值】完整日志 audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/001-neg-fixtures-two-layer.stdout，sha256 `3378f9b5b340f9df60206ca3988dbe9725ec71cb11aa8ffb503575ecc61d9946`\n退出码=0 —— 来自脚本自身的退出码语义（`verify_neg_fixtures.sh`：RED_N==7 → 0，否则 → 3）；**不是**从日志里读的（日志末行的 `NEG_EXIT=` 是空的，不构成证据）。\n被测树身份（逐字引用泳道日志的 `tree_sha=` 行）：verify_neg_fixtures: tree_sha=5324d2348c78e8fc4b9e8edb4fcece3f0359a6d1 dirty_files=0\nverify_neg_fixtures: RED=7/7  INCONCLUSIVE=0/7\n逐门禁：\n  scripts/gate/check_anti_ignore_gate.sh gate=RED stage=RED\n  scripts/gate/check_g1_tpch_baseline.sh gate=RED stage=RED\n  scripts/gate/check_sql_corpus_gate.sh gate=RED stage=RED\n  scripts/gate/check_alpha_v410.sh gate=RED stage=RED\n  scripts/gate/check_coverage_v312.sh gate=RED stage=RED\n  scripts/gate/check_arch_invariants.sh gate=RED stage=RED\n  scripts/gate/check_arch3_no_bypass.sh gate=RED stage=RED\n【本脚本计算】两棵树之间有 **11** 个泳道相关路径改动：audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/001-neg-fixtures-two-layer.stdout, audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/003-neg-fixtures.stdout, audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/fixtures/fx02-anti-ignore-registry-drift.log, audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/fixtures/fx15-alpha-v410-composite-entry-doc-missing.log, audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/fixtures/fx16-arch-invariants-invariant-impl-removed.log, audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/fixtures/fx17-arch3-no-bypass-dml-guard-dropped.log, audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/fixtures/fx18-coverage-v312-crate-coverage-below-threshold.log, audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/fixtures/fx19-sql-corpus-gate-corpus-truncated.log, audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/fixtures/fx20-g1-tpch-baseline-hash-tampered.log, audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/fixtures/warmup.log, audit/v4.1.0/runs/20261126-criterion8-negfix-001/manifest.yaml ⇒ RED=7/7 的测量**不可**直接迁移到 HEAD\n⇒ RED=7/7 ⇒ 判据 8 = PASS。",
+      "note": "【作者陈述，非本次命令输出】**实测日期：2026-11-26；实测树：`5324d2348c78e8fc4b9e8edb4fcece3f0359a6d1`**\n**该树身份是观测值，不是推定值。** 它是从泳道日志里**逐字读出来**的 —— 泳道自报身份的那一行：\n`verify_neg_fixtures: tree_sha=5324d2348c78e8fc4b9e8edb4fcece3f0359a6d1 dirty_files=0`\n`dirty_files=0` ⇒ 被测树在该 commit 上没有未提交改动 ⇒ 这个 SHA **唯一确定**了被测树。\n**结论未受影响**：【本脚本计算】两棵树之间有 **11** 个泳道相关路径改动：audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/001-neg-fixtures-two-layer.stdout, audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/003-neg-fixtures.stdout, audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/fixtures/fx02-anti-ignore-registry-drift.log, audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/fixtures/fx15-alpha-v410-composite-entry-doc-missing.log, audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/fixtures/fx16-arch-invariants-invariant-impl-removed.log, audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/fixtures/fx17-arch3-no-bypass-dml-guard-dropped.log, audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/fixtures/fx18-coverage-v312-crate-coverage-below-threshold.log, audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/fixtures/fx19-sql-corpus-gate-corpus-truncated.log, audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/fixtures/fx20-g1-tpch-baseline-hash-tampered.log, audit/v4.1.0/runs/20261126-criterion8-negfix-001/logs/fixtures/warmup.log, audit/v4.1.0/runs/20261126-criterion8-negfix-001/manifest.yaml ⇒ RED=7/7 的测量**不可**直接迁移到 HEAD\n**事实来源**：泳道日志的 `tree_sha=` 行（观测值）、`audit/v4.1.0/neg/verify_neg_fixtures.sh`（自报身份与脏树拒绝逻辑）、`docs/refactor/v4.1.0-c/takeover/V410-READINESS-STATE.md` §4 的 R63。",
+      "verdict": "PASS"
     },
     {
       "id": 9,
       "criterion": "门禁编目内部自洽",
       "command": "python3 scripts/gate/gate_registry.py check",
-      "observed": "exit=0\n{\"kind\": \"gate_registry_check\", \"catalog\": \"/Volumes/workspace/dev/wt-v410-base/docs/releases/v4.1.0/GATE_CATALOG.jsonl\", \"check_n\": 168, \"catalog_rows\": 168, \"by_class\": {\"stage_required\": 34, \"ci_reachable\": 51, \"orphan_referenced\": 22, \"dead\": 61}, \"by_disposition\": {\"archive-candidate\": 32, \"keep-rewire\": 12, \"needs-execution-point\": 25, \"needs-external-host\": 12, \"superseded\": 2}, \"fails\": 0}\ngate_registry: OK",
+      "observed": "exit=0\n{\"kind\": \"gate_registry_check\", \"catalog\": \"/Volumes/workspace/dev/wt-v410-c8/docs/releases/v4.1.0/GATE_CATALOG.jsonl\", \"check_n\": 168, \"catalog_rows\": 168, \"by_class\": {\"stage_required\": 34, \"ci_reachable\": 51, \"orphan_referenced\": 22, \"dead\": 61}, \"by_disposition\": {\"archive-candidate\": 32, \"keep-rewire\": 12, \"needs-execution-point\": 25, \"needs-external-host\": 12, \"superseded\": 2}, \"fails\": 0}\ngate_registry: OK",
       "verdict": "PASS"
     },
     {

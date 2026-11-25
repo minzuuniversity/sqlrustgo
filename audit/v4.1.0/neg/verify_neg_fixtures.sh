@@ -19,6 +19,26 @@
 # INCOMPLETE and are reported as INCONCLUSIVE.  This script never rounds a
 # partial result up to 7/7 — see the exit codes below.
 #
+# WARMUP (R50)
+# -----------
+# Before the lane runs, the scratch tree's target is warmed
+# (`cargo build --all-features && cargo test --all-features --lib --no-run`).
+# The warmup is UNCONDITIONAL: there is no environment switch to skip it,
+# because a switch to skip the warmup is a switch to skip the lane, and a
+# skipped lane must never be indistinguishable from a lane that ran.  Its
+# output goes to its own log (warmup.log in the log directory) and a failure
+# aborts the lane with exit 4 (setup failure) — never a silent skip and
+# never a green.
+#
+# TREE IDENTITY
+# -------------
+# The lane prints its own identity on the line
+#     verify_neg_fixtures: tree_sha=<40 hex> dirty_files=<n>
+# `dirty_files` is part of the identity and not a nicety: when the scratch
+# tree is NOT the repository, the dirty check is skipped, so a modified tree
+# shares its commit's SHA with a pristine one.  Only the pair identifies the
+# measured tree.
+#
 # EXIT CODES
 # ----------
 #   0  all seven gates are RED on BOTH layers  (7/7)
@@ -26,7 +46,8 @@
 #      how many, and every gate's line says whether it was RED or
 #      INCONCLUSIVE.  A non-zero exit here is the point: it is the machine
 #      readable form of "this did not reach 7/7".
-#   4  the run could not be set up (dirty tree, missing fixture, ...)
+#   4  the run could not be set up (dirty tree, missing fixture, failed
+#      warmup, ...)
 #
 # USAGE
 # -----
@@ -60,25 +81,78 @@ fi
 
 # gate | fixture
 #
-# The order is "cheap first, expensive last" ON PURPOSE: the coverage gate
-# measures eight crates with `cargo llvm-cov` (single-threaded, instrumented)
-# and does not finish inside the 30-minute per-fixture budget this ledger
-# sets (issue #5598).  Running it last means a run that is cut short still
-# produces the evidence for the other six gates.
+# ORDERING RULE — "凡消费 cargo 产物的夹具，必须排在任何改 Rust 源码的夹具之前"
+# -------------------------------------------------------------------------------
+# The fixtures restore the scratch tree with `git checkout -- .`, which changes
+# the MTIME of every restored file.  cargo keys its fingerprints on mtime, so
+# after ANY fixture that touched Rust source, the next cargo-consuming fixture
+# sees a stale fingerprint and rebuilds the root package AND its eleven
+# dependents.  Measured on this machine: >90 minutes for that rebuild — far
+# past any per-fixture budget, and the reason the lane used to produce
+# timeouts instead of verdicts.
+#
+# So the lane is split in two:
+#
+#   * FIRST: every fixture that CONSUMES cargo artefacts (it needs a warm,
+#     already-built target) — fx02, fx20, fx19, fx15, fx18;
+#   * THEN: the fixtures whose gate is static (they read source or a ledger,
+#     they compile nothing) — fx16, fx17.  They run in seconds and they are
+#     last so that a lane cut short still yields the expensive evidence.
+#
+# Within the cargo-consuming group the order is by cost: fx02 (static, cheap),
+# fx20 (runtime, needs the TPC-H dataset), fx19 (cargo), fx15 (composite),
+# fx18 (cargo llvm-cov over eight crates — the most expensive by far).
 GATES=(
     "scripts/gate/check_anti_ignore_gate.sh|audit/v4.1.0/neg/fx02-anti-ignore-registry-drift.sh"
-    "scripts/gate/check_arch_invariants.sh|audit/v4.1.0/neg/fx16-arch-invariants-invariant-impl-removed.sh"
-    "scripts/gate/check_arch3_no_bypass.sh|audit/v4.1.0/neg/fx17-arch3-no-bypass-dml-guard-dropped.sh"
-    "scripts/gate/check_sql_corpus_gate.sh|audit/v4.1.0/neg/fx19-sql-corpus-gate-corpus-truncated.sh"
     "scripts/gate/check_g1_tpch_baseline.sh|audit/v4.1.0/neg/fx20-g1-tpch-baseline-hash-tampered.sh"
+    "scripts/gate/check_sql_corpus_gate.sh|audit/v4.1.0/neg/fx19-sql-corpus-gate-corpus-truncated.sh"
     "scripts/gate/check_alpha_v410.sh|audit/v4.1.0/neg/fx15-alpha-v410-composite-entry-doc-missing.sh"
     "scripts/gate/check_coverage_v312.sh|audit/v4.1.0/neg/fx18-coverage-v312-crate-coverage-below-threshold.sh"
+    "scripts/gate/check_arch_invariants.sh|audit/v4.1.0/neg/fx16-arch-invariants-invariant-impl-removed.sh"
+    "scripts/gate/check_arch3_no_bypass.sh|audit/v4.1.0/neg/fx17-arch3-no-bypass-dml-guard-dropped.sh"
 )
 
 LOG_DIR="${FX_LOG_DIR:-$(mktemp -d "${TMPDIR:-/tmp}/verify-neg-fixtures.XXXXXX")}"
 mkdir -p "$LOG_DIR"
 echo "verify_neg_fixtures: scratch tree = $TREE"
 echo "verify_neg_fixtures: logs          = $LOG_DIR"
+
+# --- the tree identity, self-reported ---------------------------------------
+# A lane that does not say WHICH tree it measured cannot be compared with any
+# other tree.  The SHA alone is not enough: when TREE != REPO the dirty check
+# is skipped, so a modified scratch tree shares the SHA of its commit and only
+# `dirty_files` distinguishes it.  Both are printed on ONE line so a reader
+# (or a script) can lift the whole identity out of the log.
+TREE_SHA="$(git -C "$TREE" rev-parse HEAD 2>/dev/null || echo unknown)"
+DIRTY_FILES="$(git -C "$TREE" status --porcelain 2>/dev/null | wc -l | tr -d ' ')"
+echo "verify_neg_fixtures: tree_sha=$TREE_SHA dirty_files=$DIRTY_FILES"
+
+# --- warm the target BEFORE the lane -----------------------------------------
+# R50 requires the lane to warm the target.  Without a warm target the first
+# cargo-consuming fixture pays the full build, and every fixture that follows
+# a source-touching fixture pays a REBUILD (see the ordering rule above).
+#
+# There is deliberately NO environment switch to skip the warmup: a switch
+# would be a switch to skip the lane, and a skipped lane must not be
+# indistinguishable from a lane that ran.  The warmup runs unconditionally,
+# writes its own log, and a failure aborts the whole lane with exit 4 (setup
+# failure) — it is never silently skipped and never reported as a pass.
+WARMUP_LOG="$LOG_DIR/warmup.log"
+echo "verify_neg_fixtures: warming the target (this is unconditional; log: $WARMUP_LOG)"
+(
+    cd "$TREE" &&
+    cargo build --all-features &&
+    cargo test --all-features --lib --no-run
+) >"$WARMUP_LOG" 2>&1
+WARMUP_RC=$?
+if [ "$WARMUP_RC" -ne 0 ]; then
+    echo "FATAL: the target warmup FAILED (rc=$WARMUP_RC) -> the lane cannot run" >&2
+    echo "       (a cold or broken target would make every cargo-consuming fixture" >&2
+    echo "        time out, and a timeout is INCONCLUSIVE, never a red)" >&2
+    tail -20 "$WARMUP_LOG" >&2
+    exit 4
+fi
+echo "verify_neg_fixtures: warmup OK (rc=0)"
 
 RED_N=0
 INC_N=0

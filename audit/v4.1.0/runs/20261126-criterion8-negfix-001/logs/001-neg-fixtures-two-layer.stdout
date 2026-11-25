@@ -1,0 +1,46 @@
+verify_neg_fixtures: scratch tree = /Volumes/workspace/dev/wt-v410-c8
+verify_neg_fixtures: logs          = /tmp/neg-lane-20261126-criterion8-negfix-001
+verify_neg_fixtures: tree_sha=5324d2348c78e8fc4b9e8edb4fcece3f0359a6d1 dirty_files=0
+verify_neg_fixtures: warming the target (this is unconditional; log: /tmp/neg-lane-20261126-criterion8-negfix-001/warmup.log)
+verify_neg_fixtures: warmup OK (rc=0)
+
+===== scripts/gate/check_anti_ignore_gate.sh  <-  audit/v4.1.0/neg/fx02-anti-ignore-registry-drift.sh =====
+  fixture_rc=0 gate_state=FAIL gate_rc=1 stage_verdict=FAIL
+  gate=RED stage=RED
+
+===== scripts/gate/check_g1_tpch_baseline.sh  <-  audit/v4.1.0/neg/fx20-g1-tpch-baseline-hash-tampered.sh =====
+  fixture_rc=0 gate_state=FAIL gate_rc=1 stage_verdict=FAIL
+  gate=RED stage=RED
+
+===== scripts/gate/check_sql_corpus_gate.sh  <-  audit/v4.1.0/neg/fx19-sql-corpus-gate-corpus-truncated.sh =====
+  fixture_rc=0 gate_state=FAIL gate_rc=1 stage_verdict=FAIL
+  gate=RED stage=RED
+
+===== scripts/gate/check_alpha_v410.sh  <-  audit/v4.1.0/neg/fx15-alpha-v410-composite-entry-doc-missing.sh =====
+  fixture_rc=0 gate_state=FAIL gate_rc=1 stage_verdict=FAIL
+  gate=RED stage=RED
+
+===== scripts/gate/check_coverage_v312.sh  <-  audit/v4.1.0/neg/fx18-coverage-v312-crate-coverage-below-threshold.sh =====
+  fixture_rc=0 gate_state=FAIL gate_rc=1 stage_verdict=FAIL
+  gate=RED stage=RED
+
+===== scripts/gate/check_arch_invariants.sh  <-  audit/v4.1.0/neg/fx16-arch-invariants-invariant-impl-removed.sh =====
+  fixture_rc=0 gate_state=FAIL gate_rc=1 stage_verdict=FAIL
+  gate=RED stage=RED
+
+===== scripts/gate/check_arch3_no_bypass.sh  <-  audit/v4.1.0/neg/fx17-arch3-no-bypass-dml-guard-dropped.sh =====
+  fixture_rc=0 gate_state=FAIL gate_rc=1 stage_verdict=FAIL
+  gate=RED stage=RED
+
+===== verify_neg_fixtures summary =====
+  scripts/gate/check_anti_ignore_gate.sh         gate=RED          stage=RED          fixture_rc=0 gate_rc=1 stage_verdict=FAIL
+  scripts/gate/check_g1_tpch_baseline.sh         gate=RED          stage=RED          fixture_rc=0 gate_rc=1 stage_verdict=FAIL
+  scripts/gate/check_sql_corpus_gate.sh          gate=RED          stage=RED          fixture_rc=0 gate_rc=1 stage_verdict=FAIL
+  scripts/gate/check_alpha_v410.sh               gate=RED          stage=RED          fixture_rc=0 gate_rc=1 stage_verdict=FAIL
+  scripts/gate/check_coverage_v312.sh            gate=RED          stage=RED          fixture_rc=0 gate_rc=1 stage_verdict=FAIL
+  scripts/gate/check_arch_invariants.sh          gate=RED          stage=RED          fixture_rc=0 gate_rc=1 stage_verdict=FAIL
+  scripts/gate/check_arch3_no_bypass.sh          gate=RED          stage=RED          fixture_rc=0 gate_rc=1 stage_verdict=FAIL
+
+verify_neg_fixtures: RED=7/7  INCONCLUSIVE=0/7
+verify_neg_fixtures: 7/7 — every ALPHA gate is RED on both layers
+LANE_RC=0

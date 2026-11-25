@@ -1,0 +1,44 @@
+----- fx18 control (intact tree) -----
+control rc=0 in 320s
+  sqlrustgo-optimizer: 87.64%
+Measuring coverage for sqlrustgo-types ...
+  sqlrustgo-types: 95.04%
+average coverage: 87.71% (threshold: 85%) — measured 8/8 crates
+fx18-coverage-v312-crate-coverage-below-threshold: control: sqlrustgo-transaction coverage = 93.31%, gate rc=0
+fx18-coverage-v312-crate-coverage-below-threshold: appended 8000 never-executed functions to crates/transaction/src/lib.rs
+FX-GATE-LAYER: gate=scripts/gate/check_coverage_v312.sh state=FAIL exit_code=1
+FX-STAGE-LAYER: verdict=FAIL counts={"PASS": 0, "FAIL": 1, "INCOMPLETE": 0}
+----- fx18 gate output (tail 30) -----
+  master_writes_binlog_and_slave_io_thread_reads_it_back
+  slave_sql_thread_replays_every_event_with_callback
+  lag_monitor_fires_warning_when_slave_falls_behind
+  lag_monitor_returns_none_when_slave_is_caught_up
+  full_chain_master_to_slave_io_to_sql_to_lag_monitor
+  b22_reader_latency_under_lock_held_io
+  test_insert_then_scan_visible
+  test_delete_returns_real_count
+  test_update_returns_real_count_and_persists
+  test_transaction_methods_reject_on_non_tx_backend
+  tf_t4_01_scan_after_insert_sees_rows
+  tf_t4_02_delete_reports_real_count
+  tf_t4_03_update_reports_real_count
+  tf_t4_04_non_tx_backend_must_reject_or_document
+Measuring coverage for sqlrustgo-parser ...
+  sqlrustgo-parser: 86.00%
+Measuring coverage for sqlrustgo-planner ...
+  sqlrustgo-planner: 88.71%
+Measuring coverage for sqlrustgo-executor ...
+  sqlrustgo-executor: 82.73%
+Measuring coverage for sqlrustgo-transaction ...
+  sqlrustgo-transaction: 20.42%
+Measuring coverage for sqlrustgo-storage ...
+  sqlrustgo-storage: 80.93%
+Measuring coverage for sqlrustgo-catalog ...
+  sqlrustgo-catalog: 87.33%
+Measuring coverage for sqlrustgo-optimizer ...
+  sqlrustgo-optimizer: 87.64%
+Measuring coverage for sqlrustgo-types ...
+  sqlrustgo-types: 95.04%
+----- end -----
+fx18-coverage-v312-crate-coverage-below-threshold: mutated crate percentage=20.42 average_fail=1 reduced_sample=0
+fx18-coverage-v312-crate-coverage-below-threshold: gate rc=1 (FAIL, not a timeout) + stage verdict=FAIL, sqlrustgo-transaction coverage table = 93.31% -> 20.42% -> FIXTURE-PASS (the gate detects a below-threshold coverage table)
