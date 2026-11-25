@@ -5,7 +5,8 @@
 > 本文件**宣告**一件事：**v4.1.0 的内容基线（BASE）已经冻结完成**。
 >
 > 本文件**不宣告**重构准入的任何结论 —— 既不宣告准入成立，也不宣告准入被拒。
-> 12 条判据里仍有 3 条是 FAIL（#4 映射层 / #6 签署层 / #8 证据层），准入处于**分层收口态**。
+> 12 条判据里有 **2 条**是 FAIL（#4 映射层 / #6 签署层），准入处于**分层收口态**。
+> 判据 #8（证据层）在本轮由 FAIL 转 PASS。
 > 属主裁决位（`docs/refactor/v4.1.0-c/takeover/V410-OWNER-RULING.md` §4）**仍然是空的**。
 >
 > **AFP Type A/B/D 一律不触。** 本文件不涉及任何阶段跃迁、任何签署、任何放行批次的授予。
@@ -17,10 +18,10 @@
 | 字段 | 值 | 出处 |
 |---|---|---|
 | `source_agent` | `dsh-b`（takeover 线 Task 9 实施者） | `docs/refactor/v4.1.0-c/takeover/V410-READINESS-VERDICT.json` → `generated_by` |
-| `source_run` | `20261124-task8-alpha-negfix-001`（负向夹具泳道）；判据表由 `gen_verdict.py` 在 `docs/refactor/v4.1.0-c/takeover/` 内复算 | `V410-READINESS-VERDICT.json` → `criteria[7].observed` |
+| `source_run` | `20261126-criterion8-negfix-001`（判据 #8 的两层夹具泳道，RED=7/7）；判据表由 `gen_verdict.py` 在 `docs/refactor/v4.1.0-c/takeover/` 内复算 | `V410-READINESS-VERDICT.json` → `criteria[7].observed` |
 | `timestamp` | 2026-11-26（本声明签发日）；BASE 冻结时点 `2026-11-23T11:42:14.812504+00:00` | `docs/refactor/v4.1.0-c/takeover/BASELINE_FREEZE.json` → `frozen_at` |
-| `evidence_hash` | 判据表 sha256 `c325e81af95b2e1d17d52de6a8dec2c67fbf4966b003fdadc9967329aa857524` | 本文件签发时对 `V410-READINESS-VERDICT.json` 实算 |
-| `conflict_resolution` | 见 §2 的分层归因表：3 条 FAIL 按**映射层 / 签署层 / 证据层**归因，**不合并、不取交集、不折中**；每条 FAIL 的补齐责任人单独写明 | `V410-OWNER-RULING.md` §1.1 |
+| `evidence_hash` | 判据表 sha256 `b4044400a8a24e7932f3f38410fbd47556458e65e6b72fd881633d8ef6b93a36` | 本文件签发时对 `V410-READINESS-VERDICT.json` 实算（判据 #8 转 PASS 后的版本） |
+| `conflict_resolution` | 见 §2 的分层归因表：3 条 FAIL 按**映射层 / 签署层 / 证据层**归因，**不合并、不取交集、不折中**；每条 FAIL 的补齐责任人单独写明。**#8 已由本轮修复并转 PASS** ⇒ 剩下 2 条（#4 映射层 / #6 签署层） | `V410-OWNER-RULING.md` §1.1 |
 
 **BASE 身份（冻结记录的权威副本）**：
 
@@ -46,6 +47,8 @@
 | **#2** `45da6968ae` 的 123 个材料文件全在 BASE 树内 | **PASS** | `criteria[1]` | `[B3] PASS 123 material file(s) + 56 runtime-contract file(s) imported over develop, all still present in HEAD` |
 | **#3** 前向/历史 SHA 分界（前向绑定唯一等于 BASE；历史绑定逐项未变） | **PASS** | `criteria[2]` | `verify_sha_scope.py` 的实测输出（`exit=` 后的逐条断言） |
 | **#5** manifest 零漂移 | **PASS** | `criteria[4]` | 冻结记录集 `audit/v4.1.0/runs/*/manifest.yaml` 逐字节比对结果 |
+| **#7** ALPHA 阶段清单有 CI 执行点 | **PASS** | `criteria[6]` | `criteria[6].observed` 的四项实测布尔 |
+| **#8** ALPHA 7 道负向夹具两层 RED | **PASS**（本轮转 PASS） | `criteria[7]` | `RED=7/7 INCONCLUSIVE=0/7`，退出码 0，零 `exit_code=124`；归档 run `audit/v4.1.0/runs/20261126-criterion8-negfix-001/`；树身份为**观测值**（泳道日志自报 `tree_sha=5324d2348c… dirty_files=0`） |
 | **#9** 门禁编目内部自洽 | **PASS** | `criteria[8]` | `scripts/gate/gate_registry.py check` 的实测输出：`check_n=168`、`catalog_rows=168`、`fails=0` |
 | **#10** 外审包三套统计一致（71/71/71） | **PASS** | `criteria[9]` | 三套统计的 SSOT 行 + `PASS #10` / `FAIL #10` 逐条 |
 | **#11** dead 门禁口径唯一化 | **PASS** | `criteria[10]` | dead 口径的实测计数 |
@@ -61,12 +64,19 @@
 
 ---
 
-## 2. 重构准入状态：3 条 FAIL 的分层归因
+## 2. 重构准入状态：2 条 FAIL 的分层归因
 
-**12 条判据的当前分布：PASS 8 · FAIL 3（#4 / #6 / #8）· WAIVED 1（#12）。**
-出处：`V410-READINESS-VERDICT.json` → `summary` → `{"total":12,"pass":8,"fail":3,"waived":1,"fail_criteria":[4,6,8]}`。
+**12 条判据的当前分布：PASS 9 · FAIL 2（#4 / #6）· WAIVED 1（#12）。**
+出处：`V410-READINESS-VERDICT.json` → `summary` → `{"total":12,"pass":9,"fail":2,"waived":1,"fail_criteria":[4,6]}`。
 
-下表**照抄** `V410-OWNER-RULING.md` §1.1 的归因结论，**不改判**：
+**判据 #8（证据层）在本轮由 FAIL 转 PASS** —— ALPHA 7 道负向夹具两层 RED 达 **7/7**
+（`RED=7/7 INCONCLUSIVE=0/7`，退出码 0，零 `exit_code=124`），归档 run
+`audit/v4.1.0/runs/20261126-criterion8-negfix-001/`。
+它的树身份现在是**观测值**（泳道日志自报 `tree_sha=5324d2348c… dirty_files=0`），
+不再是事后重构的推定值。
+
+下表**照抄** `V410-OWNER-RULING.md` §1.1 的归因结论，**不改判**（#8 一行保留，作为本轮
+修复前的原始归因记录）：
 
 | 判据 | 缺在哪一层 | 具体缺口（§1.1 原文要点） | 补齐它需要谁 |
 |---|---|---|---|
@@ -74,9 +84,9 @@
 | **#6** | **签署层** | 材料齐了（44/44 有终态：42 PASS + 2 NOT_RUN；双向差异表 `L1-DIFF-fd849ae20541.md` 表头逐字符匹配），但**Oracle 副签 0 条** —— 44 条的 `assertion_review_verdict` 是 38 条 `ASSERTION_UNREVIEWABLE` + 6 条 `JUDGED_PENDING_COUNTERSIGNATURE`，`assertion_review_performed_by` 是**实施者本人**（`task7-executor/minimax-m3.1-flash`），按 R-ORACLE「签署人 ≠ 该场景实现者」不构成签署 | **属主授权的独立 Reviewer**（Codex 或 DSH Reviewer 池）；实施者不得自签（C7 / R-ORACLE）。属主把 Reviewer 填进 §3.1.1 的名单表后，判据 6 才可能转 PASS |
 | **#8** | **证据层** | 夹具在**结构上**无法成立：ALPHA 7 道门禁的负向夹具泳道未达 7/7。缺口不是「断言被放松」，而是（a）覆盖率门禁 `check_coverage_v312.sh` 的坏产物注入**在完整树上就已红**（Task 1–7 导入的 RED 特征测试 `crates/storage/tests/tf_t4_*.rs` 按设计失败 ⇒ 红不可归因于夹具注入）；（b）**机器速度**：fx15 的 composite 门禁在 fx17 动过 Rust 源码后要重建 release，1–2 小时量级，fx15 的 7200s 预算本轮不够用 | 证据层：要么把覆盖率门禁的红**归因**拆开（让夹具注入的红与基线自带的红可区分），要么在**冷 target** 下给足预算 |
 
-> **材料层全绿**：#1/#2/#3/#5/#9/#10/#11 全部 PASS —— 基线、SHA 绑定、ADR **机器字段**、manifest、
-> 门禁编目、外审包三套统计与 dead 口径都自洽。**这次整备的成果没有缺口；缺的是「映射要属主拍板」、
-> 「有人签」与「证据能归因」。**
+> **材料层全绿**：#1/#2/#3/#5/#7/#9/#10/#11 全部 PASS —— 基线、SHA 绑定、ADR **机器字段**、manifest、
+> 门禁编目、外审包三套统计与 dead 口径都自洽。**这次整备的成果没有缺口。**
+> **证据能归因**这一条已在本轮补上（#8 转 PASS）；**还缺**的是「映射要属主拍板」与「有人签」。
 
 **判据 12（WAIVED）**：唯一一条已登记的豁免
 `WAIVER-V410-A5-12-LOCALONLY-ROUTE-20261123`。它的 `approved_by` 字段目前是
@@ -91,7 +101,7 @@
 
 | 层 | 对象 | 解锁条件 | 当前状态 |
 |---|---|---|---|
-| **层 0** | 判据 **#8**（证据层） | ALPHA 7 道负向夹具两层 RED 达 **7/7** | 本轮执行中（见 §5 的残余风险） |
+| **层 0** | 判据 **#8**（证据层） | ALPHA 7 道负向夹具两层 RED 达 **7/7** | ✅ **本轮达成** —— `RED=7/7 INCONCLUSIVE=0/7`，退出码 0，零 `exit_code=124`；归档 run `audit/v4.1.0/runs/20261126-criterion8-negfix-001/` |
 | **层 0'** | 判据 **#4**（映射层） | **属主裁决 O1**：裁定 C01-15 的映射口径（A2.2 R5 / O10） | **未解锁** —— 属主域，执行者不得自拟 |
 | **层 1** | 判据 **#6**（签署层）· T1 30 条**逐条**副签 | 属主把独立 Reviewer 填进 `V410-OWNER-RULING.md` §3.1.1 的名单表（该表是判据 6 的机器输入；表里没有序号行 = 名单为空 = 判据 6 判 FAIL） | Reviewer 已获属主授权为独立 Reviewer 通道；**名单表仍待填写** |
 | **层 2** | 判据 **#6**（签署层）· T2/T3 14 条**批量**副签 | 层 1 完成（同一位 Reviewer 的副签资格已验证） | 未解锁 |
@@ -118,7 +128,8 @@
 3. **不宣告任何门禁阈值被放宽。** 本轮**不改** `docs/governance/STAGE_CONFIG.yaml` 的
    `COVERAGE_MIN_*`（ALPHA 50 / BETA 75 / RC 80 / GA 85），**不改** 168 分母，**不新增** `check_*`。
 4. **不宣告「材料层全绿 ⇒ 准入成立」。** 材料层全绿只说明**这次整备的成果没有缺口**；
-   缺的是映射（#4）、签署（#6）与证据（#8）—— 三者各自独立地挡在准入前面。
+   **还缺**的是映射（#4）与签署（#6）—— 两者各自独立地挡在准入前面
+   （证据（#8）已于本轮补齐，但它补的是**可归因性**，不是准入本身）。
 5. **不宣告判据 12 的豁免已有属主背书。** 见 §5 第 2 条。
 6. **不宣告「双血统咨询可得」。** 见 §5 第 1 条。
 
