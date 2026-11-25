@@ -62,8 +62,11 @@
 > `verify_baseline.py` 的 B1 用的就是它）；含 BASE 的分支已推送 ✓。
 >
 > **但属主需要知道（2026-11-25 实测重算；旧数字已过时）**：
-> (a) 远端 `base/v4.1.0-frozen` 的 tip 现为 **`ebcf8bc2997649e333067bbb8497c1dbcdf09db3`**
-> （= 本地 HEAD；它仍是 BASE 的后代 ✓）；
+> (a) **远端** `base/v4.1.0-frozen` 的 tip 现为
+> **`ebcf8bc2997649e333067bbb8497c1dbcdf09db3`**（它仍是 BASE 的后代 ✓）；
+> ⚠️ **这不等于本地 HEAD** —— 本地分支已领先它（本修复波尚未推送）。
+> **本地 HEAD 的实测值请以本节末尾那条 `git log --oneline ea285c5fda..base/v4.1.0-frozen`
+> 的输出为准**（它每次跑都会变，不要按任何固定值抄）。
 > (b) `develop/v4.1.0`（tip `ea285c5fda77e7790e965ae482e3c1b015fabc10`）里**还没有**
 > 冻结分支上的 **7 个**提交（`git log --oneline ea285c5fda..HEAD` 实测 7 条）：
 >
@@ -119,9 +122,23 @@
     被当成了「写裁决文件那一刻的 tip」，而不是泳道实际跑过的那棵树 ——
     这正是 **C5（证据必须绑定完整 commit SHA，跨 SHA 证据不可继承）** 的缺陷类，
     而且出现在**属主要签的那份**文件里。
-- **结论未受影响（这条很重要）**：`git diff --name-status 09ba360f6c HEAD` 的改动**全部**落在
-  `docs/refactor/v4.1.0-c/takeover/` 下（裁决文件、台账、生成器、校验器），
-  **门禁脚本、负向夹具、门禁编目、夹具台账、产品代码一个都没动**
+- **结论未受影响（这条很重要）**：`git diff --name-status 09ba360f6c HEAD` 实测 **12 个**改动路径，
+  其中 **8 个**在 `docs/refactor/v4.1.0-c/takeover/` 下（裁决文件、台账、生成器、校验器），
+  **4 个在 takeover/ 之外**：
+  `docs/refactor/v4.1.0-c/handoff/01_ARCHITECTURE_BASELINE.json`、
+  `docs/refactor/v4.1.0-c/handoff/10_HANDOFF_MANIFEST.json`、
+  `docs/releases/v4.1.0/refactoring/TEST_COVERAGE_MATRIX.json`、
+  `docs/releases/v4.1.0/refactoring/evidence/SOURCE_BINDINGS.json`。
+  这 4 个的改动是**重签产物与矩阵字段改动**，**不是**泳道的输入：
+  - `handoff/01_ARCHITECTURE_BASELINE.json`：只改了 `timestamp` 与 `source_bindings.sha256`；
+  - `handoff/10_HANDOFF_MANIFEST.json`：只改了 `timestamp` 与三个被重签文件的 sha256
+    （矩阵换了内容 ⇒ 它的哈希变了 ⇒ manifest 里记的哈希跟着重签）；
+  - `evidence/SOURCE_BINDINGS.json`：只改了 `timestamp`；
+  - `refactoring/TEST_COVERAGE_MATRIX.json`：改的是 44 条用例的**签署绑定字段**
+    （`assertion_reviewed_at` 拆分并改名为 `assertion_judged_at`（同值）+ 新增
+    `assertion_signed_at`（= `null`，副签没发生）、`assertion_reviewed_commit` 由 BASE 改指
+    `2923612f51…`）—— **判定结果与签名均未改变**，见 `ORACLE-REVIEW-LOG-T1.md` §11.1 / §11.2。
+  ⇒ **门禁脚本、负向夹具、门禁编目、夹具台账、产品代码一个都没动**
   ⇒ **RED = 5/7 这个测量与判据 8 = FAIL 这个判定不受影响**。
   （生成器现在**自己算**这件事：`gen_verdict.py` 会跑 `git diff --name-only <实测树> HEAD`
   并按「泳道实际读取的路径集合」分类，结论写在裁决 JSON 的 `criteria[7].note` 里。）
@@ -312,7 +329,7 @@ PASS 需**同时**满足以下四条：
 
 | 项 | 值 |
 |---|---|
-| **矛盾是什么** | `docs/refactor/v4.1.0-c/takeover/dsh-b/` 下的 ADR 正文里**仍有旧的状态断言**，与 Task 4 落地的机器字段 `Status: APPROVED` **并存**。例：`ADR-410-001.md:33` 仍写「原则接受C不等于此ADR已批」 |
+| **矛盾是什么** | ADR **正文**里**仍有旧的状态断言**，与 Task 4 落地的机器字段 `Status: APPROVED` **并存**。例：`docs/releases/v4.1.0/refactoring/adrs/ADR-410-001.md:33` 仍写「原则接受C不等于此ADR已批」（⚠️ 正文在 `docs/releases/v4.1.0/refactoring/adrs/` 下，**不在** `docs/refactor/v4.1.0-c/takeover/dsh-b/` —— 那里只有 `ADR-DECISION-RECORD.md`，是裁决记录，不是 ADR 正文） |
 | **为什么属主今天会踩到** | ADR 是属主读裁决依据的入口；同一个文件里两个互相矛盾的说法，谁读到哪一句取决于读到哪一行 |
 | **出处** | 台账 `:117`（Task 4 minor, deferred）：「ADR 正文深处仍有旧状态断言（如 `ADR-410-001.md:33`「原则接受C不等于此ADR已批」）与新的 `Status: APPROVED` 并存 —— 头部改了、正文没改，处理半吊子」 |
 | **为什么本波不修** | 改正文 = 改 ADR 内容 ⇒ 触发 **C6**（ADR 批准指向固定 commit 的正文与 sha256，内容变更须重审）。**那是属主的重审动作** |

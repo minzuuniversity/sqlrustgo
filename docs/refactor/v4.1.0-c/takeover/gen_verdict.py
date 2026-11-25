@@ -5,23 +5,36 @@ PROVENANCE — WHICH TEXT IS CAPTURED AND WHICH IS AUTHORED
 ==========================================================
 This file used to claim "Nothing is hand-written".  That was false: criteria
 4, 7, 8, 10, 11 and 12 embedded prose that no command ever printed.  The
-three kinds of text are now kept apart, and every reader can tell them apart:
+kinds of text are now kept apart, and every reader can tell them apart.
+There are FOUR kinds of text, and every one of them is either captured or
+authored — never a mixture of the two:
 
-* `command`  — the shell command this script really runs.
+* `command`  — the shell command this script really runs.            [CAPTURED]
 * `observed` — the CAPTURED result of that command: its exit code plus a
                 verbatim excerpt of its real stdout/stderr.  Where the script
                 itself computes a boolean or a count from files (criteria 6
                 and 7), the computed value carries the marker
                 【本脚本计算】 so it cannot be mistaken for stdout.
+                An authored paragraph must NEVER live here — if it does, it
+                belongs in `note` (or `caveats`) instead.
 * `note`     — an AUTHORED statement: prose written by a human/agent, NOT
                 printed by any command.  Every authored paragraph starts with
                 【作者陈述，非本次命令输出】 and names the file that actually
                 carries the fact.
+* `caveats`  — an optional list of AUTHORED caveats attached to ONE
+                criterion: the limitations and the "a reader must know this
+                before trusting the verdict" observations.  Each entry is
+                authored prose, so it carries the same
+                【作者陈述，非本次命令输出】 marker as `note`; it is never
+                command stdout.  `caveats` is a FOURTH kind, not a synonym
+                for `observed`.
 
-Concretely, the following are AUTHORED and now live in `note`, not in
-`observed`: criterion 4's FAIL basis (the reason `verify_handoff.py --check`
-exiting 0 does not satisfy the criterion), criterion 8's tree identity (the
-lane log does not record it — see below), criterion 10's R1 drift counts
+Concretely, the following are AUTHORED and now live in `note` (or, for
+criterion 1, in `caveats`) — not in `observed`: criterion 1's caveats (the
+develop-tip observation), criterion 4's FAIL basis (the reason
+`verify_handoff.py --check` exiting 0 does not satisfy the criterion),
+criterion 7's exit-code-propagation statement, criterion 8's tree identity
+(the lane log does not record it — see below), criterion 10's R1 drift counts
 (`verify_r2_package.py` never looks at the R1 directory), and criterion 12's
 facts (the criterion is waived; no command is run).
 
@@ -106,11 +119,31 @@ R2_DIR_DEFAULT = ("/Volumes/workspace/dev/workspaces/dsh-ops/projects/"
 # them between the lane's tree and HEAD would make the RED=5/7 measurement
 # non-transferable; a change outside them cannot.  The generator computes
 # this set itself (see `lane_relevant_changes`) instead of asserting it.
+#
+# The list is the lane's INPUTS, in three groups:
+#   (a) the product / test code the gates compile and run  -> crates/, src/,
+#       tests/, tools/
+#   (b) the lane's own machinery: the gate scripts, the negative fixtures, the
+#       gate catalogue, the fixture ledger, the stage config and the workflows
+#       -> scripts/, audit/, .gitea/, docs/governance/,
+#       docs/releases/v4.1.0/GATE_CATALOG.jsonl,
+#       docs/releases/v4.1.0/NEG_FIXTURES_v4.1.0.jsonl
+#   (c) the ROOT Rust build inputs the lane compiles with.  These were
+#       MISSING before (a change to the root Cargo.toml / Cargo.lock /
+#       build.rs / rust-toolchain would have been reported as "lane-relevant
+#       paths = 0").  They are root-level names, so the prefix match below
+#       only matches them at the repository root: a workspace member's
+#       "crates/<x>/Cargo.toml" is already covered by the "crates/" prefix.
+#       The repository's toolchain file is named `cargo-toolchain.toml`
+#       (there is no `rust-toolchain.toml` today); both spellings are listed
+#       so a rename cannot silently fall through the list again.
 LANE_RELEVANT_PREFIXES = (
     "crates/", "src/", "tests/", "tools/", "scripts/", "audit/", ".gitea/",
     "docs/governance/",
     "docs/releases/v4.1.0/GATE_CATALOG.jsonl",
     "docs/releases/v4.1.0/NEG_FIXTURES_v4.1.0.jsonl",
+    "Cargo.toml", "Cargo.lock", "build.rs",
+    "cargo-toolchain.toml", "rust-toolchain",
 )
 
 # The owner-approved reviewer list lives in V410-OWNER-RULING.md, between the
@@ -302,10 +335,15 @@ def main():
                run("git rev-parse HEAD", repo)[1].strip(),
                "是" if anc else "否")),
         "verdict": "PASS" if (rc1 == 0 and rc1b == 0 and anc) else "FAIL",
+        # `caveats` is the FOURTH kind of text (see the PROVENANCE block above):
+        # AUTHORED prose attached to one criterion, never command stdout.
+        # Every entry therefore carries the same marker as `note`.
         "caveats": [
-            "判据按**计划正文 Step 1 的命令**判：verify_baseline.py --strict（4/4）+ "
-            "`git ls-remote origin refs/heads/base/v4.1.0-frozen` 的 tip 须是 BASE 的后代（成立）。",
-            "**设计稿 §A5 #1 的另一条可核方式**（`git merge-base --is-ancestor origin/develop/v4.1.0 BASE`）"
+            "【作者陈述，非本次命令输出】判据按**计划正文 Step 1 的命令**判："
+            "`verify_baseline.py --strict` + `git ls-remote origin refs/heads/base/v4.1.0-frozen` "
+            "的 tip 须是 BASE 的后代；这两条的实测结果见 `observed`。",
+            "【作者陈述，非本次命令输出】**设计稿 §A5 #1 的另一条可核方式**"
+            "（`git merge-base --is-ancestor origin/develop/v4.1.0 BASE`）"
             "在本次实测中**不成立**：远端 develop/v4.1.0 的 tip 已是 %s —— 它是 BASE 的**后代**而非祖先。"
             "原因是 develop/v4.1.0 被合并了 `base/v4.1.0-frozen`（PR #5928，merge commit ea285c5fda）"
             "—— 冻结分支已被并入 develop（= O11 事实上已被行动回答）。这不是 BASE 的缺陷。"
@@ -481,6 +519,15 @@ def main():
 
     unqual_txt = ("；".join("%s：%s" % (cid, "、".join(why)) for cid, why in unqualified)
                   if unqualified else "无")
+    # The gate is `all(cond6.values())` over SIX keys.  ALL SIX are printed
+    # here, with their machine key names: printing only four of them would let
+    # a reader see "four True" and then a FAIL with no reason, because the
+    # two missing keys (`..._reviewer_list_present`, `..._at_least_one_case_
+    # judged_pass`) are exactly the ones that can be False on their own.
+    c6_lines = "\n".join(
+        "  (%d) %s = %s" % (i, k, cond6[k]) for i, k in enumerate(cond6, 1))
+    c6_failed = [k for k in cond6 if not cond6[k]]
+    c6_fail_txt = ("；".join(c6_failed) if c6_failed else "（无）")
     crit.append({
         "id": 6,
         "criterion": "已执行切片全部有终态 + Oracle 签署（签署人合格）+ 双向差异表",
@@ -497,12 +544,9 @@ def main():
             "【本脚本计算】判定为「可独立判定」（即被判 PASS、待副签）的用例 = %d 条；"
             "其中签署人合格的 = %d 条，不合格的 = %d 条\n"
             "【本脚本计算】%s\n"
-            "【本脚本计算】判据 6 的四个条件：\n"
-            "  (1) verify_matrix.py 退出 0 = %s\n"
-            "  (2) 双向差异表存在且表头匹配 = %s\n"
-            "  (3) L1 全部用例有终态 = %s\n"
-            "  (4) 每条被判 PASS 的用例有合格签署人（有 assertion_reviewed_by、≠ 判定人、"
-            "在属主授权名单内）= %s\n"
+            "【本脚本计算】判据 6 的机器门槛 = `all(cond6.values())`，覆盖**六个**键：\n"
+            "%s\n"
+            "为假的键：%s\n"
             "签署人不合格的用例：%s\n"
             "⇒ 判据 6 = %s"
             % (rc6, tail(out6, 8), len(l1), states, all_terminal,
@@ -511,18 +555,22 @@ def main():
                verdicts, by, signed_now,
                len(judged_pass), len(qualified), len(unqualified),
                list_state,
-               cond6["c6_verify_matrix_exit_0"],
-               cond6["c6_diff_table_exists_and_header_matches"],
-               cond6["c6_all_l1_have_terminal_status"],
-               cond6["c6_every_judged_pass_case_qualified_signer"],
+               c6_lines,
+               c6_fail_txt,
                unqual_txt,
                "PASS" if c6_pass else "FAIL")),
         "note": (
             "【作者陈述，非本次命令输出】判据 6 的判定规则（本波按整支评审 I-2 重写）：\n"
-            "PASS 需**同时**满足四条：(1) `verify_matrix.py` 退出 0；(2) 双向差异表存在且表头逐字符匹配；"
-            "(3) L1 全部用例有终态；(4) **每条被判 PASS（`assertion_review_verdict` 存在且不是 "
+            "PASS 需**同时**满足**四条实质条件**：(1) `verify_matrix.py` 退出 0；"
+            "(2) 双向差异表存在且表头逐字符匹配；(3) L1 全部用例有终态；"
+            "(4) **每条被判 PASS（`assertion_review_verdict` 存在且不是 "
             "`ASSERTION_UNREVIEWABLE`）的用例都有 `assertion_reviewed_by`，且该值 ≠ "
             "`assertion_review_performed_by`，且落在属主授权的 Reviewer 名单里**。\n"
+            "**机器门槛比那四条多两个防空判的检查**：`c6_owner_approved_reviewer_list_present`"
+            "（名单必须存在且可读）与 `c6_at_least_one_case_judged_pass`"
+            "（至少有一条被判 PASS 的用例）—— 没有它们，条件 (4) 在「零条被判 PASS」时会**空判为真**，"
+            "判据 6 会被错误地判成 PASS。**因此 `observed` 里逐条打印全部六个键**"
+            "（编号 (1)…(6) 即 `cond6` 的插入序），FAIL 时能直接读出是哪一条不成立。\n"
             "名单从 `%s` 的 `%s … %s` 标记块读取（第一列是序号的行才算数）。\n"
             "**名单为空 ⇒ 一律判 FAIL**；已判 PASS 但签署人不合格 ⇒ **判 FAIL**。\n"
             "旧逻辑只数「`assertion_review_verdict` 非空」这一个字段、**从不看是谁签的**，"
@@ -562,33 +610,48 @@ def main():
             "【本脚本计算】执行点唯一：%s（命中 %d 个 workflow 文件）\n"
             "【本脚本计算】真实执行（非 --dry-run）：%s\n"
             "【本脚本计算】触发条件可指认（workflow_dispatch）：%s；"
-            "步骤 if: startsWith(github.ref, 'refs/heads/develop/') = %s\n"
-            "【作者陈述，非本次命令输出】退出码可传播：check_stage.sh 有 set -euo pipefail，"
-            "门禁 FAIL 时 exit 1（事实来源：`scripts/gate/check_stage.sh`）"
+            "步骤 if: startsWith(github.ref, 'refs/heads/develop/') = %s"
             % (rc7, out7.strip() or "（无命中）",
                alpha_file, len(hits), step, trig, guard))
     else:
         detail7 = "exit=%d\n%s\n【本脚本计算】`--stage ALPHA` 命中 %d 个 workflow 文件 ⇒ 执行点不唯一" % (
             rc7, out7.strip() or "（无命中）", len(hits))
+    # The exit-code-propagation statement is AUTHORED (no command printed it),
+    # so it lives in `note`, NOT in `observed` -- see the PROVENANCE block in
+    # this file's docstring.
+    note7 = (
+        "【作者陈述，非本次命令输出】**退出码可传播**：`check_stage.sh` 有 `set -euo pipefail`，"
+        "门禁 FAIL 时 `exit 1`（事实来源：`scripts/gate/check_stage.sh`）。\n"
+        "**其余三条**（真实执行 / 非 `--dry-run` / 触发条件可指认）是本脚本对 workflow 文件的"
+        "**计算**结果，见 `observed` 的【本脚本计算】行。\n"
+        "**事实来源**：`scripts/gate/check_stage.sh`、`.gitea/workflows/%s`（本次命中的执行点）。"
+        % (alpha_file if alpha_file else "（无命中的执行点）"))
     crit.append({
         "id": 7,
         "criterion": "ALPHA 阶段清单有 CI 执行点",
         "command": cmd7 + "  +  逐条核对「真实执行 / 非 --dry-run / 退出码可传播 / 触发条件可指认」",
         "observed": detail7,
+        "note": note7,
         "verdict": "PASS" if alpha_ok else "FAIL",
     })
 
     # -- 8 -----------------------------------------------------------------
     cmd8 = "bash audit/v4.1.0/neg/verify_neg_fixtures.sh"
     neg_log = args.neg_log
-    if args.run_neg or not os.path.isfile(neg_log):
+    # Two DIFFERENT provenances, and the verdict must not mix them up:
+    #   * the lane was run BY THIS SCRIPT  -> the tree is an OBSERVATION
+    #     (`git rev-parse HEAD` right before the run);
+    #   * an existing log is reused       -> the tree is a RECONSTRUCTION
+    #     (the log carries no commit SHA at all).
+    neg_observed = bool(args.run_neg or not os.path.isfile(neg_log))
+    if neg_observed:
         rc8, out8 = run(cmd8, repo, timeout=4 * 3600)
         open(neg_log, "w", encoding="utf-8").write(out8)
-        neg_src = "本次运行（脚本内实跑）"
         neg_date = time.strftime("%Y-%m-%d")
         neg_tree = run("git rev-parse HEAD", repo)[1].strip()
         neg_sha = sha256_file(neg_log)
         neg_tree_origin = "本次运行：HEAD 即实测树（观测值）。"
+        neg_src_line = "【本次运行（脚本内实跑）的实测值】"
     else:
         out8 = open(neg_log, encoding="utf-8").read()
         neg_date = args.neg_run_date
@@ -597,6 +660,7 @@ def main():
         neg_tree_origin = ("**推定/重构值**（不是从日志里读出来的）："
                            "日志本身**不含**树身份 —— `run.log` 里没有任何 40 位十六进制串，"
                            "只有 `scratch tree = <路径>` 与逐夹具判决。")
+        neg_src_line = "【沿用 %s 的实测值】" % neg_date
     summ = re.search(r"verify_neg_fixtures: RED=(\d+)/7\s+INCONCLUSIVE=(\d+)/7", out8)
     red = int(summ.group(1)) if summ else -1
     inc = int(summ.group(2)) if summ else -1
@@ -613,39 +677,37 @@ def main():
     lane_hits = lane_relevant_changes(repo, neg_tree, "HEAD")
     if lane_hits is None:
         lane_txt = "【本脚本计算】`git diff --name-only %s HEAD` 执行失败 ⇒ 不可判定" % neg_tree
-        lane_ok = None
     elif lane_hits:
         lane_txt = ("【本脚本计算】两棵树之间有 **%d** 个泳道相关路径改动：%s "
                     "⇒ RED=%d/7 的测量**不可**直接迁移到 HEAD" % (len(lane_hits), ", ".join(lane_hits), red))
-        lane_ok = False
     else:
         lane_txt = ("【本脚本计算】`git diff --name-only %s HEAD` 共 %d 个改动路径，"
                     "其中**泳道相关路径（产品代码 / 门禁脚本 / 负向夹具 / 门禁编目 / 夹具台账 / "
-                    "阶段配置 / workflow）= 0** ⇒ RED=%d/7 的测量**可**迁移到 HEAD，"
+                    "阶段配置 / workflow / 根 Rust 构建输入）= 0** ⇒ RED=%d/7 的测量**可**迁移到 HEAD，"
                     "本次 FAIL 判定不受影响。改动路径全表：%s"
                     % (neg_tree, len(changed_rows), red,
                        "；".join("%s %s" % (st, p) for st, p in changed_rows) or "（空）"))
-        lane_ok = True
-    crit.append({
-        "id": 8,
-        "criterion": "ALPHA 7 道负向夹具两层 RED",
-        "command": cmd8,
-        "observed": (
-            "【沿用 %s 的实测值】完整日志 %s，sha256 `%s`\n"
-            "退出码=%d —— 来自脚本自身的退出码语义（`verify_neg_fixtures.sh`：RED_N==7 → 0，否则 → 3）；"
-            "**不是**从日志里读的（日志末行的 `NEG_EXIT=` 是空的，不构成证据）。\n"
-            "%s\n逐门禁：\n%s\n"
-            "%s\n"
-            "⇒ RED=%d/7 ≠ 7/7 ⇒ 判据 8 = FAIL（缺口在**证据层**）。"
-            % (neg_date, neg_log, neg_sha, rc8,
-               summ.group(0) if summ else tail(out8, 4),
-               "\n".join("  %s gate=%s stage=%s" % r for r in rows),
-               lane_txt,
-               red)),
-        "note": (
+    # The note MUST follow the provenance of the tree, not the other way round:
+    # claiming "this tree is a reconstruction" about an OBSERVED tree would be
+    # false, and claiming "e2d98149d2 was wrong" about a tree that never ran
+    # would slander an unrelated commit.
+    if neg_observed:
+        note8 = (
+            "【作者陈述，非本次命令输出】**实测日期：%s；实测树：`%s`**\n"
+            "**该树身份是观测值，不是推定值。** 本次泳道是本脚本自己跑的"
+            "（`--run-neg`，或既有日志不存在），跑之前工作树是干净的"
+            "（`verify_sha_scope.py` 拒绝脏树），泳道以仓库自身作 scratch 树 "
+            "⇒ 全程 HEAD = `%s`（本次运行前 `git rev-parse HEAD` 的实测输出）。\n"
+            "**结论未受影响**：%s\n"
+            "**事实来源**：`git rev-parse HEAD`（本次运行前的实测输出）、"
+            "`audit/v4.1.0/neg/verify_neg_fixtures.sh`（脏树拒绝逻辑）、"
+            "`docs/refactor/v4.1.0-c/takeover/V410-READINESS-STATE.md` §4 的 R63。"
+            % (neg_date, neg_tree, neg_tree, lane_txt))
+    elif neg_tree == NEG_RUN_TREE_DEFAULT:
+        note8 = (
             "【作者陈述，非本次命令输出】**实测日期：%s；实测树：`%s`**\n"
             "**该树身份是推定/重构，不是观测值。** %s\n"
-            "重构依据（两个互相独立的事实，均可复算）：\n"
+            "重构依据（两个互相独立的事实，均可复算 —— 适用于本次沿用的那次运行）：\n"
             "(1) `git reflog --date=iso`：HEAD 从 2026-11-25 09:16:07（09ba360f6c 的提交时刻）"
             "到 2026-11-25 12:08:52（e2d98149d2 的提交时刻）一直是 `09ba360f6c`；\n"
             "(2) 泳道日志的 mtime 是 2026-11-25 12:07:40 —— **早于** e2d98149d2 作为提交存在的那一刻。"
@@ -659,7 +721,36 @@ def main():
             "**事实来源**：`git reflog`、泳道日志的 mtime、"
             "`audit/v4.1.0/neg/verify_neg_fixtures.sh`（脏树拒绝逻辑）、"
             "`docs/refactor/v4.1.0-c/takeover/V410-READINESS-STATE.md` §4 的 R63。"
-            % (neg_date, neg_tree, neg_tree_origin, lane_txt)),
+            % (neg_date, neg_tree, neg_tree_origin, lane_txt))
+    else:
+        note8 = (
+            "【作者陈述，非本次命令输出】**实测日期：%s；实测树：`%s`**\n"
+            "**该树身份是显式指定的参数（`--neg-run-tree`），不是观测值，也不是本脚本复算出来的。**\n"
+            "⚠️ 下述重构依据（`git reflog` 时段 + 泳道日志 mtime）**只适用于默认值 `%s`** "
+            "对应的那次运行；**对本次指定的 `%s` 没有被复算过** —— "
+            "若要把这棵树当成实测树，必须另行提供它自己的 reflog / mtime 依据。\n"
+            "**结论未受影响**：%s\n"
+            "**事实来源**：`--neg-run-tree` 参数、"
+            "`audit/v4.1.0/neg/verify_neg_fixtures.sh`（脏树拒绝逻辑）、"
+            "`docs/refactor/v4.1.0-c/takeover/V410-READINESS-STATE.md` §4 的 R63。"
+            % (neg_date, neg_tree, NEG_RUN_TREE_DEFAULT, neg_tree, lane_txt))
+    crit.append({
+        "id": 8,
+        "criterion": "ALPHA 7 道负向夹具两层 RED",
+        "command": cmd8,
+        "observed": (
+            "%s完整日志 %s，sha256 `%s`\n"
+            "退出码=%d —— 来自脚本自身的退出码语义（`verify_neg_fixtures.sh`：RED_N==7 → 0，否则 → 3）；"
+            "**不是**从日志里读的（日志末行的 `NEG_EXIT=` 是空的，不构成证据）。\n"
+            "%s\n逐门禁：\n%s\n"
+            "%s\n"
+            "⇒ RED=%d/7 ≠ 7/7 ⇒ 判据 8 = FAIL（缺口在**证据层**）。"
+            % (neg_src_line, neg_log, neg_sha, rc8,
+               summ.group(0) if summ else tail(out8, 4),
+               "\n".join("  %s gate=%s stage=%s" % r for r in rows),
+               lane_txt,
+               red)),
+        "note": note8,
         "verdict": "PASS" if red == 7 else "FAIL",
     })
 
@@ -760,8 +851,10 @@ def main():
     note = (
         "每条判据的 `command` 都由本文件（gen_verdict.py，已入仓）真的执行；"
         "**`observed` 只放该次执行的退出码与真实输出摘要**（本脚本自己算出来的值标注【本脚本计算】）；"
-        "**手写的散文一律在 `note` 里，并以【作者陈述，非本次命令输出】开头并指向它的事实来源文件** —— "
-        "判据 4 的 FAIL 依据、判据 8 的树身份、判据 10/11 的口径说明、判据 12 的事实都属于这一类。"
+        "**手写的散文一律在 `note`（或判据 1 的 `caveats`）里，"
+        "并以【作者陈述，非本次命令输出】开头并指向它的事实来源文件** —— "
+        "判据 1 的 caveats、判据 4 的 FAIL 依据、判据 6 的判定规则、判据 7 的退出码可传播、"
+        "判据 8 的树身份、判据 10/11 的口径说明、判据 12 的事实都属于这一类。"
         "计划正文验收段写的「11 条 PASS + 1 条 WAIVED」是 Task 7/10 之前的乐观预期，以实测为准（R63）；"
         "本次实测的 FAIL 是判据 %s 共 %d 条（%s）。"
         % ("、".join("#%d" % i for i in fail_ids), len(fail_ids),
@@ -775,8 +868,10 @@ def main():
                         "（Task 9 实施者；控制者裁定 R69：生成器入仓，裁决文件可从已提交的树复现）",
         "generated_at": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
         "generated_at_note": "本 JSON 的**生成**时刻。它**不是**判据 8 的实测时刻"
-                             "（那条泳道耗时 1–2 小时，本轮未重跑；它的实测日期与树见 criteria[7].note —— "
-                             "那个树身份是**推定/重构**的，不是从日志里观测到的）。",
+                             "（那条泳道耗时 1–2 小时；它的实测日期与树见 criteria[7].note —— "
+                             "那个树身份是%s）。"
+                             % ("**观测值**（本次由本脚本实跑）" if neg_observed
+                                else "**推定/重构**的，不是从日志里观测到的"),
         "repo": repo,
         "base_sha": BASE,
         "develop_tip_frozen_at_baseline": dev_tip_frozen,
