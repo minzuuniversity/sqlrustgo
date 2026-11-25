@@ -77,3 +77,9 @@
 # Release docs (v3.x)
 /docs/releases/ @yinglichina8848 @claude-macmini
 /docs/releases/v3.8.0/ @yinglichina8848 @claude-macmini
+
+# Owner ruling document -- the machine input of criterion 6 (the owner-approved
+# Reviewer list).  Only the owner identity may change that list: criterion 6's
+# `c6_reviewer_list_provenance_is_owner` checks the author of the commit that
+# last changed the list block against this line.
+/docs/refactor/v4.1.0-c/takeover/V410-OWNER-RULING.md @yinglichina8848
