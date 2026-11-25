@@ -228,8 +228,11 @@ impl VersionedTable {
             return false;
         }
         let r = self.versions.read();
-        r.values()
-            .any(|chain| chain.iter().any(|v| v.created_by_tx == tx_id && !v.committed))
+        r.values().any(|chain| {
+            chain
+                .iter()
+                .any(|v| v.created_by_tx == tx_id && !v.committed)
+        })
     }
 
     /// #5412: drop every pending version written by `tx_id`. Nothing was

@@ -129,7 +129,9 @@ fn assert_duplicate<S: StorageEngine + 'static>(
 /// path, not through the primary-key cache, so it can contradict the cache
 /// instead of agreeing with it by construction.
 fn count<S: StorageEngine + 'static>(engine: &mut ExecutionEngine<S>, table: &str) -> i64 {
-    let r = engine.execute(&format!("SELECT COUNT(*) FROM {table}")).unwrap();
+    let r = engine
+        .execute(&format!("SELECT COUNT(*) FROM {table}"))
+        .unwrap();
     r.rows[0][0].as_integer().expect("COUNT is an integer")
 }
 
@@ -200,7 +202,8 @@ macro_rules! backend_suite {
             #[test]
             fn duplicate_key_is_still_rejected() {
                 let (mut e, _storage, _guard) = setup();
-                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)").unwrap();
+                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+                    .unwrap();
                 e.execute("INSERT INTO t VALUES (1)").unwrap();
                 assert_duplicate(&mut e, "INSERT INTO t VALUES (1)", "repeated key");
                 assert_eq!(count(&mut e, "t"), 1, "the rejected insert must not land");
@@ -210,7 +213,8 @@ macro_rules! backend_suite {
             #[test]
             fn new_key_is_still_accepted() {
                 let (mut e, _storage, _guard) = setup();
-                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)").unwrap();
+                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+                    .unwrap();
                 for i in 1..=20 {
                     e.execute(&format!("INSERT INTO t VALUES ({i})")).unwrap();
                 }
@@ -232,7 +236,8 @@ macro_rules! backend_suite {
             #[test]
             fn write_that_bypasses_the_engine_invalidates_the_cache() {
                 let (mut e, storage, _guard) = setup();
-                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)").unwrap();
+                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+                    .unwrap();
                 e.execute("INSERT INTO t VALUES (1)").unwrap();
                 e.execute("INSERT INTO t VALUES (2)").unwrap();
 
@@ -274,9 +279,11 @@ macro_rules! backend_suite {
                 // the failure this case is about; the case must isolate the
                 // cache's behaviour, not the DDL's.
                 e.execute("USE d1").unwrap();
-                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)").unwrap();
+                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+                    .unwrap();
                 e.execute("USE d2").unwrap();
-                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)").unwrap();
+                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+                    .unwrap();
 
                 e.execute("USE d1").unwrap();
                 e.execute("INSERT INTO d1.t VALUES (7)").unwrap();
@@ -312,9 +319,11 @@ macro_rules! backend_suite {
                 // Both tables exist before the first insert, for the same
                 // reason as in `cross_database_new_key_is_not_rejected`.
                 e.execute("USE d2").unwrap();
-                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)").unwrap();
+                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+                    .unwrap();
                 e.execute("USE d1").unwrap();
-                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)").unwrap();
+                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+                    .unwrap();
 
                 e.execute("USE d2").unwrap();
                 e.execute("INSERT INTO d2.t VALUES (7)").unwrap();
@@ -348,7 +357,8 @@ macro_rules! backend_suite {
                 e.execute("CREATE DATABASE d2").unwrap();
                 for db in ["d1", "d2"] {
                     e.execute(&format!("USE {db}")).unwrap();
-                    e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)").unwrap();
+                    e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+                        .unwrap();
                 }
 
                 let mut expected: BTreeSet<(String, i64)> = BTreeSet::new();
@@ -387,7 +397,8 @@ macro_rules! backend_suite {
                 let (mut e, _storage, _guard) = setup();
                 e.execute("CREATE DATABASE d1").unwrap();
                 e.execute("USE d1").unwrap();
-                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)").unwrap();
+                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+                    .unwrap();
 
                 e.execute("INSERT INTO d1.t VALUES (1)").unwrap();
                 e.execute("INSERT INTO D1.t VALUES (2)").unwrap();
@@ -410,12 +421,14 @@ macro_rules! backend_suite {
             #[test]
             fn drop_and_recreate_table_starts_empty() {
                 let (mut e, _storage, _guard) = setup();
-                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)").unwrap();
+                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+                    .unwrap();
                 e.execute("INSERT INTO t VALUES (1)").unwrap();
                 e.execute("INSERT INTO t VALUES (2)").unwrap();
 
                 e.execute("DROP TABLE t").unwrap();
-                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)").unwrap();
+                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+                    .unwrap();
 
                 // Key 1 is free in the new table.
                 e.execute("INSERT INTO t VALUES (1)").unwrap();
@@ -443,7 +456,8 @@ macro_rules! backend_suite {
             #[test]
             fn delete_frees_the_key() {
                 let (mut e, _storage, _guard) = setup();
-                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)").unwrap();
+                e.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+                    .unwrap();
                 e.execute("INSERT INTO t VALUES (1)").unwrap();
                 e.execute("INSERT INTO t VALUES (2)").unwrap();
 
@@ -455,16 +469,16 @@ macro_rules! backend_suite {
     };
 }
 
-backend_suite!(memory_backend, MemoryStorage, (MemoryStorage::new(), DirGuard(None)));
-
 backend_suite!(
-    file_backend,
-    FileStorage,
-    {
-        let dir = unique_dir("file");
-        (FileStorage::new(dir.clone()).unwrap(), DirGuard(Some(dir)))
-    }
+    memory_backend,
+    MemoryStorage,
+    (MemoryStorage::new(), DirGuard(None))
 );
+
+backend_suite!(file_backend, FileStorage, {
+    let dir = unique_dir("file");
+    (FileStorage::new(dir.clone()).unwrap(), DirGuard(Some(dir)))
+});
 
 // ---------------------------------------------------------------------
 // The MVCC stack — the production shape for the visibility question
@@ -504,7 +518,8 @@ fn committed_row_in_another_connection_becomes_a_duplicate() {
 
     a.execute("CREATE DATABASE d1").unwrap();
     a.execute("USE d1").unwrap();
-    a.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)").unwrap();
+    a.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+        .unwrap();
     b.execute("USE d1").unwrap();
 
     // A writes but does not commit: B cannot see the row.
@@ -539,7 +554,8 @@ fn committed_row_in_another_connection_becomes_a_duplicate() {
 fn rolled_back_row_in_another_connection_is_not_a_duplicate() {
     let (mut a, mut b, _guard) = mvcc_two_connections();
 
-    a.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)").unwrap();
+    a.execute("CREATE TABLE t (id INTEGER PRIMARY KEY)")
+        .unwrap();
 
     a.execute("BEGIN").unwrap();
     a.execute("INSERT INTO t VALUES (2)").unwrap();

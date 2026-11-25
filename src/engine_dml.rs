@@ -491,7 +491,9 @@ pub fn execute_insert<S: StorageEngine + 'static>(
                 // Counting the rebuilds is what pins this issue's claim:
                 // without a change stamp this line ran once per INSERT,
                 // so N inserts cost N full scans.
-                engine.pk_cache_builds.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                engine
+                    .pk_cache_builds
+                    .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                 engine.pk_lookup_cache.write().insert(
                     table_name.clone(),
                     PkIndexCache {

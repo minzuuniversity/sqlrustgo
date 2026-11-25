@@ -48,7 +48,10 @@ fn inv01a_rollback_restores_exact_multiset() {
     let mut a = after.clone();
     b.sort();
     a.sort();
-    assert_eq!(a, b, "INV-01: rollback must restore the exact pre-tx multiset");
+    assert_eq!(
+        a, b,
+        "INV-01: rollback must restore the exact pre-tx multiset"
+    );
 }
 
 /// INV-01b：同事务内对同一行连续两次 UPDATE，ROLLBACK 恰好撤销一次恢复原值
@@ -56,7 +59,8 @@ fn inv01a_rollback_restores_exact_multiset() {
 fn inv01b_mutation_revoked_exactly_once() {
     let dir = tempfile::TempDir::new().unwrap();
     let mut e = file_engine(dir.path());
-    e.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT)").unwrap();
+    e.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT)")
+        .unwrap();
     e.execute("INSERT INTO t VALUES (1, 7)").unwrap();
 
     e.execute("BEGIN").unwrap();

@@ -83,10 +83,18 @@ fn c01_07c_paired_frontier_observation_must_exist() {
             let is_next_lsn = l.contains("wal_current_lsn") || l.contains("next_lsn");
             let is_change_cursor = l.contains("current_change_lsn") || l.contains("changes_since");
             if l.contains("durable_lsn") && !is_next_lsn {
-                durable_obs.push(format!("{}: {}", f.file_name().unwrap().to_string_lossy(), l));
+                durable_obs.push(format!(
+                    "{}: {}",
+                    f.file_name().unwrap().to_string_lossy(),
+                    l
+                ));
             }
             if l.contains("commit_lsn") && !is_next_lsn && !is_change_cursor {
-                commit_obs.push(format!("{}: {}", f.file_name().unwrap().to_string_lossy(), l));
+                commit_obs.push(format!(
+                    "{}: {}",
+                    f.file_name().unwrap().to_string_lossy(),
+                    l
+                ));
             }
         }
     }

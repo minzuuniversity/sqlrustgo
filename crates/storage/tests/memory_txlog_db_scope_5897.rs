@@ -207,7 +207,9 @@ fn broadcast_of_a_named_database_commit_lands_in_that_database_5897() {
     source.create_table_in_db("d1", &table("t")).unwrap();
     source.begin_transaction().unwrap();
     source.insert_in_db("d1", "t", vec![row(7)]).unwrap();
-    let log = source.commit_transaction_with_log().expect("a committed log");
+    let log = source
+        .commit_transaction_with_log()
+        .expect("a committed log");
 
     let mut receiver = seeded();
     receiver.apply_committed_log(&log).unwrap();
@@ -235,8 +237,12 @@ fn broadcast_of_a_named_database_commit_lands_in_that_database_5897() {
 fn broadcast_delete_stays_in_the_logged_database_5897() {
     let mut source = seeded();
     source.begin_transaction().unwrap();
-    source.delete_in_db("d1", "t", &[Value::Integer(10)]).unwrap();
-    let log = source.commit_transaction_with_log().expect("a committed log");
+    source
+        .delete_in_db("d1", "t", &[Value::Integer(10)])
+        .unwrap();
+    let log = source
+        .commit_transaction_with_log()
+        .expect("a committed log");
 
     let mut receiver = seeded();
     receiver.apply_committed_log(&log).unwrap();
@@ -262,9 +268,12 @@ fn broadcast_delete_stays_in_the_logged_database_5897() {
 fn broadcast_update_stays_in_the_logged_database_5897() {
     let mut source = seeded();
     source.begin_transaction().unwrap();
-    source.update_in_db("d1", "t", &[Value::Integer(10)], &[(0, Value::Integer(99))])
+    source
+        .update_in_db("d1", "t", &[Value::Integer(10)], &[(0, Value::Integer(99))])
         .unwrap();
-    let log = source.commit_transaction_with_log().expect("a committed log");
+    let log = source
+        .commit_transaction_with_log()
+        .expect("a committed log");
 
     let mut receiver = seeded();
     receiver.apply_committed_log(&log).unwrap();
@@ -296,7 +305,9 @@ fn rollback_on_the_receiver_reverts_a_broadcast_from_another_database_5897() {
     source.create_table_in_db("d1", &table("t")).unwrap();
     source.begin_transaction().unwrap();
     source.insert_in_db("d1", "t", vec![row(7)]).unwrap();
-    let log = source.commit_transaction_with_log().expect("a committed log");
+    let log = source
+        .commit_transaction_with_log()
+        .expect("a committed log");
 
     let mut receiver = seeded();
     receiver.begin_transaction().unwrap();
@@ -344,7 +355,10 @@ fn default_database_behaviour_is_unchanged_5897() {
     let log = s.commit_transaction_with_log().expect("a committed log");
     assert_eq!(log.inserted.len(), 1);
     let (db, table_name, _) = &log.inserted[0];
-    assert_eq!(db, "default", "the bare-name call resolves against `default`");
+    assert_eq!(
+        db, "default",
+        "the bare-name call resolves against `default`"
+    );
     assert_eq!(table_name, "t");
 
     // The same shape as a rollback: begin again, insert, roll back.

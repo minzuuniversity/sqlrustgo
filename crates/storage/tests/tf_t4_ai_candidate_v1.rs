@@ -26,7 +26,11 @@ fn test_insert_then_scan_visible() {
     eng.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
     eng.insert("t", vec![vec![Value::Integer(2)]]).unwrap();
     let rows = eng.scan("t").unwrap();
-    assert_eq!(rows.len(), 2, "STUB_SILENT_SUCCESS: scan returned empty after 2 inserts");
+    assert_eq!(
+        rows.len(),
+        2,
+        "STUB_SILENT_SUCCESS: scan returned empty after 2 inserts"
+    );
 }
 
 #[test]
@@ -39,7 +43,11 @@ fn test_delete_returns_real_count() {
     let remaining = eng.scan("t").unwrap();
     assert_eq!(remaining.len(), 1);
     // Verify the surviving row is the one we did NOT delete
-    assert_eq!(remaining[0], vec![Value::Integer(20)], "delete removed wrong row");
+    assert_eq!(
+        remaining[0],
+        vec![Value::Integer(20)],
+        "delete removed wrong row"
+    );
 }
 
 #[test]

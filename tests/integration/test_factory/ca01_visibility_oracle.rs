@@ -39,7 +39,8 @@ fn file_engine(dir: &std::path::Path) -> ExecutionEngine<FileStorage> {
 fn inv04a_rollback_to_savepoint_preserves_earlier_work() {
     let dir = tempfile::TempDir::new().unwrap();
     let mut e = file_engine(dir.path());
-    e.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT)").unwrap();
+    e.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT)")
+        .unwrap();
     e.execute("INSERT INTO t VALUES (1, 10)").unwrap();
 
     e.execute("BEGIN").unwrap();
@@ -76,7 +77,8 @@ fn inv04b_savepoint_cursor_is_transaction_local() {
     let mut a = ExecutionEngine::new(storage.clone());
     let mut b = ExecutionEngine::new(storage.clone());
 
-    a.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT)").unwrap();
+    a.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT)")
+        .unwrap();
     a.execute("INSERT INTO t VALUES (1, 10)").unwrap();
 
     a.execute("BEGIN").unwrap();
@@ -107,7 +109,8 @@ fn inv04b_savepoint_cursor_is_transaction_local() {
 fn inv02_update_primary_key_rollback_restores_original_key() {
     let dir = tempfile::TempDir::new().unwrap();
     let mut e = file_engine(dir.path());
-    e.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT)").unwrap();
+    e.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT)")
+        .unwrap();
     e.execute("INSERT INTO t VALUES (1, 10)").unwrap();
     let before = rows(&mut e, "SELECT id, v FROM t");
 
@@ -132,7 +135,8 @@ fn inv13_uncommitted_state_invisible_to_peer_engine() {
     let mut a = ExecutionEngine::new(storage.clone());
     let mut b = ExecutionEngine::new(storage.clone());
 
-    a.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT)").unwrap();
+    a.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT)")
+        .unwrap();
     a.execute("INSERT INTO t VALUES (1, 10)").unwrap();
 
     a.execute("BEGIN").unwrap();
@@ -157,8 +161,10 @@ fn inv13_uncommitted_state_invisible_to_peer_engine() {
 fn inv15_regression_index_and_rowstore_agree_at_committed_state() {
     let dir = tempfile::TempDir::new().unwrap();
     let mut e = file_engine(dir.path());
-    e.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT)").unwrap();
-    e.execute("INSERT INTO t VALUES (1, 10), (2, 20), (3, 30)").unwrap();
+    e.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT)")
+        .unwrap();
+    e.execute("INSERT INTO t VALUES (1, 10), (2, 20), (3, 30)")
+        .unwrap();
     e.execute("CREATE INDEX idx_t_v ON t (v)").unwrap();
 
     let indexed = rows(&mut e, "SELECT id FROM t WHERE v = 20");
