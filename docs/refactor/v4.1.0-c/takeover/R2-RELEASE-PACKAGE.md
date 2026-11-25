@@ -186,21 +186,22 @@ bash …/DSH-EXTERNAL-REVIEW-001/r2-build/build_r2.sh
    旧断言字符串（作为替换锚点），因此「R2 全文检索」的口径必须排除这 4 个脚本
    （`verify_r2_package.py` 已显式排除并注明）。**`package/` 内是干净的** —— 判据 11 的对象是包。
 5. **DSH 仓库里 R2 与 `r2-build/` 已提交**：`a0314048fff341f832b963a87c194f9cefeef686`
-   （发布 R2 + 构建链，2026-11-25 09:46）与 `19f999e`（补齐残余的 R1 身份残留，10:03）。
+   （发布 R2 + 构建链，2026-11-25 09:46）、`19f999e`（补齐残余的 R1 身份残留，10:03）、
+   与 `08742fc`（把校验器同步成三处同一份，关闭 N-10 漂移，15:41）。
    **未 push —— 该仓库没有配置任何 git remote**（`git remote -v` 为空，只有 `main` 一个分支），
-   所以「推给属主」这一步目前**无处可推**；是否给它配 remote 由属主决定。
+   所以「推给属主」这一步目前**无处可推**；是否给它配 remote 由属主决定（§9.1 亦同）。
 
 ## 9. 构建链的归属与复算入口（M-8）
 
 **权威归属**：R2 的**构建链在 DSH 仓** —— `…/DSH-EXTERNAL-REVIEW-001/r2-build/`（`build_r2.sh`
 是唯一入口，幂等；R1 只读）。**该仓当前没有 git remote**（`git remote -v` 为空，只有 `main`
 一个分支），所以构建链**没有异地副本**；是否给它配 remote、是否把它推到与本仓同源的远端，
-**由属主决定**。本仓（sqlrustgo）**不复制构建链**（那会变成第二套可写的构建入口，违反 C2 的精神），
-只保存**校验器这一份可复算的锚点**：
+**由属主决定**（这一条**仍然开着**）。本仓（sqlrustgo）**不复制构建链**（那会变成第二套可写的
+构建入口，违反 C2 的精神），只保存**校验器这一份可复算的锚点**（校验器本身现在三处同一份，见 §9.1）：
 
 | 位置 | 是什么 | 为什么放在这里 |
 |---|---|---|
-| `docs/refactor/v4.1.0-c/takeover/verify_r2_package.py` | 判据 10 / 11 与包完整性的**校验器**（只读，不生成、不改写任何东西） | 判据 10 / 11 的**可复算锚点**：校验器本身在本仓，任何人都能重跑 |
+| `docs/refactor/v4.1.0-c/takeover/verify_r2_package.py` | 判据 10 / 11 与包完整性的**校验器**（只读，不生成、不改写任何东西） | 判据 10 / 11 的**可复算锚点**：校验器本身在本仓，任何人都能重跑（DSH 侧现在有同字节的两份副本，见 §9.1） |
 | `…/DSH-EXTERNAL-REVIEW-001/r2-build/` | **生成**链（`build_r2.sh` 等 6 个脚本，权威归属：DSH 仓） | 生成是写操作，留在 DSH 仓；本仓不复制 |
 
 > `verify_r2_package.py` 落在 `docs/refactor/v4.1.0-c/takeover/` 下，**不在 `MANIFEST_ROOTS` 内**
@@ -221,20 +222,39 @@ bash …/DSH-EXTERNAL-REVIEW-001/r2-build/build_r2.sh
 > 与 `evidence/SOURCE_BINDINGS.json` 的 `timestamp`（以及前者对后者 sha256 的引用）。
 > **没有改任何事实内容。**
 
-### 9.1 两份 `verify_r2_package.py` 的字节漂移（N-10，**待属主裁决**）
+### 9.1 `verify_r2_package.py` 的字节漂移（N-10）—— **已收口：三处现在同一份**
 
-| | DSH 仓那份 | 本仓这份 |
+**2026-11-25：控制者授权并执行了「同步 `verify_r2_package.py`」** —— 把本仓那份**复制**到 DSH 仓的两处。
+三份现在的 sha256 **完全相同**（前缀 `e8155879faaefd6e`）：
+
+| # | 位置 | sha256 前缀 |
 |---|---|---|
-| 位置 | `…/sqlrustgo-v4.1.0-r2/verify_r2_package.py` | `docs/refactor/v4.1.0-c/takeover/verify_r2_package.py` |
-| 状态 | **未同步**（仍是原版） | 加了 `R2_DIR` 解析（否则复制过来跑不了）+ 找不到包时的人话报错 |
-| 字节 | **两份当前不同** | |
+| 1 | `docs/refactor/v4.1.0-c/takeover/verify_r2_package.py`（本仓，判据 10 / 11 的可复算锚点） | `e8155879faaefd6e` |
+| 2 | `…/DSH-EXTERNAL-REVIEW-001/r2-build/verify_r2_package.py` | `e8155879faaefd6e` |
+| 3 | `…/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2/verify_r2_package.py` | `e8155879faaefd6e` |
 
-- **以哪一份为准：待属主裁决。** 本轮明令不许再动 R2 生成链，所以**没有**把本仓的改动同步回
-  DSH 那份；也没有把 DSH 那份反向同步到本仓。⇒ **两份现在是漂移的**。
-- **re-review 已独立复核**：本仓这份是**忠实的重新锚定** —— 除了路径解析（`HERE` → `R2_DIR`）
-  和错误提示，**每一项检查与判决都不变**，实跑 **23/23 PASS**。
-- 在属主裁定之前：**本仓这份是判据 10 / 11 实际使用的那一份**
-  （`V410-READINESS-VERDICT.json` 的 `criteria[9].command` / `criteria[10].command` 引用的就是它）。
+- **原先 DSH 那两份是 `75de8cce6773`**（内容等价、字节不同）⇒ 那份漂移**已经不存在**。
+- **「待属主裁决以哪份为准」这一条已删除** —— 现在**只有一份**，没有「以哪份为准」可裁。
+  （原先登记 N-10 时列的两条待裁决项：① 以哪份为准 —— **已消解**；② R2 构建链无异地副本 ——
+  **仍然开着**，见 §8 第 5 条与 §9 开头。）
+- **为什么本仓那份在 DSH 家也能工作**：校验器的 `_resolve_r2_dir()` 按顺序取第一个命中：
+  1. `--r2-dir <path>`（命令行）；
+  2. 环境变量 `R2_DIR`；
+  3. **脚本所在目录下有 `package/` ⇒ 就用它自己** —— DSH 家的 `sqlrustgo-v4.1.0-r2/verify_r2_package.py`
+     命中这一段（包就在脚边，**不需要任何参数**）；
+  4. 兜底：DSH 的**默认 R2 位置** `…/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2` ——
+     本仓那份与 `r2-build/` 那份命中这一段（`r2-build/` 下**没有** `package/`）。
+  ⇒ **同一份字节在两个家都自解析到正确的包。**
+- **实测**：同步后两个家都自解析正确、实跑均 **23 PASS / 0 FAIL**
+  （本仓那份用 `--r2-dir` 显式指定；DSH 那份在包旁边直接跑）。
+- **DSH 侧提交**：`08742fc`（`fix(r2): 把校验器同步成三处同一份（关闭 N-10 漂移）`）。
+  **未 push —— 该仓没有任何 git remote**（`git remote -v` 为空），所以**没有推送对象**；
+  是否给它配 remote 仍由属主决定（§8 第 5 条 / §9 开头）。
+- **R1 与 R2 的包都没被触碰**：校验器**不在** R2 的 `package/` 内、**也不在** R2 的 ZIP 内
+  （ZIP **21** 个条目，检索 `verify_r2` **0 命中**）⇒ **R2 包的 ZIP 哈希未变**；R1 逐字节未变（§1）。
+- **本仓这份仍是判据 10 / 11 实际使用的那一份**
+  （`V410-READINESS-VERDICT.json` 的 `criteria[9].command` / `criteria[10].command` 引用的就是它）——
+  同步**只改变字节的分布，不改变判据的任何一项检查与判决**。
 
 ### 9.2 校验器需要 R2 包本身（N-11，**不是过度承诺**）
 
@@ -245,6 +265,10 @@ bash …/DSH-EXTERNAL-REVIEW-001/r2-build/build_r2.sh
   （`SQLRUSTGO-V410-REVIEW-PACK-R2-DRAFT.zip`）里；
 - **DSH 工作区若丢失**，本仓这份校验器**仍在**，但它**需要一个从别处取回的 R2 包**才能跑出结论。
   换句话说：本仓保住的是**校验逻辑**，不是**被校验对象**；
+- **三份校验器现在是同一份**（§9.1）⇒ 「校验逻辑」与「被校验对象」分居两处的状况**不变**：
+  **校验器三处都有**（本仓 `takeover/` + DSH 的 `r2-build/` + DSH 的 `sqlrustgo-v4.1.0-r2/`），
+  而 **R2 包仍然只有一份**（DSH 工作区 + 已分发的 ZIP）——
+  校验器不再漂移，但「**校验器 ≠ 被校验对象**」这条边界一分未变；
 - 找不到包时，校验器现在**打印人话并以退出码 2 结束**（而不是抛栈回溯）：
 
 ```
@@ -268,7 +292,13 @@ $ echo $?
 bash …/DSH-EXTERNAL-REVIEW-001/r2-build/build_r2.sh
 
 # 2) 单独复核判据 10 / 11 与包完整性 —— **本仓的副本**（可复算锚点）
-python3 docs/refactor/v4.1.0-c/takeover/verify_r2_package.py
+#    （校验器现在三处同一份，见 §9.1；显式给 --r2-dir 最省心）
+python3 docs/refactor/v4.1.0-c/takeover/verify_r2_package.py \
+        --r2-dir …/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2
+#    不带参数也能跑：兜底解析到 DSH 的默认 R2 位置
+
+# 2b) 同一份字节在 DSH 家直接跑（包就在脚边，不需要任何参数）
+cd …/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2 && python3 verify_r2_package.py
 
 # 3) 复核 R1 未被触碰
 shasum -a 256 …/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0/package/FREEZE.json
