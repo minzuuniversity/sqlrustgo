@@ -1,0 +1,119 @@
+{
+  "format": "v410-readiness-verdict/v1",
+  "generated_by": "docs/refactor/v4.1.0-c/takeover/gen_verdict.py（Task 9 实施者；控制者裁定 R69：生成器入仓，裁决文件可从已提交的树复现）",
+  "generated_at": "2026-11-25T13:42:15+0800",
+  "generated_at_note": "本 JSON 的**生成**时刻。它**不是**判据 8 的实测时刻（那条泳道耗时 1–2 小时；它的实测日期与树见 criteria[7].note —— 那个树身份是**推定/重构**的，不是从日志里观测到的）。",
+  "repo": "/Volumes/workspace/dev/wt-v410-base",
+  "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
+  "develop_tip_frozen_at_baseline": "8cbde5b6d33c876fa1197474c46d50142a9823bd",
+  "develop_tip_note": "**冻结时点**的 develop tip（= BASE 的 parent，记于 BASELINE_FREEZE.json）。live develop tip 会前移，实测值见 criteria[0].observed。",
+  "note": "每条判据的 `command` 都由本文件（gen_verdict.py，已入仓）真的执行；**`observed` 只放该次执行的退出码与真实输出摘要**（本脚本自己算出来的值标注【本脚本计算】）；**手写的散文一律在 `note`（或判据 1 的 `caveats`）里，并以【作者陈述，非本次命令输出】开头并指向它的事实来源文件** —— 判据 1 的 caveats、判据 4 的 FAIL 依据、判据 6 的判定规则、判据 7 的退出码可传播、判据 8 的树身份、判据 10/11 的口径说明、判据 12 的事实都属于这一类。计划正文验收段写的「11 条 PASS + 1 条 WAIVED」是 Task 7/10 之前的乐观预期，以实测为准（R63）；本次实测的 FAIL 是判据 #4、#6、#8 共 3 条（判据 4（映射层：A2.2 R1 未满足）、判据 6（签署层：Oracle 副签 0 条 / 签署人不合格）、判据 8（证据层：夹具泳道未达 7/7））。",
+  "summary": {
+    "total": 12,
+    "pass": 8,
+    "fail": 3,
+    "waived": 1,
+    "fail_criteria": [
+      4,
+      6,
+      8
+    ]
+  },
+  "criteria": [
+    {
+      "id": 1,
+      "criterion": "BASE（内容基线）唯一、develop tip 是其祖先、含 BASE 的分支已推送",
+      "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_baseline.py --strict\ngit ls-remote origin refs/heads/base/v4.1.0-frozen\ngit merge-base --is-ancestor fd849ae20541901d5e59f45cd3ba2c51093f5d5e ebcf8bc2997649e333067bbb8497c1dbcdf09db3\ngit ls-remote origin refs/heads/develop/v4.1.0\ngit merge-base --is-ancestor ea285c5fda77e7790e965ae482e3c1b015fabc10 fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
+      "observed": "exit=0\n[B1] PASS  develop tip 8cbde5b6d3 is an ancestor of HEAD\n[B2] PASS  base_sha fd849ae205, tree_sha 72d378e8e5, source_ref base/v4.1.0-frozen and frozen_at all match the repository\n[B3] PASS  123 material file(s) + 56 runtime-contract file(s) imported over develop, all still present in HEAD\n[B4] PASS  ledger complete (applied 1 / path-import 1 / already-present 3); the frozen path-import directory holds 56 file(s)\n4/4 PASS -- COMPLETE: every assertion ran\ngit ls-remote origin refs/heads/base/v4.1.0-frozen -> ebcf8bc2997649e333067bbb8497c1dbcdf09db3 (exit=0)\ngit merge-base --is-ancestor fd849ae20541901d5e59f45cd3ba2c51093f5d5e ebcf8bc2997649e333067bbb8497c1dbcdf09db3 -> exit=0 (是)\ngit ls-remote origin refs/heads/develop/v4.1.0 -> ea285c5fda77e7790e965ae482e3c1b015fabc10 (exit=0)\ngit merge-base --is-ancestor ea285c5fda77e7790e965ae482e3c1b015fabc10 fd849ae20541901d5e59f45cd3ba2c51093f5d5e -> exit=1 (否)\n本地分支 tip = dab70d8e4d11dde0ef790a76cffdb28de6113777；远端 base/v4.1.0-frozen tip 是 BASE 的后代 = 是",
+      "verdict": "PASS",
+      "caveats": [
+        "【作者陈述，非本次命令输出】判据按**计划正文 Step 1 的命令**判：`verify_baseline.py --strict` + `git ls-remote origin refs/heads/base/v4.1.0-frozen` 的 tip 须是 BASE 的后代；这两条的实测结果见 `observed`。",
+        "【作者陈述，非本次命令输出】**设计稿 §A5 #1 的另一条可核方式**（`git merge-base --is-ancestor origin/develop/v4.1.0 BASE`）在本次实测中**不成立**：远端 develop/v4.1.0 的 tip 已是 ea285c5fda77e7790e965ae482e3c1b015fabc10 —— 它是 BASE 的**后代**而非祖先。原因是 develop/v4.1.0 被合并了 `base/v4.1.0-frozen`（PR #5928，merge commit ea285c5fda）—— 冻结分支已被并入 develop（= O11 事实上已被行动回答）。这不是 BASE 的缺陷。判据 1 的三项实质条件仍全部成立：BASE 唯一 ✓；**冻结时点的 develop tip** 8cbde5b6d33c 是 BASE 的祖先 ✓（BASELINE_FREEZE.json 记录，verify_baseline 的 B1 用的就是它）；含 BASE 的分支已推送 ✓（远端 `base/v4.1.0-frozen` 的 tip 现为 ebcf8bc2997649e333067bbb8497c1dbcdf09db3）。"
+      ]
+    },
+    {
+      "id": 2,
+      "criterion": "45da6968ae 的 123 个材料文件全在 BASE 树内",
+      "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_baseline.py --strict（断言 B3）",
+      "observed": "exit=0；[B3] PASS  123 material file(s) + 56 runtime-contract file(s) imported over develop, all still present in HEAD\n（同一次运行覆盖 B1/B2/B4，见判据 1）",
+      "verdict": "PASS"
+    },
+    {
+      "id": 3,
+      "criterion": "前向/历史 SHA 分界（前向绑定唯一等于 BASE；历史绑定逐项未变）",
+      "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_sha_scope.py",
+      "observed": "exit=0\n[S1] PASS  18 task(s), all base_sha == fd849ae205; artifact_context.source_code_base_sha == e9ff21fca3 (unchanged)\n[S2] PASS  75 case(s), all base_sha == fd849ae205\n[S3] PASS  18 record(s), all base_commit == fd849ae205, task_id order identical to the DAG\n[S4] PASS  base_sha == fd849ae205, adr_base_commit == 45da6968ae (unchanged)\n[S5] PASS  142 historical record(s) byte-identical to the frozen baseline fd849ae205 (141 frozen + 1 registered addition(s)); 135 frozen_commit binding(s) compared against 45da6968ae, all unchanged\n[S6] PASS  the tracked evidence/rerun-summary-20261120.json still points at e9ff21fca3; the out-of-repo pilot copy is byte-identical\nnote: 7 historical record(s) were added after 45da6968ae; their bytes are covered by the frozen-baseline comparison\n6/6 PASS",
+      "verdict": "PASS"
+    },
+    {
+      "id": 4,
+      "criterion": "ADR 机器字段非空、档位正确、映射满足 A2.2 五条规则",
+      "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_handoff.py --check",
+      "observed": "exit=0（校验器退出码）\n\"adr_approval\": \"CONDITIONALLY_APPROVED\"\n\"adr_approval_state\": \"PENDING\"\n\"tasks_with_empty_approved_adr_refs\": 1\n\"mutation_rejections\"（**10 条**变异臂全部被拒）：cycle, missing, unapproved_dispatch, unapproved_adr, human_gate_removed, cloud_policy, later_stage_task, native_extra_field, tier_overreach, unapproved_adr_still_proposed\n\"notes\": \"1 of 18 task(s) still carry an empty approved_adr_refs -- the owner's ADR decision is PENDING, not verified\"",
+      "note": "【作者陈述，非本次命令输出】**判据不满足的原因**（三条互相独立的事实）：\n(1) 计划正文 Step 4 的口径：「O1（`ADAPTER-MAPPING-PENDING.md` 中的 task 列表，**若非空则 A5 #4 不能判 PASS**）」——该清单**非空**：`docs/refactor/v4.1.0-c/takeover/ADAPTER-MAPPING-PENDING.md` 有 `| C01-15 | … |` 一行，并写明其 `approved_adr_refs` 保持 `[]`。\n(2) 判据自身的措辞「**映射满足 A2.2 五条规则**」：A2.2 **R1** = 「每个 task 的 `approved_adr_refs` 至少 1 项」——C01-15 违反 R1（该清单明写「R1 与 R2 冲突时以 R2 为准：该包保持 `[]`」，即**明知违反 R1 而保留**）。\n(3) 校验器**不担保 R1**：`verify_handoff.py:383-384` 在 `refs` 为空时**直接 return**；且它自己的输出是反面证据 —— `\"adr_approval_state\": \"PENDING\"` 与 note 「the owner's ADR decision is PENDING, not verified」。\n⇒ `--check` 退出 0 只说明「可核方式里的那几条断言成立」，**不等于**判据 4 成立。按 R63「不得为了让总数好看而改判、拆分或重定义判据」，判据 4 = **FAIL**（缺口在**映射层**：需属主裁决补 ADR 引用 vs 豁免）。\n**事实来源**：`docs/refactor/v4.1.0-c/takeover/ADAPTER-MAPPING-PENDING.md`、`docs/releases/v4.1.0/refactoring/tools/verify_handoff.py:383-384`、`docs/refactor/v4.1.0-c/takeover/V410-REFACTOR-READINESS-IMPLEMENTATION-PLAN.md`（Task 4 Step 4 的口径）、设计稿 A2.2 R1。",
+      "verdict": "FAIL"
+    },
+    {
+      "id": 5,
+      "criterion": "manifest 零漂移",
+      "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_handoff.py --check（含 manifest 全文件哈希复算；与判据 4 同一条命令、同一次运行）",
+      "observed": "exit=0\n\"hara_hashed_files\": 55\n\"local_links\": 42\n\"task_dag\": \"ACYCLIC_NO_MISSING_DEPENDENCIES\"\nmanifest 绑定文件数 = 314；manifest 自身 sha256 = 16f87dff194a215dcb3f466befe6f4a1041b582f0d4e307fa1149c6f9b970973\n\"mutation_rejections\"（**10 条**变异臂全部被拒）：cycle, missing, unapproved_dispatch, unapproved_adr, human_gate_removed, cloud_policy, later_stage_task, native_extra_field, tier_overreach, unapproved_adr_still_proposed\n（判据 5 与判据 4 跑的是**同一条** `verify_handoff.py --check`，证据同源。）",
+      "verdict": "PASS"
+    },
+    {
+      "id": 6,
+      "criterion": "已执行切片全部有终态 + Oracle 签署（签署人合格）+ 双向差异表",
+      "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_matrix.py  &&  检查 docs/releases/v4.1.0/refactoring/evidence/L1-DIFF-fd849ae20541.md 的表头  &&  读 docs/refactor/v4.1.0-c/takeover/V410-OWNER-RULING.md 的属主授权 Reviewer 名单  &&  统计矩阵的签署字段",
+      "observed": "exit=0\n[M2] PASS  75 case(s), mapping status MAPPED/NO_INVARIANT_MATCH\n[M3] PASS  75 case(s), 75 distinct case_id(s)\n[M4] PASS  5 distinct id(s) referenced, all declared in docs/releases/v4.1.0/refactoring/TRANSACTION_INVARIANTS.md\n[M5] PASS  75 case(s) use the contract/pilot vocabulary; the mapping covers 9 word(s) and keeps the RED words on KNOWN_FAIL\n[M6] PASS  4 KNOWN_FAIL case(s), every one carries the five-element RED identity\n[M7] PASS  75 case(s) carry a per-case basis (max pairwise similarity < 0.9); 63 empty mapping(s), all listed in the index table of docs/refactor/v4.1.0-c/takeover/INVARIANT-GAP-PROPOSALS.md; 5 invariant id(s) claimed, each justified per case [INV-01×5, INV-02×1, INV-04×2, INV-07×1, INV-14×4]; 0 declared-invariant label(s) still shared, 0 of them with divergent id sets; FORM ONLY -- substantive agreement with the test source is a human/Oracle review item\nnote: docs/releases/v4.1.0/refactoring/STORAGE_CAPABILITY_CONTRACT.md declares no invariant id -- the corpus is the id column of the other registry\n7/7 PASS\n【本脚本计算】L1 切片（feature ∈ T1/T2/T3）=44 条，execution_status 分布 = {'PASS': 42, 'NOT_RUN': 2}；全部有终态 = True\n【本脚本计算】双向差异表：docs/releases/v4.1.0/refactoring/evidence/L1-DIFF-fd849ae20541.md —— 文件存在=True，表头逐字符匹配=True\n【本脚本计算】assertion_review_verdict 分布 = {'ASSERTION_UNREVIEWABLE': 38, 'JUDGED_PENDING_COUNTERSIGNATURE': 6}；assertion_review_performed_by = {'task7-executor/minimax-m3.1-flash': 44}；已有 assertion_reviewed_by 的用例数 = 0\n【本脚本计算】判定为「可独立判定」（即被判 PASS、待副签）的用例 = 6 条；其中签署人合格的 = 0 条，不合格的 = 6 条\n【本脚本计算】**没有属主授权的 Reviewer 名单**（名单为空：属主尚未指认任何独立 Reviewer）\n【本脚本计算】判据 6 的机器门槛 = `all(cond6.values())`，覆盖**六个**键：\n  (1) c6_verify_matrix_exit_0 = True\n  (2) c6_diff_table_exists_and_header_matches = True\n  (3) c6_all_l1_have_terminal_status = True\n  (4) c6_owner_approved_reviewer_list_present = True\n  (5) c6_at_least_one_case_judged_pass = True\n  (6) c6_every_judged_pass_case_qualified_signer = False\n为假的键：c6_every_judged_pass_case_qualified_signer\n签署人不合格的用例：PILOT-T1-003：缺 assertion_reviewed_by；PILOT-T1-004：缺 assertion_reviewed_by；PILOT-T1-006：缺 assertion_reviewed_by；PILOT-T1-007：缺 assertion_reviewed_by；PILOT-T1-102：缺 assertion_reviewed_by；PILOT-T2-001：缺 assertion_reviewed_by\n⇒ 判据 6 = FAIL",
+      "note": "【作者陈述，非本次命令输出】判据 6 的判定规则（本波按整支评审 I-2 重写）：\nPASS 需**同时**满足**四条实质条件**：(1) `verify_matrix.py` 退出 0；(2) 双向差异表存在且表头逐字符匹配；(3) L1 全部用例有终态；(4) **每条被判 PASS（`assertion_review_verdict` 存在且不是 `ASSERTION_UNREVIEWABLE`）的用例都有 `assertion_reviewed_by`，且该值 ≠ `assertion_review_performed_by`，且落在属主授权的 Reviewer 名单里**。\n**机器门槛比那四条多两个防空判的检查**：`c6_owner_approved_reviewer_list_present`（名单必须存在且可读）与 `c6_at_least_one_case_judged_pass`（至少有一条被判 PASS 的用例）—— 没有它们，条件 (4) 在「零条被判 PASS」时会**空判为真**，判据 6 会被错误地判成 PASS。**因此 `observed` 里逐条打印全部六个键**（编号 (1)…(6) 即 `cond6` 的插入序），FAIL 时能直接读出是哪一条不成立。\n名单从 `docs/refactor/v4.1.0-c/takeover/V410-OWNER-RULING.md` 的 `<!-- OWNER_APPROVED_REVIEWERS:BEGIN --> … <!-- OWNER_APPROVED_REVIEWERS:END -->` 标记块读取（第一列是序号的行才算数）。\n**名单为空 ⇒ 一律判 FAIL**；已判 PASS 但签署人不合格 ⇒ **判 FAIL**。\n旧逻辑只数「`assertion_review_verdict` 非空」这一个字段、**从不看是谁签的**，因此属主一旦指认 Reviewer，仅凭一个字段值就能把 #6 翻成 PASS —— 这正是 Task 7 评审留给 Task 9 的义务（台账 :174）。\n**事实来源**：`docs/refactor/v4.1.0-c/takeover/V410-READINESS-LEDGER.md`（R-ORACLE、R40–R42、Task 7 评审第 1 轮）、`docs/refactor/v4.1.0-c/takeover/V410-OWNER-RULING.md` 的 §3.1 属主授权 Reviewer 名单、`docs/refactor/v4.1.0-c/takeover/ORACLE-REVIEW-LOG-T1.md` §0。",
+      "verdict": "FAIL"
+    },
+    {
+      "id": 7,
+      "criterion": "ALPHA 阶段清单有 CI 执行点",
+      "command": "grep -rn -- '--stage ALPHA' .gitea/workflows/*.yml  +  逐条核对「真实执行 / 非 --dry-run / 退出码可传播 / 触发条件可指认」",
+      "observed": "exit=0\n【命令 stdout】\n.gitea/workflows/ci-alpha-stage.yml:141:        run: bash scripts/gate/check_stage.sh --version \"${{ inputs.version }}\" --stage ALPHA\n【本脚本计算】执行点唯一：ci-alpha-stage.yml（命中 1 个 workflow 文件）\n【本脚本计算】真实执行（非 --dry-run）：True\n【本脚本计算】触发条件可指认（workflow_dispatch）：True；步骤 if: startsWith(github.ref, 'refs/heads/develop/') = True",
+      "note": "【作者陈述，非本次命令输出】**退出码可传播**：`check_stage.sh` 有 `set -euo pipefail`，门禁 FAIL 时 `exit 1`（事实来源：`scripts/gate/check_stage.sh`）。\n**其余三条**（真实执行 / 非 `--dry-run` / 触发条件可指认）是本脚本对 workflow 文件的**计算**结果，见 `observed` 的【本脚本计算】行。\n**事实来源**：`scripts/gate/check_stage.sh`、`.gitea/workflows/ci-alpha-stage.yml`（本次命中的执行点）。",
+      "verdict": "PASS"
+    },
+    {
+      "id": 8,
+      "criterion": "ALPHA 7 道负向夹具两层 RED",
+      "command": "bash audit/v4.1.0/neg/verify_neg_fixtures.sh",
+      "observed": "【沿用 2026-11-25 的实测值】完整日志 /Volumes/workspace/dev/sqlrustgo/.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/task-9-neg-logs/run.log，sha256 `bcc3ecb05601ee149b936dea710703166647ebecd0bc705c3c64f5f357191e07`\n退出码=3 —— 来自脚本自身的退出码语义（`verify_neg_fixtures.sh`：RED_N==7 → 0，否则 → 3）；**不是**从日志里读的（日志末行的 `NEG_EXIT=` 是空的，不构成证据）。\nverify_neg_fixtures: RED=5/7  INCONCLUSIVE=2/7\n逐门禁：\n  scripts/gate/check_anti_ignore_gate.sh gate=RED stage=RED\n  scripts/gate/check_arch_invariants.sh gate=RED stage=RED\n  scripts/gate/check_arch3_no_bypass.sh gate=RED stage=RED\n  scripts/gate/check_sql_corpus_gate.sh gate=RED stage=RED\n  scripts/gate/check_g1_tpch_baseline.sh gate=RED stage=RED\n  scripts/gate/check_alpha_v410.sh gate=INCONCLUSIVE stage=INCONCLUSIVE\n  scripts/gate/check_coverage_v312.sh gate=INCONCLUSIVE stage=INCONCLUSIVE\n【本脚本计算】`git diff --name-only 09ba360f6cfbf0be2aa4cf7d2064c4b8b50f7958 HEAD` 共 12 个改动路径，其中**泳道相关路径（产品代码 / 门禁脚本 / 负向夹具 / 门禁编目 / 夹具台账 / 阶段配置 / workflow / 根 Rust 构建输入）= 0** ⇒ RED=5/7 的测量**可**迁移到 HEAD，本次 FAIL 判定不受影响。改动路径全表：M docs/refactor/v4.1.0-c/handoff/01_ARCHITECTURE_BASELINE.json；M docs/refactor/v4.1.0-c/handoff/10_HANDOFF_MANIFEST.json；M docs/refactor/v4.1.0-c/takeover/ORACLE-REVIEW-LOG-T1.md；A docs/refactor/v4.1.0-c/takeover/R2-RELEASE-PACKAGE.md；A docs/refactor/v4.1.0-c/takeover/V410-OWNER-RULING.md；M docs/refactor/v4.1.0-c/takeover/V410-READINESS-LEDGER.md；M docs/refactor/v4.1.0-c/takeover/V410-READINESS-STATE.md；A docs/refactor/v4.1.0-c/takeover/V410-READINESS-VERDICT.json；A docs/refactor/v4.1.0-c/takeover/gen_verdict.py；A docs/refactor/v4.1.0-c/takeover/verify_r2_package.py；M docs/releases/v4.1.0/refactoring/TEST_COVERAGE_MATRIX.json；M docs/releases/v4.1.0/refactoring/evidence/SOURCE_BINDINGS.json\n⇒ RED=5/7 ≠ 7/7 ⇒ 判据 8 = FAIL（缺口在**证据层**）。",
+      "note": "【作者陈述，非本次命令输出】**实测日期：2026-11-25；实测树：`09ba360f6cfbf0be2aa4cf7d2064c4b8b50f7958`**\n**该树身份是推定/重构，不是观测值。** **推定/重构值**（不是从日志里读出来的）：日志本身**不含**树身份 —— `run.log` 里没有任何 40 位十六进制串，只有 `scratch tree = <路径>` 与逐夹具判决。\n重构依据（两个互相独立的事实，均可复算 —— 适用于本次沿用的那次运行）：\n(1) `git reflog --date=iso`：HEAD 从 2026-11-25 09:16:07（09ba360f6c 的提交时刻）到 2026-11-25 12:08:52（e2d98149d2 的提交时刻）一直是 `09ba360f6c`；\n(2) 泳道日志的 mtime 是 2026-11-25 12:07:40 —— **早于** e2d98149d2 作为提交存在的那一刻。泳道以仓库自身作 scratch 树，且 `verify_neg_fixtures.sh` 在脏树上**拒绝启动**，所以全程 HEAD = `09ba360f6c`。\n**先前写的 `e2d98149d2…` 是错的**：那是泳道跑完之后才被创建的那个提交，它被当成了「写裁决文件那一刻的 tip」，而不是泳道实际跑过的那棵树 —— 这正是 C5（证据必须绑定完整 commit SHA，跨 SHA 证据不可继承）的缺陷类，且出现在**属主要签的那份**文件里。\n**结论未受影响**：【本脚本计算】`git diff --name-only 09ba360f6cfbf0be2aa4cf7d2064c4b8b50f7958 HEAD` 共 12 个改动路径，其中**泳道相关路径（产品代码 / 门禁脚本 / 负向夹具 / 门禁编目 / 夹具台账 / 阶段配置 / workflow / 根 Rust 构建输入）= 0** ⇒ RED=5/7 的测量**可**迁移到 HEAD，本次 FAIL 判定不受影响。改动路径全表：M docs/refactor/v4.1.0-c/handoff/01_ARCHITECTURE_BASELINE.json；M docs/refactor/v4.1.0-c/handoff/10_HANDOFF_MANIFEST.json；M docs/refactor/v4.1.0-c/takeover/ORACLE-REVIEW-LOG-T1.md；A docs/refactor/v4.1.0-c/takeover/R2-RELEASE-PACKAGE.md；A docs/refactor/v4.1.0-c/takeover/V410-OWNER-RULING.md；M docs/refactor/v4.1.0-c/takeover/V410-READINESS-LEDGER.md；M docs/refactor/v4.1.0-c/takeover/V410-READINESS-STATE.md；A docs/refactor/v4.1.0-c/takeover/V410-READINESS-VERDICT.json；A docs/refactor/v4.1.0-c/takeover/gen_verdict.py；A docs/refactor/v4.1.0-c/takeover/verify_r2_package.py；M docs/releases/v4.1.0/refactoring/TEST_COVERAGE_MATRIX.json；M docs/releases/v4.1.0/refactoring/evidence/SOURCE_BINDINGS.json\n**事实来源**：`git reflog`、泳道日志的 mtime、`audit/v4.1.0/neg/verify_neg_fixtures.sh`（脏树拒绝逻辑）、`docs/refactor/v4.1.0-c/takeover/V410-READINESS-STATE.md` §4 的 R63。",
+      "verdict": "FAIL"
+    },
+    {
+      "id": 9,
+      "criterion": "门禁编目内部自洽",
+      "command": "python3 scripts/gate/gate_registry.py check",
+      "observed": "exit=0\n{\"kind\": \"gate_registry_check\", \"catalog\": \"/Volumes/workspace/dev/wt-v410-base/docs/releases/v4.1.0/GATE_CATALOG.jsonl\", \"check_n\": 168, \"catalog_rows\": 168, \"by_class\": {\"stage_required\": 34, \"ci_reachable\": 51, \"orphan_referenced\": 22, \"dead\": 61}, \"by_disposition\": {\"archive-candidate\": 32, \"keep-rewire\": 12, \"needs-execution-point\": 25, \"needs-external-host\": 12, \"superseded\": 2}, \"fails\": 0}\ngate_registry: OK",
+      "verdict": "PASS"
+    },
+    {
+      "id": 10,
+      "criterion": "外审包三套统计一致（71/71/71）",
+      "command": "python3 docs/refactor/v4.1.0-c/takeover/verify_r2_package.py --r2-dir /Volumes/workspace/dev/workspaces/dsh-ops/projects/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2（判据 10 的 10 项断言）",
+      "observed": "exit=0\nevidence_index.json (SSOT): total=71 counts={'VERIFIED': 24, 'REPORTED': 41, 'NOT_RUN': 6}\nPASS  #10 EVIDENCE-INDEX.json 条数 == SSOT  -- index=71 ssot=71\nPASS  #10 EVIDENCE-INDEX.json 等级分布 == SSOT  -- index={'VERIFIED': 24, 'REPORTED': 41, 'NOT_RUN': 6} ssot={'VERIFIED': 24, 'REPORTED': 41, 'NOT_RUN': 6}\nPASS  #10 EVIDENCE-INDEX.json 的 total 字段 == 实测条数  -- field=71 measured=71\nPASS  #10 EVIDENCE-COVERAGE.md 表格行数 == SSOT  -- rows=71 ssot=71\nPASS  #10 EVIDENCE-COVERAGE.md 表格等级分布 == SSOT  -- table={'VERIFIED': 24, 'REPORTED': 41, 'NOT_RUN': 6} ssot={'VERIFIED': 24, 'REPORTED': 41, 'NOT_RUN': 6}\nPASS  #10 EVIDENCE-COVERAGE.md 行 id 无重复且有序\nPASS  #10 EVIDENCE-COVERAGE.md §2 声明的统计 == 实测  -- 合计 **71** 条，等级分布 **VERIFIED 24 / REPORTED 41 / NOT_RUN 6**\nPASS  #10 01-EXECUTIVE-SUMMARY.md 声明的总数 == 实测  -- 证据索引合计 71 条\nPASS  #10 01-EXECUTIVE-SUMMARY.md VERIFIED 计数 == 实测  -- | VERIFIED | 24 |\nPASS  #10 01-EXECUTIVE-SUMMARY.md REPORTED 计数 == 实测  -- | REPORTED | 41 |\nPASS  #10 01-EXECUTIVE-SUMMARY.md NOT_RUN 计数 == 实测  -- | NOT_RUN | 6 |\nFAIL #10：无\n校验器 = **本仓副本** `docs/refactor/v4.1.0-c/takeover/verify_r2_package.py`（R69：生成/校验器都进仓，裁决文件可从已提交的树复现）；R2 包本身在 `/Volumes/workspace/dev/workspaces/dsh-ops/projects/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2`。",
+      "note": "【作者陈述，非本次命令输出】**R1 的漂移实测**：EVIDENCE-COVERAGE.md 68 条 21/41/6、01-EXECUTIVE-SUMMARY.md 64 条 13/45/6；R2 由 evidence_index.json 单向生成后三套均为 71 条 24/41/6。\n**这条命令产不出上面那三个数** —— `verify_r2_package.py --r2-dir …` **只读 R2 目录**，根本不读 R1 目录，所以 R1 的漂移数是**别处测的**。\n**事实来源**：`docs/refactor/v4.1.0-c/takeover/R2-RELEASE-PACKAGE.md` §3.2（三套统计的实测值与差额来源表）与 §3.1（O8 授权的 5 类修正）。",
+      "verdict": "PASS"
+    },
+    {
+      "id": 11,
+      "criterion": "dead 门禁口径唯一化",
+      "command": "python3 docs/refactor/v4.1.0-c/takeover/verify_r2_package.py --r2-dir /Volumes/workspace/dev/workspaces/dsh-ops/projects/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2（判据 11 的全文检索断言）",
+      "observed": "exit=0\nPASS  #11 R2 全文无「61 道…全部有文档引用」  -- 0 命中\nPASS  #11 唯一口径陈述在 04-GATE-GOVERNANCE.md §2（83 = 61 无引用 + 22 有引用）\nFAIL #11：无",
+      "note": "【作者陈述，非本次命令输出】检索式：全部有文档引用 / 全部仍有文档引用 / 全部有正文引用 / 61 道全部有文档引用（排除 4 个构建脚本，它们以旧串为替换锚点）；唯一口径陈述在 04-GATE-GOVERNANCE.md §2。\n**事实来源**：`docs/refactor/v4.1.0-c/takeover/R2-RELEASE-PACKAGE.md` §3.1（R1-F-003/R1-F-004）与 §6；R2 包内的 `04-GATE-GOVERNANCE.md` §2。",
+      "verdict": "PASS"
+    },
+    {
+      "id": 12,
+      "criterion": "SQLRUSTGO_LOCAL_ONLY 路由 fail-closed —— 本次准入**显式豁免**（O9）",
+      "command": "（显式豁免，**本次不跑任何校验命令**；事实记录见设计稿 §A5 #12 与 V410-OWNER-RULING.md §2.1）",
+      "observed": "本次**未运行任何命令**（显式豁免）：判据 12 没有可核方式，它的 `observed` 里没有命令输出。\n判定 = WAIVED。",
+      "note": "【作者陈述，非本次命令输出】**豁免依据与事实**（全部来自既有文件，命令产不出）：\n(1) 设计稿 §A5 #12 与 §6.1「已裁决」表的 O9 行称「不纳入，显式豁免」；**但该设计稿头部写的是 `design_status: PROPOSED — 待属主批准后转为实施计划`、`prepared_by: DSH-B 主导`**，整个 takeover 目录里**没有**任何独立于执行方的、属主签署的 O9 记录 ⇒ **这份豁免目前只有一份自称 PROPOSED 的设计稿背书**。\n(2) 事实：`SQLRUSTGO_LOCAL_ONLY` 在 sqlrustgo 仓库零命中，存在于 DSH 仓库；DSH 路由器是**策略级** LOCAL_ONLY（router.py:277/290），不存在 per-task 的数据分类维度，「缺分类即拒绝」在本次准入范围内**未成立**。\n(3) 豁免记录（含 waiver_id / reason / scope / compensating_control / expires_at / approved_by）写在 `docs/refactor/v4.1.0-c/takeover/V410-OWNER-RULING.md` §2.1；**`approved_by` 字段已改指向该文件 §4 旁边新增的、留空的 O9 确认位**（不指向那份自称 PROPOSED 的设计稿）。\n**事实来源**：`docs/refactor/v4.1.0-c/takeover/V410-REFACTOR-READINESS-DESIGN.md`（头部 + §6.1 O9 行）、`docs/refactor/v4.1.0-c/takeover/V410-OWNER-RULING.md` §2.1 与 §4。",
+      "verdict": "WAIVED"
+    }
+  ]
+}

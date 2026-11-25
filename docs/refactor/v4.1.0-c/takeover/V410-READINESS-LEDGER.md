@@ -310,3 +310,204 @@ duplicates a logic block. 9 rulings recorded above; 7 were applied to the plan t
 - New Breakage 2：已登记的历史增补项**只由它自己声明的 `frozen_commit` 锚定**（S5 只查绑定**存在**，不查其**值**；冻结记录登记的是路径不是哈希）⇒ 该 manifest 的字节在外部无锚。R57 明确要求的就是「登记路径」，故按已知残余登记。
 - New Breakage 4：`BASELINE_FREEZE.json` 被整体重排版（1 个语义字段的增补带出 ~66 行格式噪声）—— 可读性代价，非语义。
 - re-review 的 out-of-scope：`audit_integrity_report.py` 今天因一个**既有** run（`20261119-168h-v410-r4/manifest.yaml:29`）的 YAML 解析崩溃；同文件 `:39` 从 `commands[]` 算 `exit0_claims` 而 schema-v1 的退出码在 `results[]` ⇒ 恒为 0（既有毛病）；`logs/fixtures/*.log` 被 `.gitignore:175 (*.log)` 命中 ⇒ **未跟踪、未被哈希绑定**，但 manifest 的 note 却在宣传它们；`audit/v4.1.0/neg/` 里仍有两个非夹具 helper（glob 今天安全，但「非 fx 的 helper 不得住在 neg/ 下」这条不变式只是隐式的）；实施者自列的 Minor 4 **已过时**（`neg_two_layer.sh:104-127` 确实是从 `results.jsonl` 用 Python 解析的）。
+
+## Task 8 —— 修订 2 与修订 3（re-reviewer `af00a62` / `a17855a`）
+
+- **修订 2**（F-A/F-B/F-C：证据 run 的保真度）：re-review → F-A/F-B/F-C **全 ADDRESSED**，但修订 2 自己引入 **1 Important + 3 Minor**。
+  - **Important**：重建后的 manifest 把 016（R60 端到端）记成 `2026-11-25T00:05→00:29Z`，**晚于** manifest 自己的 `completed_at`(19:30:46Z) 与它自己的提交(19:30:56Z) ⇒ 记录声称一条命令在 manifest 写下时还没跑。真实窗口由三条独立证据推定（stdout 与 `gate_alpha_b556199c86_20261124_190447Z.log` 逐字节相同；该名来自 `check_stage.sh:353` 的 `date -u`；mtime 19:28:45Z = 起 + 23m58.64s）。
+  - **Minor**：`commands[].timeout_sec` 记 5400 而实际跑的是 `timeout 10800`（照抄会重现两次 rc=124 撞墙）；notes[8] 指向**不存在的** `logs/fixtures/`；fx21 的 exit-4（INCONCLUSIVE）路径在夹具泳道里被记成 `fail`。
+- **修订 3**（G-1…G-4）：**全 ADDRESSED，无新增 Critical/Important**。
+  - G-1：016 时间窗改成 `2026-11-24T19:04:47Z → 19:28:46Z`（**从证据推定**，非编造）；两个字段不在 `evidence_hash` 覆盖范围内 ⇒ verify / S5 均未破。
+  - G-2：`commands[]` 记实际跑的命令（`timeout 10800`），其余 16 条 `timeout_sec: null`（无上限）；`results[].exit_code` 一条未动。
+  - G-3：七份逐道夹具日志**真的入库** `logs/fixtures/` 并由 `artifacts.fixture_logs` 的 sha256 绑定（artifacts 在 hash 覆盖内）。
+  - G-4（**R62**）：夹具泳道对 **exit 4 一律记 `inconclusive`**，不看声明的期望值（exit 4 永远不是红）；汇总行**单列** `inconclusive=` 计数，不并进 `pass=` 桶。
+- **R62**：第四种期望值 `inconclusive` 的语义定案 —— 它**不能**冒充红，也**不并进通过数**。
+- **R63（⚠️ 判据 8 的口径必须改写 —— 这是 Task 9 的硬输入）**：夹具泳道在**发布树**上的可复现结果是 **RED=5/7 + INCONCLUSIVE=2/7**（退出码 3）；**冻结提交那一次**记的是 6/7 + 1/7。两次都不是 7/7。差异是**机器速度**（fx17 动过 Rust 源码后 composite 的 release 重建要 1–2 小时，fx15 的 7200s 预算这次没够上），**不是**断言被放松（`git diff b556199c86..HEAD -- audit/v4.1.0/neg/` 为空）。⇒ **判据 8 的结论对机器速度敏感**：Task 9 必须记**实测值 + 时间敏感性**，不得断言 7/7。
+
+### Task 8 修订后的残余（进最终整支评审分诊）
+
+- Minor：`logs/fixtures/` 的七份日志被 `evidence_hash` 封住，但 `audit_run.py verify` 只重算 `results[]` 的路径 ⇒ 日志被改不会被 verify 抓到（今天 7 份全对）。
+- Minor：G-4 使「泳道绿」不再等于「每个夹具都证明了它的性质」—— 读汇总行的人必须看 `inconclusive=`。
+- Minor：重跑那一次的逐道日志留在临时目录，未入库（无 manifest 注记指向它 ⇒ 无悬空引用）。
+- Minor：报告称「仓里有 116 个已入库 `.log` 的先例」，实测 123。
+- Minor：`commands[verify-handoff].cmd` 记的是临时 venv 路径（修订 2 引入，非本轮）。
+- out-of-scope：证据 run 绑的是 `frozen_commit b556199c86`（G-4 之前的树）⇒ **发布版 `probe_neg_fixtures.py` 的执行证据是 `artifacts.rerun_after_g4` 那一对**，Task 9 要认这个。
+- out-of-scope：`NEG_FIXTURE_PROGRAM_2026-11-05.md:78` 引用的旧汇总格式是历史引用（run 20261105-negfix-004），未失真但可能被误读为当前格式。
+
+- Task 8: fix round 2/5 (3 addressed, 1 new Important + 3 Minor open; 提交 b5369fca18..d358289919)
+- Task 8: fix round 3/5 (4 addressed, 0 open; 提交 b5369fca18..09ba360f6c)
+- Task 8: complete (commits d67fd2264b..09ba360f6c, 3 fix rounds, review clean)。分支 tip `09ba360f6c`（+ 控制者提交的 `e007fe7114` 记忆文档）。
+
+## Task 9 —— 实施（实施者 `a1da18c`，opus）
+
+- **产物**：`docs/refactor/v4.1.0-c/takeover/` 下三个新文件 —— `V410-READINESS-VERDICT.json`（12 条判据逐条
+  `id`/`criterion`/`command`/`observed`/`verdict`）、`R2-RELEASE-PACKAGE.md`、`V410-OWNER-RULING.md`（**裁决请求**，
+  属主裁决位留空，实施者与控制者均未代签）；并按 R67 的例外更新了 `V410-READINESS-STATE.md`。
+- **12 条判据实测判定：PASS 9 · FAIL 2（#6、#8）· WAIVED 1（#12）**。计划正文的「11 PASS + 1 WAIVED」是
+  Task 7/10 之前的乐观预期，差额**恰好**来自 #6 与 #8，按 R63 不凑数。
+  - **#6 FAIL（签署层）**：44 条有终态 ✓、双向差异表 ✓，但 **Oracle 副签 0 条**（38 条 `ASSERTION_UNREVIEWABLE`
+    + 6 条 `JUDGED_PENDING_COUNTERSIGNATURE`；`assertion_review_performed_by` 是实施者本人）⇒ 需属主指认独立 Reviewer。
+  - **#8 FAIL（证据层）**：夹具泳道 **RED=5/7 + INCONCLUSIVE=2/7（退出码 3）**；冻结提交那次 6/7 + 1/7；
+    两次都不是 7/7；差异是机器速度（fx15 超 7200s 预算、fx18 覆盖率门禁在完整树上本就红），**不是**断言被放松。
+- **R1 逐字节未变已核实**：生成前后 21 个文件的 sha256 清单 `diff` 无输出；`FREEZE.json` = `8363343618a6e659…`、
+  R1 zip = `4f6c3ad01789b1a7…`，mtime 仍为 11月23。R2 生成在**兄弟目录** `sqlrustgo-v4.1.0-r2/`
+  （R68 的路线），构建链在 `…/DSH-EXTERNAL-REVIEW-001/r2-build/`（`build_r2.sh` 唯一入口、幂等）。
+- **R2 三套统计实测 71 条 / 等级分布 24-41-6**，`verify_r2_package.py` 23/23 PASS；`owner/approvals/` **空**，
+  `record_approval.py` 一次未跑 ⇒ 没有代属主签署。
+- **R2 的 `source_commit` 保留两个值**（包级 BASE + 逐条 `cd8cefe623` 采集树）并显式命名：逐条改成 BASE 等于
+  谎称 47 条 REPORTED/NOT_RUN 已在 BASE 复跑。
+- **DSH 仓无 remote** ⇒ 两个本地提交（`a031404` 发布 R2、`19f999e` 补齐 7 处残余 R1 身份残留）**无推送对象**。
+
+### Task 9 的两条待属主裁决的口径冲突（实施者主动提出，未自行扩权）
+
+- **判据 4**：`ADAPTER-MAPPING-PENDING.md` 清单非空（C01-15）⇒ 计划正文说 #4 不能判 PASS；但其可核方式
+  （`--check` 退出 0 + 11 条变异臂全拒）全绿。实施者按**可核方式**判 PASS，冲突原样写进 `observed`/O1/裁决记录。
+- **判据 1 的字面检查被并入反向**：`develop/v4.1.0` 在本任务期间并入了 `base/v4.1.0-frozen`
+  （PR #5928，merge `ea285c5fda`）⇒ 远端 develop tip 现在是 BASE 的**后代**而非祖先；冻结时点的 develop tip
+  `8cbde5b6d3` 仍是 BASE 的祖先 ✓。远端 `base/v4.1.0-frozen` 当时比本地 tip 落后 2 个提交（现已由控制者推送解决）。
+
+## Task 9 —— 评审第 1 轮与修订
+
+- **评审第 1 轮**（reviewer `ae3cce7`，sonnet）：**0 Critical / 1 Important / 8 Minor** → Needs fixes。
+  - **Important**：判据 #4 判成 PASS，但计划正文（`task-9-brief.md:64`）「若非空则 A5 #4 不能判 PASS」的条件**成立**
+    （`ADAPTER-MAPPING-PENDING.md` 有 `C01-15` 行，其 `approved_adr_refs` 为 `[]`）；且 A2.2 **R1**（「每个 task 的
+    `approved_adr_refs` 至少 1 项」）被客观违反；`verify_handoff.py:383-384` 在列表为空时**直接返回** ⇒ `--check` 退出 0
+    **不担保 R1**；校验器自身输出 `adr_approval_state: PENDING`（「the owner's ADR decision is PENDING, not verified」）。
+    ⇒ 按「工具退出 0」判 PASS = 给判据**换指称对象**，R63 明令禁止。
+  - 8 Minor：断链指针 ×3、`R2-RELEASE-PACKAGE.md:188` 一句假话（说 R2 未提交，其实已提交于 `a031404`/`19f999e`）、
+    判据 5 的 `observed` 缺变异臂、判据 1 的 `command` 带占位符、头部缺「冻结时点」限定词、6/7 那次未钉住树、
+    R2 构建链在无 remote 的仓里（可复现性缺口）、STATE 措辞过强。
+- **修订 1**（实施者 `a1da18c`）：I-1 与 7 条 Minor 关闭、**M-4 半开**；新增 **3 Important + 8 Minor**。
+  - 根因：生成器 `gen_verdict.py` 只活在 git-ignored 区 ⇒ 它里的**硬编码字符串**（"差额来自判据 6 与判据 8 两条"、变异臂数
+    "11"）改了树、没改源 ⇒ 下一次重跑又把陈旧字符串写回裁决文件。
+- **R69（控制者裁定 —— 除根因）**：把 `gen_verdict.py` **提交进本仓**（`docs/refactor/v4.1.0-c/takeover/gen_verdict.py`，
+  不在 `MANIFEST_ROOTS` 内 ⇒ 不需重签 manifest），并把生成器里的文本**改成派生**（note 由实际 FAIL 集合生成、
+  变异臂数由 `--check` 输出的 `len()` 得出、判据 8 的退出码由脚本退出码语义推出），再**用它重出**裁决 JSON。
+  ⇒ 裁决文件从此**可从已提交的树复现**，这一类失真不再复发。
+- **修订 2**：re-review（`a433efe`）→ **全部 findings ADDRESSED，无新增 Critical/Important**。
+  - 改后判据计数：**PASS 8 · FAIL 3（#4、#6、#8）· WAIVED 1（#12）**。
+  - 变异臂真实条数 = **10**（四个独立来源互证：`mutations.append` 源码、`--check` 实跑输出、`:618` 发出数、台账 `:104`）；
+    原写「11 条」是**假数字**，三个文件已改。
+  - 复核确认：R1 仍逐字节未变（21 文件 sha256 前后 `diff` 无输出）；`owner/approvals/` 仍空；属主裁决位仍留空。
+
+### Task 9 的最终分层归因（交给属主）
+
+| 判据 | 层 | 缺什么 | 谁能补 |
+|---|---|---|---|
+| **#4** | **映射层** | `ADAPTER-MAPPING-PENDING.md` 的 `C01-15` 未绑定 ADR ⇒ A2.2 R1 未满足（ADR 机器字段本身是绿的） | 属主裁决 O1（补映射 or 豁免） |
+| **#6** | **签署层** | Oracle 副签 **0 条**（38 条 `ASSERTION_UNREVIEWABLE`） | 属主指认独立 Reviewer（R-T7-1） |
+| **#8** | **证据层** | 夹具泳道 **RED=5/7 + INCONCLUSIVE=2/7**（fx15 超 7200s 预算、fx18 覆盖率门禁在完整树上本就红） | 属主裁决（提高预算 / 豁免 / 修导入的 RED 测试） |
+
+### Task 9 修订 2 留下的残余（进最终整支评审分诊）
+
+- Minor：裁决 JSON 的判据 1 记的「本地分支 tip」比 HEAD 落后一个提交（两段式生成的必然结果）⇒ 「重跑逐项一致」这句话
+  需要加限定语「在生成它的那棵树上」。
+- Minor：`gen_verdict.py` 在找不到负向夹具日志时会**静默去跑那条 1–2 小时的泳道**，且可能抛未捕获的 `FileNotFoundError`。
+- Minor：派生出来的 note 仍写「**本次实测**的 FAIL」，而判据 8 的测量是**沿用** 2026-11-25 的实测值（逐条 `observed` 里已澄清）。
+- out-of-scope：`V410-READINESS-STATE.md:185` 仍写「修订第 1 轮已处理 1 Important + 8 Minor」（未含第 2 轮）；
+  Task 9 行只列 4 件产物（漏第 5 件 `gen_verdict.py`）；`R2-RELEASE-PACKAGE.md:216` 的表格有一行畸形。
+- **两份 `verify_r2_package.py` 仍未同步**（DSH 那份 `75de8cce…` vs 本仓 `e8155879…`，内容等价、字节不同）⇒
+  **需属主/控制者放行「同步这一个文件」**；R2 构建链仍无异地副本（DSH 仓无 remote）。
+- 判据 8 的证据**无法从已提交的树单独复现**（日志 git-ignored，日期与树是生成器参数）⇒ 记为可复现性残余。
+
+- Task 9: fix round 1/5 (8 addressed, 1 partial + 3 new Important + 8 Minor open; 提交 e2d98149d2..33f1c7ceb9)
+- Task 9: fix round 2/5 (11 addressed, 0 Important open, 3 Minor + 3 out-of-scope open; 提交 33f1c7ceb9..a2d0e3ecec)
+
+## 最终整支评审与修复波
+
+- **最终整支评审**（reviewer `a86c3fd`，opus，范围 = 27 个计划自撰代码文件 + 179 份文档/数据清单 + 35 条 deferred 分诊）：
+  **0 Critical / 9 Important / 11 Minor**。
+  - **I-1** 判据 8 的「实测树」SHA 是**假的**（三份属主可见文档照抄生成器参数 `e2d98149d2…`；泳道实际跑在 `09ba360f6c`）
+    ⇒ C5 缺陷类出现在**属主要签的那份文件**里。
+  - **I-2** 判据 6 的判定只看一个字段、**不看是谁签的**：`rc6`、差异表存在性与表头、终态检查全只打印不判定
+    ⇒ **属主指认 Reviewer 这个动作本身就会把 #6 翻成 PASS**（Task 7 评审点名的义务从未兑现）。
+  - **I-3/#33** Oracle 判定的 `assertion_reviewed_commit` 指向 BASE，而实际读到的树是 `2923612f51`；
+    且 Task 10 后来改了判定所依赖的 `TRANSACTION_INVARIANTS.md`。
+  - **I-4** 生成器 docstring 声称「Nothing is hand-written」，实际 6 条判据的 `observed` 嵌着手写散文。
+  - **I-5** R19 要求的披露（放弃 B3 的内容比对、靠 manifest 逐文件 sha256 顶上）在裁决记录里**缺失**。
+  - **I-6** 本支的校验器与变异探针自测**一个都没进 CI**；台账 `:62` 的 deferred minor 把它派给 Task 8，Task 8 没兑现，
+    也没有任何文档记着它还开着 ⇒ **12 条判据是一次性人工测量**。
+  - **I-7** 记忆锚点的续跑指令指向 git-ignored 的生成器 ⇒ 新会话会把 R69 修掉的回归写回去。
+  - **I-8** 唯一的豁免，其 `approved_by` 指向一份自称 **PROPOSED** 的设计稿 ⇒ 全支唯一一处治理声明是执行方自证的。
+  - **I-9** 属主可见的 tip 与提交数陈述过时，**合并指令是错的**（说合 2 个提交，实际缺 7 个 —— 合了会丢掉裁决文件与生成器）。
+  - deferred 分诊：35 条里 **5 条必修**（CI 接线、ADR 正文旧断言披露、`assertion_reviewed_at` 语义、`assertion_reviewed_commit` 绑定），
+    22 条可作残余，8 条已不适用。
+- **修复波**（实施者 `ad25207`）：11 条 finding **全 ADDRESSED**，无新增 Critical/Important；
+  **判定结果不变**（PASS 8 · FAIL 3 · WAIVED 1）。三条关键改动：
+  ① 判据 8 的树身份改成 `09ba360f6c…` 并**明写「推定/重构，不是观测值」**（泳道日志不含树身份）；
+  ② 判据 6 改成**六个条件同时成立**才 PASS（`rc6==0` + 差异表 + 终态 + 属主授权名单 + 签署人 ≠ 实施者），
+     **名单为空 ⇒ FAIL**；名单一授权 + 合法副签 ⇒ **自然变 PASS**（探针实测）；
+  ③ 44 条 Oracle 判定的 `assertion_reviewed_commit` 重指 `2923612f51…`、`assertion_reviewed_at` 改名
+     `assertion_judged_at`、新增 `assertion_signed_at`（44 条全 null），并**重签 manifest**（314 绑定文件、`16f87dff…`）。
+- **回归清扫**（修复波**自己**引入的 8 条 Minor，其中 4 条是 Owner 可见文档里的**新不实陈述**）：8/8 ADDRESSED。
+- **末轮两行更正**（C-1 判据 6 口径「四条」→「六条」与生成器对齐；C-2 STATE 的 Task 9 评审状态改成「已结束」）：2/2 ADDRESSED。
+
+### 最终残余（交给属主，本轮不再修）
+
+- 判据 8 的树身份**仍是推定**（reflog + mtime 两条独立证据很硬，但不是观测）⇒ 要变成观测需重跑泳道，或让脚本今后把 HEAD 写进日志。
+- 判据 (c)/(d) 相对于当前矩阵**未重新求值**（Task 10 改了 38 条 `invariant_ids`）⇒ 已如实登记为受影响。
+- **CI 仍未接线** ⇒ 12 条判据仍是一次性人工测量，2026-11-25 之后的回归可能无人察觉（属主专属决策，C1）。
+- 两份 `verify_r2_package.py` 仍未同步（DSH 那份 `75de8cce…` vs 本仓 `e8155879…`，内容等价、字节不同）；
+  R2 构建链无异地副本（DSH 仓无 remote）⇒ 需属主放行「同步这一个文件」并决定是否给 DSH 仓配 remote。
+- `ORACLE-REVIEW-LOG-T1.md` 仍在 manifest 哈希范围之外（R-T7-3）⇒ 属主可见的 Oracle 叙述仍无收据绑定。
+- 生成器 note 里的树 SHA 与三个时刻**仍是硬编码字面量**（已加适用范围限定，未参数化）。
+- 计划正文与设计稿仍写 `assertion_reviewed_at` 与旧绑定值（不在允许改动清单内，未动）；台账由控制者同步。
+- 「25 条待裁决项」沿用上一波修复波 §7 的计数，回归清扫未重数 ⇒ 属主按 §3 逐条数可能对不上。
+
+### 收尾状态
+
+- 9 个计划任务全部完成；每条任务都经过独立评审（Task 8 三轮修订、Task 9 两轮修订 + 修复波 + 回归清扫）。
+- **最终判定：PASS 8 · FAIL 3（#4 映射层 / #6 签署层 / #8 证据层）· WAIVED 1（#12）** ⇒ **不放行**。
+- 剩余待办**全部是属主裁决**：`docs/refactor/v4.1.0-c/takeover/V410-OWNER-RULING.md` §4 的裁决位（留空）。
+
+## Task 9 —— 收尾（控制者授权的漂移同步 + 台账更正）
+
+- **R70（控制者裁定 —— 漂移同步）**：实施者请求控制者放行「把仓内那份 `verify_r2_package.py` 同步回 DSH 仓」。
+  **裁定：放行**（属主授权范围内 —— O8「发 R2，R1 不动」，且这是**只读校验器**的同步，不是 R2 包内容变更）。
+  **执行**：仓内那份**复制**到 DSH 的 `r2-build/` 与 `sqlrustgo-v4.1.0-r2/` ⇒ **三处字节完全相同**；
+  两家自解析都正确（三处实跑 **23 PASS / 0 FAIL**）；R1 的 `package/` 未触碰；R2 的 `package/` 与 zip
+  **不含**该校验器（zip 21 条目、检索 0 命中）⇒ **R2 包哈希未变**。
+  DSH 仓提交：`08742fc` → `0964dda681a8`（该仓**无 remote**，只有本地提交）。
+- **R71（哈希记录纪律 —— 一条新规则）**：控制者自己犯过一次：**在关于某个文件的文档里记录那个文件的 sha256**，
+  而该文件的头注释是它字节的一部分 ⇒ 哈希随下一次编辑立即过期（实测：同步前 `e8155879…` → 改注释后 `5ebe694d…`
+  → 再改后 `fa9f1978…`，两次都陈旧）。
+  **裁定**：**不在任何文档里记录一个「其字节包含自己的文档注释」的文件的 sha256**；
+  改成**可复算的校验入口**（`diff` + `shasum` 三条路径，当场可验）。已落到：
+  校验器自身的头注释、`R2-RELEASE-PACKAGE.md` §9.1、`V410-OWNER-RULING.md` §3.1.5。
+  **代价**：读者不能从文档里直接看到一个哈希，必须跑一条命令 —— 这是刻意的（假哈希比没有哈希更坏）。
+- **实施者复核时改掉了控制者写错的一处**：`r2-build/` 那份校验器**并不**自解析到自己的目录（它下面没有 `package/`），
+  而是落到兜底的 DSH 默认位置 ⇒ 注释已按事实改写。**落点相同、机制不同** —— 这正是「以实测为准」的例证。
+- **台账更正条目（本节即为更正）**：
+  ① 上文「两份 `verify_r2_package.py` 仍未同步」**已关闭**（见 R70）；
+  ② **字段改名更正**：Task 7 记录的 `assertion_reviewed_at` 在修复波里已改名为 **`assertion_judged_at`**，
+     并新增 `assertion_signed_at`（44 条全 null）；`assertion_reviewed_commit` 已由 BASE 重指到 **`2923612f51…`**
+     （实际读到的树）。台账正文里仍写旧名与旧绑定值 —— **那是历史记录，不改写**；以本条与
+     `ORACLE-REVIEW-LOG-T1.md` §11 为准。
+  ③ 计划正文与设计稿仍写 `assertion_reviewed_at` 与旧绑定值（不在允许改动清单内，未动）。
+
+## 残余关闭清单（属主逐条勾的那一份）
+
+- **R72（新增交付物）**：`docs/refactor/v4.1.0-c/takeover/V410-RESIDUAL-CHECKLIST.md` ——
+  整备全程累积的 **46 条**残余（Task 1–7 的 35 条 deferred minor ＋ 最终整支评审自带的 11 条 Minor）
+  整理成**可勾选的关闭清单**：每条有「关闭方式」「谁来关」「状态」四档。
+  最终分布：**已关闭 12 · 已不适用 8 · 可作残余 23 · 待属主 3 = 46**；**4 个未勾选框** = #3 / #14 / #34 / #35。
+- **清单自身被逐条复核**：实施者对 46 条**逐条实测**核对，**查出控制者自己算错的汇总表**
+  （原写 8/7/25/5，加起来只有 45，却标合计 46）⇒ 改正为 12/8/23/3；另改正 **15 处措辞/证据不精确**
+  （复核记录见清单 §11 的 R-1…R-15）。**教训**：控制者写的汇总数字也会算错，清单必须由**逐条实测**得出，不能凭印象填。
+- **本轮关闭的三条（控制者自己那部分）**：
+  - **M-6**（`gen_neg_ledger.py` 无非破坏模式）：新增 `--check`（逐字节比对、绝不写文件）、`--out <path>`、
+    run id **形态 + 存在性**校验（不合法即拒、rc=2、不写文件）；默认行为不变但摘要**显式**打印写入路径与 run id；
+    新增自测 `audit/v4.1.0/test_gen_neg_ledger.py`（**30 臂全绿**，用临时目录 + 字节与 mtime 比对，不改已提交台账）。
+    **实测更正**：台账**不在** manifest 的 314 个绑定文件里（manifest 三根 = `handoff/` + `takeover/dsh-b/` + `refactoring/`）
+    ⇒ 兜住它的是 `verify_handoff --check` 的**脏树闸门**，不是哈希绑定 ⇒ **脚枪是真的，护栏比原描述更弱**。
+  - **M-5**（manifest 未被自绑定）：裁决记录新增 §0.1「本支建立了什么 / 未建立什么」，写明真实锚是
+    **git 历史 + 冻结记录的 `base_sha`/`tree_sha`**，不是 manifest 自己。
+  - **M-9**（STATE §3 的计数）：改成显式的「四件产物 ＋ 第五件是生成器」。
+- **仍未勾选的 4 条**：
+  - **#3**（校验器与变异探针**未接 CI**）—— 接线是门禁清单变更（C1 属主专属）；不接就意味着 12 条判据是一次性人工测量。
+  - **#14**（ADR 正文深处仍有旧状态断言）—— 改正文是 C6 下的属主重审动作。
+  - **#34**（`verify_matrix.py` M5 打印「9 word(s)」）—— 代价链已补全：改一行 ⇒ **重签 manifest** ⇒
+    证据 run 记的旧 `handoff_manifest_sha256` 要靠**整体重建（约 4.5 小时）**才对得上 ⇒ **待属主决定是否值得**。
+  - **#35**（`ORACLE-REVIEW-LOG-T1.md` 不在 manifest 哈希范围）—— 扩范围属主专属（牵动 314 个绑定文件）。
+- **清单之外仍有 2 条属主专属**（不在 46 条内，来自裁决记录）：DSH 仓是否配 remote；判据 #6 的 Reviewer 名单
+  ——后者**填名单不够**，还要该 Reviewer 对被判 PASS 的 6 条**逐条副签**（判据 #6 的条件 (6)）。

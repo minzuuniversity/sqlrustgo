@@ -1,0 +1,12 @@
+----- fx19 arm A (control: intact tree) -----
+control rc=0 (want 0) in 17s
+SQL Corpus pass rate: 98.2% (threshold: 80.0%)
+fx19: truncated 103 corpus files to zero length
+FX-GATE-LAYER: gate=scripts/gate/check_sql_corpus_gate.sh state=FAIL exit_code=1
+FX-STAGE-LAYER: verdict=FAIL counts={"PASS": 0, "FAIL": 1, "INCOMPLETE": 0}
+----- fx19 gate output (tail 12) -----
+Running corpus_test::test_sql_corpus_all ...
+SQL Corpus pass rate: 0.0% (threshold: 80.0%)
+FAIL: pass rate 0.0% < 80.0% threshold
+----- end -----
+fx19-sql-corpus-gate-corpus-truncated: gate rc=1 (FAIL, not a timeout) + stage verdict=FAIL, corpus truncated -> the gate refused to measure -> FIXTURE-PASS (the gate detects the truncated corpus)

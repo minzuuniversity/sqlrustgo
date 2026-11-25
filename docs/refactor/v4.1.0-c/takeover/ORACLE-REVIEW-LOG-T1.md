@@ -11,6 +11,15 @@
 > **⚠ Oracle 签署步骤的状态：BLOCKED。** 本记录里**没有任何一条是已完成的 Oracle 签名**。
 > 矩阵的 `assertion_reviewed_by` 在 44 条上**全部缺席**——该字段保留给属主授权的独立 Reviewer 副签。
 > 详见 §0 与 §9（Task 9 残余登记）。
+>
+> **📌 2026-11-25 修订（最终整支评审修复波 · I-3 / #32）**：矩阵里 44 条的
+> `assertion_reviewed_commit` 已从冻结基线 `fd849ae205…` **重指到实际读到的树
+> `2923612f5151501807f7baf0f0f4dc3513d8a1a7`**（本次判定会话
+> `2026-11-23T16:13:18Z` ＝ 2026-11-24 00:13:18 +0800，正落在该提交
+> 2026-11-24 00:00:32 与 `d971dacd22`（00:27:47）之间）；`assertion_reviewed_at`
+> 已**改名为 `assertion_judged_at`**（它携带的是**判定**时间，不是签署时间），
+> 并新增独立的签署时间字段 `assertion_signed_at`（当前 44 条全为 `null` —— 副签没发生）。
+> **本次修订没有重做判定，也没有产生任何签名。** 完整的依据重述与 (c)/(d) 影响分析见 **§11**。
 
 ## 0. 判定人身份、Oracle 签署步骤的 BLOCKED 状态
 
@@ -56,12 +65,19 @@ Round 0 的做法有误：本人当时以 `oracle-reviewer/task7/minimax-m3.1-fl
 | 绑定项 | 值 | 记录位置 |
 |---|---|---|
 | 审查会话 id | `T7-ORACLE-JUDGEMENT-20261123T161318Z` | 日志 §0 头 + 矩阵 `assertion_review_session` |
-| 实读时的工作树 HEAD | `2923612f5151501807f7baf0f0f4dc3513d8a1a7` | 日志 §0 头 |
-| 冻结基线 `base_sha` | `fd849ae20541901d5e59f45cd3ba2c51093f5d5e` | 日志 §0 头 + 矩阵 `assertion_reviewed_commit` + 矩阵原有 `base_sha` |
+| 实读时的工作树 HEAD | `2923612f5151501807f7baf0f0f4dc3513d8a1a7` | 日志 §0 头 + 矩阵 `assertion_reviewed_commit`（2026-11-25 修订后重指，见 §11） |
+| 冻结基线 `base_sha` | `fd849ae20541901d5e59f45cd3ba2c51093f5d5e` | 日志 §0 头 + 矩阵每条 case 原有的 `base_sha` 字段（R-BASE：不随提交前移） |
+| 判定时间 | `2026-11-23T16:13:18Z`（＝ 2026-11-24 00:13:18 +0800） | 矩阵 `assertion_judged_at`（原名 `assertion_reviewed_at`，2026-11-25 改名） |
+| 签署时间 | **无**（`assertion_signed_at` = `null`，44 条一致） | 矩阵 `assertion_signed_at` |
 | 测试源文件摘要 | 每个 case 的 `assertion_source_sha256` | 矩阵 |
 
 已核：44 条涉及的 **17 个**测试源文件，在 `2923612f5151501807f7baf0f0f4dc3513d8a1a7` 与 `fd849ae20541901d5e59f45cd3ba2c51093f5d5e` 两处**逐字节相同**，
 所以 `assertion_source_sha256` 对两处都成立。
+
+> **⚠ 2026-11-25 修订（I-3）**：本节原先写「矩阵 `assertion_reviewed_commit`」＝ BASE。
+> **那是错的** —— `assertion_reviewed_commit` 记录的是**判定所依据内容的 commit**，
+> 而本次判定实际读到的树是 `2923612f51…`，不是 BASE。绑定指向了错误的 SHA
+> （C5：证据必须绑定完整 commit SHA，跨 SHA 证据不可继承）。已重指，详见 §11。
 
 ## 1. 判定口径与记录字段
 
@@ -105,16 +121,25 @@ Round 0 的做法有误：本人当时以 `oracle-reviewer/task7/minimax-m3.1-fl
 | `assertion_review_reason` | 不可判定的原因码 | `R1` / `R2` / `R3`（只在 `ASSERTION_UNREVIEWABLE` 的 38 条上出现） |
 | `assertion_review_performed_by` | **判定人**（不是签署人） | `task7-executor/minimax-m3.1-flash`（44 条一致） |
 | `assertion_review_session` | 审查会话 id | `T7-ORACLE-JUDGEMENT-20261123T161318Z`（44 条一致） |
-| `assertion_reviewed_at` | 判定时间 | `2026-11-23T16:13:18Z`（44 条一致） |
-| `assertion_reviewed_commit` | 判定所依据内容的 commit | `fd849ae20541901d5e59f45cd3ba2c51093f5d5e`（44 条一致） |
+| `assertion_judged_at` | **判定**时间（原名 `assertion_reviewed_at`，2026-11-25 改名，见 §11.2） | `2026-11-23T16:13:18Z`（44 条一致） |
+| `assertion_signed_at` | **签署**时间（2026-11-25 新增的独立字段） | `null`（44 条一致 —— 副签没发生） |
+| `assertion_reviewed_commit` | 判定所依据内容的 commit（2026-11-25 重指，见 §11.1） | `2923612f5151501807f7baf0f0f4dc3513d8a1a7`（44 条一致） |
 | `assertion_source_sha256` | 判定所读的**测试源文件**的 sha256 | 44 条各自的值（**17 个不同文件**） |
 
 **下游读法**：
 
 - 「已审查」= 有 `assertion_review_verdict` ⇒ **44 条**；
 - 「已副签」= 有 `assertion_reviewed_by` ⇒ **0 条**；
+- 「已签署并有时间戳」= `assertion_signed_at` 非 `null` ⇒ **0 条**；
 - 「判定为不可独立判定」= `assertion_review_verdict == "ASSERTION_UNREVIEWABLE"` ⇒ **38 条**；
 - 「判定为可独立判定、待副签」= `JUDGED_PENDING_COUNTERSIGNATURE` ⇒ **6 条**。
+
+> **⚠ 2026-11-25 改名（#32）**：治理定义里 `assertion_reviewed_at` 是**签署时间**，
+> 而实际携带的是**判定时间**。今天还没有任何签署，歧义被限制住；
+> 但**属主一旦指认 Reviewer，副签就会继承这个判定时间戳** —— 那正是这个字段当初被标记的原因。
+> ⇒ 改名为 `assertion_judged_at`，并新增独立的 `assertion_signed_at`（签署时间）。
+> **不改的后果**：任何只查 `reviewed_at` + `source_sha256` 而不查 `reviewed_by` 的读者，
+> 会把 42 条 PASS 读成「已签」。
 
 Round 0 曾用「三个 `assertion_*` 字段同时存在 = 已签」来编码，并让未签署的 38 条**一个字段都不写**；
 那样矩阵读起来像「只审查了 8 条」。Round 1 改成：**44 条都带判定记录，只有副签人字段缺席**。
@@ -810,3 +835,104 @@ M7 每次运行都把登记表里的词表**读回来**与工具的常量 `MAPPI
   `assertion_source_sha256` 仍然成立；
 - **Oracle 签署步骤仍然 BLOCKED**，本节不产生任何签名；
 - 38 条的可判定性统计（35 可判定 / 3 不可判定）不变 —— 被撤下的三条探针**不在那 38 条里**。
+
+---
+
+## 11. 最终整支评审修复波（2026-11-25）：判定绑定的重指与字段改名
+
+> **本节不是新的判定，也不是新的签名。** 它**重新陈述**本次判定的**依据**，
+> 并把两处绑定错误改成真的。**结论未变：Oracle 签署步骤仍然 BLOCKED，已副签 0 条。**
+
+### 11.1 I-3：`assertion_reviewed_commit` 重指到实际读到的树
+
+**原状**：44 条的 `assertion_reviewed_commit` 全部填 `fd849ae20541901d5e59f45cd3ba2c51093f5d5e`（BASE）。
+**为什么是错的**：该字段的语义是「**判定所依据内容的 commit**」（本日志 §1.3），
+而本次判定会话（`2026-11-23T16:13:18Z` ＝ **2026-11-24 00:13:18 +0800**）实际读到的树是
+**`2923612f5151501807f7baf0f0f4dc3513d8a1a7`**：
+
+| 提交 | 提交时刻（+0800） | 相对本次判定时刻 |
+|---|---|---|
+| `2923612f51`（Task 6 修订 2） | 2026-11-24 00:00:32 | **之前 12 分 46 秒** ⇒ 判定时它就是 HEAD |
+| `d971dacd22`（Task 7 修订 1，撤回签名） | 2026-11-24 00:27:47 | **之后 14 分 29 秒** ⇒ 判定时它还不存在 |
+
+原记录用的「BASE 与 `2923612f51` 逐字节相同」这个论证（§0.4 的 17 个测试源文件比对）
+**只覆盖测试源文件**，不覆盖判定判据 (c)/(d) 依赖的 `TRANSACTION_INVARIANTS.md` 登记表
+（这正是 Task 7 评审第 1 轮登记的 deferred minor）。**在 `0f00da6a1a` 改了登记表之后，
+那条论证就不再覆盖全部依据了。**
+
+**本次改法**：44 条的 `assertion_reviewed_commit` 全部重指到
+`2923612f5151501807f7baf0f0f4dc3513d8a1a7`。
+**矩阵的 `base_sha` 字段不动**（仍是 BASE）—— R-BASE：`base_sha` 一律填 BASE，不随提交前移。
+两个字段现在各说各的事：`base_sha` = 冻结基线身份；`assertion_reviewed_commit` = 判定读到的树。
+
+### 11.2 #32：`assertion_reviewed_at` → `assertion_judged_at`，新增 `assertion_signed_at`
+
+| 字段 | 改前 | 改后 | 44 条上的值 |
+|---|---|---|---|
+| 判定时间 | `assertion_reviewed_at` | **`assertion_judged_at`** | `2026-11-23T16:13:18Z` |
+| 签署时间 | （**不存在** ⇒ 会被误读成与判定时间同义） | **`assertion_signed_at`**（新增） | `null` |
+| 签署人 | `assertion_reviewed_by`（**缺席**） | `assertion_reviewed_by`（**仍缺席**） | 缺席 |
+
+**为什么必须分**：治理定义里 `assertion_reviewed_at` 是**签署时间**；它实际携带的是**判定**时间。
+今天还没有任何签署，歧义被限制住；**但属主一旦指认 Reviewer，副签就会继承这个判定时间戳** ——
+那正是这个字段当初被标记的原因。分开之后，「已签」这件事需要
+`assertion_reviewed_by` **和** `assertion_signed_at` **同时**存在才能成立。
+
+### 11.3 判定依据的重述：`0f00da6a1a` 改了登记表之后，(c)/(d) 还成立吗？
+
+**判定口径（§1.1，四条充要条件）**：
+(a) 被比较的可观测量由断言文本所指机制直接决定；
+(b) 断言可证伪；
+(c) 该断言**不与 `invariant_ids` 指向的登记表原文相抵触**；
+(d) 该断言所覆盖的主体，与 `invariant_ids` 指向的登记表原文是**同一个主体**。
+
+判定时（`2923612f51`）与现在（HEAD）之间，发生了两件与 (c)/(d) 有关的事：
+
+**第一件：`TRANSACTION_INVARIANTS.md` 被 `0f00da6a1a` 改了（+19 行）。**
+
+- 实测：`git diff 2923612f51 0f00da6a1a -- docs/releases/v4.1.0/refactoring/TRANSACTION_INVARIANTS.md`
+  = **纯追加 19 行**，追加的是一节「矩阵映射状态词表（`invariant_mapping_status`）」；
+- 实测：**`2923612f51` 的版本是 HEAD 版本的前缀**（`HEAD.startswith(2923612f51 的字节)` = True），
+  且 **INV-01…INV-18 的 18 行表格逐行相同**（18 == 18，True）。
+- ⇒ (c)/(d) 指向的**登记表原文（INV-01…INV-18 的定义行）逐字节未变**，
+  **以登记表为锚的判据 (c)/(d) 不受这次改动影响**。
+- 但要如实记下**残余**：那一节新增的词表是 Task 10 的 M7 门禁契约（`MAPPED` / `NO_INVARIANT_MATCH`），
+  它的存在**本身**不进入 (c)/(d) 的判定；它进入的是**矩阵门禁**（M7 逐用例核对），
+  与 Oracle 判定是两条独立的链。
+
+**第二件：矩阵的 `invariant_ids` 与 `source.declared_invariant` 被 Task 10 重做。**
+
+- 实测：44 条里 **`invariant_ids` 变了 38 条**、`source.declared_invariant` **变了 44 条**
+  （13 种分桶标签 → 75 条各不相同）；`0f00da6a1a` → HEAD 之间**这两个映射字段不再变**（0 条不同）。
+- ⚠️ **但「不再变」这句只对这两个映射字段成立，对用例对象本身不成立**：
+  `0f00da6a1a` → HEAD 之间，**44 条用例对象逐条比对全部不同（44/44）** —— 变的是**本修复波自己**改的
+  **签署绑定字段**（**判定结果与签名均未改变**，见 §11.1 / §11.2）：
+  `assertion_reviewed_at`（拆分并改名为 `assertion_judged_at`，**同值**）+
+  新增的 `assertion_signed_at`（= `null`，副签没发生）、以及 `assertion_reviewed_commit`
+  （由 BASE 改指 `2923612f51…`）。
+- ⇒ **Task 7 的逐条判定（§3/§4）是对「修复前」的映射做的**。§10.3 给的是**修复后**的
+  「可判定性**预判**」（38 条里 35 条可判定、3 条仍不可判定：T1-009 无断言 / T3-002 空过 / T3-003 无断言），
+  **它不是签署，也不是重做后的 Oracle 判定**；矩阵里的 `assertion_review_verdict` 字段
+  **仍然逐字节是 Task 7 的判定结果**（§10.1「没做（硬边界）」明写「任何 `assertion_*` 字段逐字节未动」）。
+- ⇒ **如实记为受影响**：判据 (c)/(d) 的**输入**（`invariant_ids`）在判定之后变了。
+  **判据 (c)/(d) 相对于「当前矩阵」未重新求值。** 这是一个**已登记的残余**，
+  不是被本节悄悄吸收的。
+
+**综合结论（属主需要知道的三句话）**：
+
+1. **「已副签 0 条」这个结论完全不受影响** —— 副签没发生，改绑定、改改名都不产生签名；
+2. **判据 (c)/(d) 相对于登记表原文（INV-01…INV-18）仍然成立** —— 那 18 行逐字节未变；
+3. **判据 (c)/(d) 相对于「当前矩阵的 `invariant_ids`」未重新求值** ——
+   Task 10 改了 38 条的映射，Task 7 的逐条判定是对旧映射做的。
+   §10.3 的「预判」覆盖了可判定性，但**不是**一次合规的 Oracle 判定。
+   **若属主要把这 44 条真正判完，需要在当前矩阵上重跑一遍 §1.1 的 (a)(b)(c)(d)。**
+
+### 11.4 本节**没有**改变的
+
+- 44 条的 `assertion_review_verdict`（38 `ASSERTION_UNREVIEWABLE` + 6 `JUDGED_PENDING_COUNTERSIGNATURE`）**逐字节未动**；
+- `assertion_review_performed_by` = `task7-executor/minimax-m3.1-flash`（判定人，不是签署人）**逐字节未动**；
+- `assertion_source_sha256` **逐字节未动**，且仍然成立（17 个测试源文件在两个树之间逐字节相同，
+  且 Task 10 没有改任何 Rust 代码）；
+- `execution_status` / `actual` / `artifact_sha256` / `red_identity` **逐字节未动**；
+- **Oracle 签署步骤仍然 BLOCKED**（§0.3、§9 R-T7-1），`owner/approvals/` 仍空；
+- **矩阵 `base_sha` 仍填 BASE**（R-BASE）。

@@ -19,6 +19,10 @@
                      inconclusive          本树里这条性质无法确立（夹具退出码 4，
                                             且必须说清为什么；用来登记「门禁本来就红、
                                             注入的缺陷不可归因」这类情形）
+
+  退出码 4 一律记进 `inconclusive=` 桶，**不看**夹具声明了什么期望：exit 4
+  只表示「无法确立」，它既不是红也不是失败（R50）。汇总行单列 inconclusive 计数，
+  不并进 pass 桶 —— 一个什么都没证明的夹具不能被读成「它证明了它的性质」。
   mutation-selftest 在台账的临时副本上制造缺陷，断言 check 会变红。
 
 它不新增门禁、不改门禁清单/阈值/跳过开关（分母仍 168），
@@ -208,7 +212,7 @@ def cmd_fixtures(argv: list[str]) -> int:
     if not scripts:
         print("no fixture scripts under audit/v4.1.0/neg/")
         return 1
-    ok = failed = errored = deferred = 0
+    ok = failed = errored = deferred = inconclusive = 0
     for s in scripts:
         name = os.path.basename(s)
         # A `selftest-red` fixture cripples a gate's own detector; its verdict
@@ -234,22 +238,37 @@ def cmd_fixtures(argv: list[str]) -> int:
             # this tree -- e.g. the gate it targets is already red for an
             # unrelated reason, so the injected defect cannot be attributed to
             # the red.  The fixture must then reach exactly that conclusion
-            # (exit 4 = INCONCLUSIVE) and say why.  This is a declared
-            # expectation that the lane CHECKS, not a way to skip a fixture:
-            # a fixture that exits 0 or 3 here is a failure, and a fixture
-            # that does not declare its expectation at all is still an error.
+            # (exit 4 = INCONCLUSIVE) and say why.
             want = 4
         else:
             want = None
+        rc = proc.returncode
         if want is None:
             errored += 1
             print("  -> UNDECLARED-EXPECT")
-        elif proc.returncode == want:
+        elif rc == 4:
+            # exit 4 is the fixture's own INCONCLUSIVE verdict: "this
+            # property cannot be established here".  It is never a red (a red
+            # is exit 0 against a red/green expectation), and it is not a
+            # failure either -- R50 says an unestablishable property must be
+            # reported as INCONCLUSIVE, never as a failure and never as a
+            # pass.  The bucket does not depend on what the fixture declared.
+            inconclusive += 1
+            if expect == "inconclusive":
+                print("  -> INCONCLUSIVE (declared, and it reached exactly that)")
+            else:
+                print("  -> INCONCLUSIVE (the fixture could not establish its "
+                      "property; exit 4 is never a red and never a pass)")
+        elif rc == want:
             ok += 1
         else:
             failed += 1
-    print("\nneg-fixtures: pass=%d fail=%d error=%d deferred-selftest-red=%d total=%d"
-          % (ok, failed, errored, deferred, len(scripts)))
+    print("\nneg-fixtures: pass=%d inconclusive=%d fail=%d error=%d "
+          "deferred-selftest-red=%d total=%d"
+          % (ok, inconclusive, failed, errored, deferred, len(scripts)))
+    # An inconclusive fixture is not a failure of the lane: it established
+    # nothing, and it is counted in its own bucket so a reader cannot mistake
+    # it for a fixture that proved its property.
     return 0 if failed == 0 and errored == 0 else 1
 
 
