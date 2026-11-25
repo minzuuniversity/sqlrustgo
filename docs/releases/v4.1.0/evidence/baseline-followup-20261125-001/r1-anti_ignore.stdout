@@ -1,0 +1,5 @@
+ignore_registry.json: total_allowed=135 (max=150), active=81 (max=92)
+tree recount: real #[ignore] attributes in tests/ + crates/ = 136
+FAIL: registry drift — tree has 136 real #[ignore] attributes
+      but tests/baseline/ignore_registry.json registers 135.
+      Add or remove the registry entries to match the tree, then re-run.

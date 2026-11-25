@@ -1,0 +1,9 @@
+ci-alpha-stage.yml: workflow_dispatch | covers develop/v4.1.0: False
+ci-trusted-baseline.yml: workflow_dispatch | covers develop/v4.1.0: False
+ci.yml: push,pull_request | covers develop/v4.1.0: True
+gate.yml: push,pull_request | covers develop/v4.1.0: True
+reconciliation.yml: workflow_run | covers develop/v4.1.0: False
+soak_168h.yml: workflow_dispatch | covers develop/v4.1.0: True
+soak_probe.yml: workflow_dispatch | covers develop/v4.1.0: False
+z6g4-168h-soak.yml: workflow_dispatch | covers develop/v4.1.0: False
+z6g4-tpch-sf1-cell-diff.yml: workflow_dispatch | covers develop/v4.1.0: False

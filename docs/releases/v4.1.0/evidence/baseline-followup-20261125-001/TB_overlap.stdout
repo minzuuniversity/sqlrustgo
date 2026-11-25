@@ -1,0 +1,12 @@
+find_column_index defs:
+src/engine_utils.rs:1027:pub fn find_column_index(col_name: &str, table_info: &TableInfo) -> Option<usize> {
+src/expr_utils.rs:1471:pub(crate) fn find_column_index(col_name: &str, table_info: &TableInfo) -> Option<usize> {
+crates/storage/src/engine.rs:891:pub fn find_column_index_in(col_name: &str, columns: &[ColumnDefinition]) -> Option<usize> {
+crates/storage/src/engine.rs:919:pub fn find_column_index(col_name: &str, table_info: &TableInfo) -> Option<usize> {
+crates/sql-corpus/src/lib.rs:795:    fn find_column_index(&self, col_name: &str, table_info: &TableInfo) -> Option<usize> {
+crates/executor/src/expr/mod.rs:642:pub fn find_column_index(
+crates/executor/src/merge.rs:454:fn find_column_index(col_name: &str, table_info: &TableInfo) -> Option<usize> {
+call sites total: 133
+in expr/mod.rs: 639,642,646,704,4920,4933,4934,4935,4936,4942,4944,4959,4960,4961,4963,4966,4970,4972,4976,4985,4986,4988,4989,4990,5221,5252,
+scan( / scan_with_filter in trigger.rs: 894,895,901,1000,
+in stored_proc.rs: 837,961,1033,1096,1251,1254,1752,1757,1803,1934,2007,2092,

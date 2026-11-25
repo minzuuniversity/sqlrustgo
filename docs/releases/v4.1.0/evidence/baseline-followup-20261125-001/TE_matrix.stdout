@@ -1,0 +1,52 @@
+##### minzuuniversity/sqlrustgo
+default main private False fork False perm {'admin': True, 'maintain': True, 'push': True, 'triage': True, 'pull': True}
+{
+  "enabled": true,
+  "allowed_actions": "local_only",
+  "sha_pinning_required": false
+}
+
+{
+  "message": "Conflict",
+  "errors": "Only local actions and workflows are allowed on this repository",
+  "documentation_url": "https://docs.github.com/rest/actions/permissions#get-allowed-actions-and-reusable-workflows-for-a-repository",
+  "status": "409"
+}
+
+protect develop0.000000v4.1.0: 404
+protect main: 404
+total_runs 9493
+  2026-11-25T18:59:06Z SQL-92 Compliance Test Suite push completed startup_failure e976ca85
+  2026-11-25T18:59:05Z Benchmark PR push completed startup_failure e976ca85
+  2026-11-25T18:51:45Z Benchmark PR pull_request completed startup_failure 5f9048a6
+  2026-11-25T18:51:44Z SQL-92 Compliance Test Suite pull_request completed startup_failure 5f9048a6
+  2026-11-25T18:44:19Z Benchmark PR push completed startup_failure 9c031dc8
+  2026-11-25T18:44:18Z SQL-92 Compliance Test Suite push completed startup_failure 9c031dc8
+  2026-11-25T18:39:37Z Benchmark PR push completed startup_failure e1c5cf03
+  2026-11-25T18:39:36Z SQL-92 Compliance Test Suite push completed startup_failure e1c5cf03
+##### yinglichina8848/sqlrustgo-public
+default develop/v4.0.0 private False fork False perm {'admin': True, 'maintain': True, 'push': True, 'triage': True, 'pull': True}
+{
+  "enabled": true,
+  "allowed_actions": "all",
+  "sha_pinning_required": false
+}
+
+{
+  "message": "Conflict",
+  "errors": "All actions and workflows are allowed on this repository",
+  "documentation_url": "https://docs.github.com/rest/actions/permissions#get-allowed-actions-and-reusable-workflows-for-a-repository",
+  "status": "409"
+}
+
+protect develop0.000000v4.1.0: 404
+protect main: 404
+total_runs 754
+  2026-11-25T19:11:47Z gate-no-log-tbl-json push in_progress None ac3fa16a
+  2026-11-25T19:11:47Z Benchmark PR push in_progress None ac3fa16a
+  2026-11-25T19:11:47Z SQL-92 Compliance Test Suite push in_progress None ac3fa16a
+  2026-11-25T19:10:59Z Benchmark PR push in_progress None e976ca85
+  2026-11-25T19:10:59Z SQL-92 Compliance Test Suite push in_progress None e976ca85
+  2026-11-25T10:42:12Z Regression Tests schedule completed failure 17435988
+  2026-11-25T02:43:48Z github_actions in /. - Update #1729279032 dynamic completed failure 17435988
+  2026-11-24T11:49:48Z Regression Tests schedule completed failure 17435988

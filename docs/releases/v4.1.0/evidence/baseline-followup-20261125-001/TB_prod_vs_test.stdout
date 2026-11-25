@@ -1,0 +1,3 @@
+crates/executor/src/expr/mod.rs total=5269 first_cfg_test=3730 prod_lines_before=3729 test_tail=1540 cfg_test_at=3730,
+crates/executor/src/stored_proc.rs total=4277 first_cfg_test=15 prod_lines_before=14 test_tail=4263 cfg_test_at=15,432,2669,
+crates/executor/src/trigger.rs total=2627 first_cfg_test=1347 prod_lines_before=1346 test_tail=1281 cfg_test_at=1347,

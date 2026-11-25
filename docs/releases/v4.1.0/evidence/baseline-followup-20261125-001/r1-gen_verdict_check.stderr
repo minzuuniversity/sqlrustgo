@@ -1,0 +1,5 @@
+usage: gen_verdict.py [-h] [--repo REPO] [--out OUT] [--python PYTHON]
+                      [--neg-log NEG_LOG] [--neg-run-date NEG_RUN_DATE]
+                      [--neg-run-tree NEG_RUN_TREE] [--r2-dir R2_DIR]
+                      [--run-neg] [--allow-dirty]
+gen_verdict.py: error: unrecognized arguments: --check

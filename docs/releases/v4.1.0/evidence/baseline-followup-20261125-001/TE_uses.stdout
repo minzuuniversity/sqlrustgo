@@ -1,0 +1,49 @@
+== uses: refs per workflow (non-local)
+      1 benchmark.yml	actions/checkout@v4
+      1 benchmark.yml	benchmark-action/github-action-benchmark@v1
+      1 benchmark.yml	dtolnay/rust-toolchain@stable
+      1 benchmark.yml	Swatinem/rust-cache@v2
+      1 bench-pr.yml	actions/checkout@v4
+      1 bench-pr.yml	actions/upload-artifact@v4
+      1 bench-pr.yml	dtolnay/rust-toolchain@stable
+      1 bench-pr.yml	Swatinem/rust-cache@v2
+      1 bench-schedule.yml	actions/checkout@v4
+      1 bench-schedule.yml	actions/upload-artifact@v4
+      1 bench-schedule.yml	dtolnay/rust-toolchain@stable
+      1 bench-schedule.yml	Swatinem/rust-cache@v2
+      1 ci-corpus.yml	actions/cache@v4
+      1 ci-corpus.yml	actions/checkout@v4
+      1 ci-corpus.yml	dtolnay/rust-toolchain@stable
+     10 ci-pr.yml	actions/checkout@v4
+      9 ci-pr.yml	dtolnay/rust-toolchain@stable
+      4 ci-pr.yml	Swatinem/rust-cache@v2
+      1 ci.yml	actions/checkout@v4
+      1 ci.yml	dtolnay/rust-toolchain@stable
+      7 coverage-parallel.yml	actions/checkout@v4
+      1 coverage-parallel.yml	actions/download-artifact@v4
+      7 coverage-parallel.yml	actions/upload-artifact@v4
+      7 coverage-parallel.yml	dtolnay/rust-toolchain@stable
+      1 coverage.yml	actions/checkout@v4
+      1 coverage.yml	actions/upload-artifact@v4
+      1 coverage.yml	dtolnay/rust-toolchain@stable
+      1 gate-no-log-tbl-json.yml	actions/checkout@v4
+     16 regression.yml	actions/checkout@v4
+      1 regression.yml	actions/upload-artifact@v4
+      2 r-gate.yml	actions/cache@v4
+      4 r-gate.yml	actions/checkout@v4
+      2 r-gate.yml	actions/upload-artifact@v4
+      2 r-gate.yml	dtolnay/rust-toolchain@stable
+      3 sql92-compliance.yml	actions/cache@v4
+      1 sql92-compliance.yml	actions/checkout@v4
+      1 sql92-compliance.yml	actions/upload-artifact@v4
+      1 sql92-compliance.yml	dtolnay/rust-toolchain@stable
+== local uses:
+0
+== distinct actions
+      6 actions/cache@v4
+     45 actions/checkout@v4
+      1 actions/download-artifact@v4
+     14 actions/upload-artifact@v4
+      1 benchmark-action/github-action-benchmark@v1
+     25 dtolnay/rust-toolchain@stable
+      7 Swatinem/rust-cache@v2

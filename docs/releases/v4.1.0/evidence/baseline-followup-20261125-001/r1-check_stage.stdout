@@ -1,0 +1,42 @@
+==================================================================
+  Stage Gate Check: ALPHA
+  Version: v4.1.0
+  Branch: develop/v4.1.0
+  Commit: 3564a8b
+  Description: 功能开发阶段 (active feature development, API may change)
+  Mode:    EXECUTE
+==================================================================
+
+--- Branch Pattern ---
+  stage:     ALPHA
+  pattern:   develop/v*
+  branch:    develop/v4.1.0
+  enforced:  false
+  [INFO] carrier rule is declared but not enforced for this stage (development stage)
+
+--- Required files & doc artifacts ---
+  [OK]  docs/releases/v4.1.0/CHANGELOG.md
+  [OK]  docs/releases/v4.1.0/RELEASE_NOTES.md
+  [OK]  docs/releases/v4.1.0/STAGE.yaml
+  [OK]  docs/releases/v4.1.0/CHANGELOG.md
+  [OK]  docs/releases/v4.1.0/RELEASE_NOTES.md
+  [OK]  docs/releases/v4.1.0/STAGE.yaml
+  [OK]  docs/releases/v4.1.0/FEATURE_MATRIX.md
+
+--- Required gates (10) ---
+  [FAIL] check_alpha_v4.1.0.sh
+  [PASS] check_arch_invariants.sh
+  [PASS] check_arch3_no_bypass.sh
+  [FAIL] check_coverage_v312.sh (SQLRUSTGO_COVERAGE_STAGE=alpha)
+  [FAIL] check_sql_corpus_gate.sh
+  [FAIL] check_anti_ignore_gate.sh
+  [FAIL] check_g1_tpch_baseline.sh
+  [FAIL] cargo build --all-features
+  [FAIL] cargo test --all-features --lib
+  [FAIL] cargo fmt --check
+
+==================================================================
+  Stage ALPHA (v4.1.0): 9 PASS, 8 FAIL
+  gate logs: docs/releases/v4.1.0/logs/gates/
+  run log:   docs/releases/v4.1.0/logs/gate_alpha_3564a8b_20261125_182442Z.log
+==================================================================
