@@ -73,7 +73,7 @@
 | 0.3 | 4 条 RED 的缺失日志 | 重跑 `tf_t4_*` 并把真实 stdout/stderr 落盘到 `evidence/`，文件名与矩阵一致 | **需要执行准入**（跑测试本身允许；但需重跑 ⇒ 见 §4） |
 | 0.4 | 加一条机器检查：**矩阵每条 case 的 evidence 必须可解析且存在** | 新门禁/新检查在断链时 rc≠0 | 新增检查（属 G1 范畴，可并入本分支） |
 
-> 阶段 0.4 建议直接落成 `scripts/gate/check_test_factory_matrix_binding.sh`，判据对齐本轮 G1 已确立的「缺证据 ⇒ 不得 PASS」口径。
+> 阶段 0.4 建议直接落成 scripts/gate/check_test_factory_matrix_binding.sh（计划名，**未入库**），判据对齐本轮 G1 已确立的「缺证据 ⇒ 不得 PASS」口径。
 
 ### 阶段 1 — 基线重绑 + 30 个试点用例重跑
 

@@ -109,7 +109,10 @@ fn kill_fails_closed_on_unsupported_backend() {
     let mut eng = engine();
     let res = eng.execute("KILL CONNECTION 99");
     let err = match res {
-        Ok(r) => panic!("KILL on unsupported backend must fail, got rows: {:?}", r.rows),
+        Ok(r) => panic!(
+            "KILL on unsupported backend must fail, got rows: {:?}",
+            r.rows
+        ),
         Err(e) => e,
     };
     let msg = format!("{err:?}");
@@ -122,7 +125,10 @@ fn kill_query_fails_closed_on_unsupported_backend() {
     let mut eng = engine();
     let res = eng.execute("KILL QUERY 7");
     let err = match res {
-        Ok(r) => panic!("KILL QUERY on unsupported backend must fail, got rows: {:?}", r.rows),
+        Ok(r) => panic!(
+            "KILL QUERY on unsupported backend must fail, got rows: {:?}",
+            r.rows
+        ),
         Err(e) => e,
     };
     let msg = format!("{err:?}");

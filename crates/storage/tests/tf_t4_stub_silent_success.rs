@@ -15,13 +15,17 @@ use tempfile::TempDir;
 fn make() -> (BinaryTableStorageV2, TempDir) {
     let dir = TempDir::new().unwrap();
     let mut s = BinaryTableStorageV2::new(dir.path().to_path_buf()).unwrap();
-    s.create_table("t", vec![ColumnDefinition {
-        name: "id".into(),
-        data_type: "BIGINT".into(),
-        nullable: false,
-        primary_key: true,
-        ..Default::default()
-    }]).expect("create_table should succeed");
+    s.create_table(
+        "t",
+        vec![ColumnDefinition {
+            name: "id".into(),
+            data_type: "BIGINT".into(),
+            nullable: false,
+            primary_key: true,
+            ..Default::default()
+        }],
+    )
+    .expect("create_table should succeed");
     (s, dir)
 }
 
@@ -33,9 +37,12 @@ fn tf_t4_01_scan_after_insert_sees_rows() {
     s.insert("t", vec![vec![Value::Integer(1)], vec![Value::Integer(2)]])
         .expect("insert should not error");
     let rows = s.scan("t").expect("scan should not error");
-    assert_eq!(rows.len(), 2,
-               "STUB_SILENT_SUCCESS: insert Ok but scan returned {} rows (expected 2)",
-               rows.len());
+    assert_eq!(
+        rows.len(),
+        2,
+        "STUB_SILENT_SUCCESS: insert Ok but scan returned {} rows (expected 2)",
+        rows.len()
+    );
 }
 
 /// T4-02：delete 必须报告真实删除行数。
@@ -45,8 +52,10 @@ fn tf_t4_02_delete_reports_real_count() {
     let (mut s, _d) = make();
     s.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
     let deleted = s.delete("t", &[]).expect("delete should not error");
-    assert_eq!(deleted, 1,
-               "STUB_SILENT_SUCCESS: delete Ok(0) though 1 row was inserted");
+    assert_eq!(
+        deleted, 1,
+        "STUB_SILENT_SUCCESS: delete Ok(0) though 1 row was inserted"
+    );
 }
 
 /// T4-03：update 必须报告真实更新行数。
@@ -54,10 +63,13 @@ fn tf_t4_02_delete_reports_real_count() {
 fn tf_t4_03_update_reports_real_count() {
     let (mut s, _d) = make();
     s.insert("t", vec![vec![Value::Integer(1)]]).unwrap();
-    let updated = s.update("t", &[], &[(0, Value::Integer(9))])
+    let updated = s
+        .update("t", &[], &[(0, Value::Integer(9))])
         .expect("update should not error");
-    assert_eq!(updated, 1,
-               "STUB_SILENT_SUCCESS: update Ok(0) though 1 row exists");
+    assert_eq!(
+        updated, 1,
+        "STUB_SILENT_SUCCESS: update Ok(0) though 1 row exists"
+    );
 }
 
 /// T4-04：非事务后端必须在 begin_transaction 上显式拒绝，而非假装成功。
@@ -66,12 +78,16 @@ fn tf_t4_04_non_tx_backend_must_reject_or_document() {
     let (mut s, _d) = make();
     let r = s.begin_transaction();
     match r {
-        Ok(_) => panic!("UNSUPPORTED_NOT_REJECTED: begin_transaction Ok on a \
-                         backend whose scan/delete are stubs — must be UNSUPPORTED"),
+        Ok(_) => panic!(
+            "UNSUPPORTED_NOT_REJECTED: begin_transaction Ok on a \
+                         backend whose scan/delete are stubs — must be UNSUPPORTED"
+        ),
         Err(e) => {
             let msg = format!("{e:?}").to_lowercase();
-            assert!(msg.contains("unsupported") || msg.contains("not support"),
-                    "rejection reason should name UNSUPPORTED, got: {msg}");
+            assert!(
+                msg.contains("unsupported") || msg.contains("not support"),
+                "rejection reason should name UNSUPPORTED, got: {msg}"
+            );
         }
     }
 }

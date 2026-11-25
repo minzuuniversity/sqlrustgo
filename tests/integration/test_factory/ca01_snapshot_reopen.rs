@@ -41,10 +41,18 @@ fn inv07a_uncommitted_invisible_to_other_engine() {
 
     a.execute("BEGIN").unwrap();
     a.execute("INSERT INTO t VALUES (2,20)").unwrap(); // 未提交
-    assert_eq!(count_of(&mut b), 1, "INV-07: uncommitted row invisible to engine B");
+    assert_eq!(
+        count_of(&mut b),
+        1,
+        "INV-07: uncommitted row invisible to engine B"
+    );
 
     a.execute("COMMIT").unwrap();
-    assert_eq!(count_of(&mut b), 2, "INV-07: committed row visible after COMMIT");
+    assert_eq!(
+        count_of(&mut b),
+        2,
+        "INV-07: committed row visible after COMMIT"
+    );
 }
 
 /// INV-07b：flush 后重开——未提交数据不得进入 recovery 可见基线
@@ -57,7 +65,7 @@ fn inv07b_reopen_baseline_excludes_uncommitted() {
         a.execute("INSERT INTO t VALUES (1,10)").unwrap(); // committed（autocommit）
         a.execute("BEGIN").unwrap();
         a.execute("INSERT INTO t VALUES (2,20)").unwrap(); // 未提交
-        // 显式持久化（API 契约）：flush 时未提交状态不得随盘
+                                                           // 显式持久化（API 契约）：flush 时未提交状态不得随盘
         storage.write().flush_all_buffers().unwrap();
         storage.write().flush().unwrap();
     }

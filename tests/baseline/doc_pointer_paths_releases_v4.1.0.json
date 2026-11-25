@@ -205,6 +205,18 @@
       "target": "docs/gitea-only.md",
       "category": "missing_artifact_documented_as_finding",
       "reason": "同上：T-C 一节引用了 docs/gitea-only.md 这个不存在的路径，作为「该引用是断的」这一发现的证据出现，不是有效的文档指向。待属主裁决（O-C）"
+    },
+    {
+      "file": "refactoring/audit/HARA-410/02_HISTORICAL_ARCHITECTURE_EVOLUTION.md",
+      "target": "src/storage/file_storage.rs",
+      "category": "path_moved_after_restructure",
+      "reason": "v1.0.0 时期的真实路径；同一张表的下一行记录了 2a97c9c653（03-07）「FileStorage 搬到 crates/storage」，当前文件在 crates/storage/src/file_storage.rs。历史架构审计不改写——改写会让这份证据描述一个从未存在的状态"
+    },
+    {
+      "file": "refactoring/audit/HARA-410/02_HISTORICAL_ARCHITECTURE_EVOLUTION.md",
+      "target": "src/transaction/manager.rs",
+      "category": "path_moved_after_restructure",
+      "reason": "同上：v1.0.0 时期的真实路径，当前文件在 crates/transaction/src/manager.rs。历史架构审计不改写"
     }
   ]
 }

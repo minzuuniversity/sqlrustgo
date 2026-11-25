@@ -2364,7 +2364,8 @@ impl MemoryStorage {
                     // #5897: the log entry names the database the DELETE
                     // happened in, so the undo addresses `db`, not whatever
                     // database is active when the log is replayed.
-                    log.deleted.push((db.to_string(), table.to_string(), r.clone()));
+                    log.deleted
+                        .push((db.to_string(), table.to_string(), r.clone()));
                 } else if let Some(committed) = self.committed_tables.get_mut(table) {
                     // #4948: clone-on-write; the post-commit snapshot may
                     // still share this table's rows.
@@ -2684,12 +2685,8 @@ impl MemoryStorage {
                 if let Some(log) = self.tx_log.as_mut() {
                     // #5897: the log entry names the database the UPDATE
                     // happened in.
-                    log.updated.push((
-                        db.to_string(),
-                        table.to_string(),
-                        prior,
-                        record.clone(),
-                    ));
+                    log.updated
+                        .push((db.to_string(), table.to_string(), prior, record.clone()));
                 } else {
                     // V312-26 #3969: autocommit update — keep post-commit view in sync.
                     if let Some(committed) = self.committed_tables.get_mut(&key) {
@@ -2789,12 +2786,8 @@ impl MemoryStorage {
                 if let Some(log) = self.tx_log.as_mut() {
                     // #5897: the log entry names the database the UPDATE
                     // happened in.
-                    log.updated.push((
-                        db.to_string(),
-                        table.to_string(),
-                        prior,
-                        record.clone(),
-                    ));
+                    log.updated
+                        .push((db.to_string(), table.to_string(), prior, record.clone()));
                 } else {
                     // V312-26 #3969: autocommit update — keep post-commit view in sync.
                     if let Some(committed) = self.committed_tables.get_mut(&key) {
