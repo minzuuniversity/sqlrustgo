@@ -12,12 +12,17 @@
 ## 0. 一句话状态
 
 **9 个计划任务已实施完成**（Task 1–8 + Task 10 通过独立评审；Task 9「放行判据汇总 + R2 外审包 +
-属主放行裁决」**已实施完成，评审中** —— 修订第 1 轮已处理 1 Important + 8 Minor）。
-**12 条准入判据的实测判定：PASS 8 · FAIL 3（#4、#6、#8）· WAIVED 1（#12）**。
+属主放行裁决」**已实施完成** —— 修订第 1 轮处理 1 Important + 8 Minor，修订第 2 轮处理 3 Important + 8 Minor，
+**最终整支评审修复波**处理 9 Important + 4 条必修 minor）。
+**12 条准入判据的实测判定：PASS 8 · FAIL 3（#4、#6、#8）· WAIVED 1（#12）**（判定结果**未变**）。
 
 当前**不能**宣布放行，也**不能**宣布「整备失败」：**材料层全绿**（基线、SHA 绑定、ADR 机器字段、
 manifest、门禁编目、外审包三套统计与 dead 口径都自洽），缺的是**证据层**（#8：夹具泳道未达 7/7）
 与**签署层**（#6：Oracle 副签 0 条）。缺口已逐条量化并登记。
+
+**最终整支评审修复波（2026-11-25）只做了「让陈述与事实对齐」**：判定结果、门禁阈值、门禁清单、
+产品代码**一个都没动**。改掉的是三处**自己写过的假话**（判据 8 的实测树 SHA、Oracle 判定的 commit 绑定、
+`observed` 里手写散文冒充命令输出），外加一条**让判据 6 具备「合法授权后才可能 PASS」的逻辑**。
 
 **放行与否是属主的裁决**：`V410-OWNER-RULING.md` 是**裁决请求**（属主裁决位留空），
 实施者与控制者都未代签。
@@ -41,9 +46,11 @@ manifest、门禁编目、外审包三套统计与 dead 口径都自洽），缺
 > **远端 tip 的当前值（2026-11-25 实测，会变）**：`origin/develop/v4.1.0` =
 > `ea285c5fda77e7790e965ae482e3c1b015fabc10`（**已包含** `base/v4.1.0-frozen`，
 > PR #5928 的 merge commit —— 冻结分支已被并入 develop）；
-> `origin/base/v4.1.0-frozen` = `e2d98149d264b9cdbc7270229f3cd498b61e6072`
-> （= Task 9 的提交，**控制者已推送**）。develop 里**还没有**冻结分支上最后两个提交
-> （`d358289919`、`09ba360f6c`，在合并点 `e007fe7114` 之后）。
+> `origin/base/v4.1.0-frozen` = **`ebcf8bc2997649e333067bbb8497c1dbcdf09db3`**
+> （= 本地 HEAD）。develop 里**还没有**冻结分支上的 **7 个**提交
+> （`git log --oneline ea285c5fda..HEAD` 实测 7 条：`d358289919`、`09ba360f6c`、
+> `e2d98149d2`、`33f1c7ceb9`、`6c345db7cb`、`a2d0e3ecec`、`ebcf8bc299`）。
+> ⚠️ **旧版本这里写的是「最后两个提交」和 tip = `e2d98149d2…` —— 那是过时的快照，已按实测重算。**
 > 这两个值会随推送/合并变动；**BASE 不会变**。
 
 ---
@@ -81,7 +88,9 @@ Task 9 产出**四件**东西（均在 `docs/refactor/v4.1.0-c/takeover/`；另�
 第五件（**生成器**，控制者裁定 R69）：`gen_verdict.py` —— 12 条判据的**重跑器**。
 它原来只活在 git-ignored 的 `.superpowers/sdd/` 里，于是它里面的硬编码字符串（旧的
 「差额来自两条判据」、旧的变异臂数）改了树、没改源，下一次重跑又会把陈旧字符串写回裁决文件。
-现在它**已入仓**，裁决 JSON **可从已提交的树复现**：
+现在它**已入仓**，裁决 JSON **可从「生成它的那棵树」复现**（⚠️ 不是「逐项一致」的承诺：
+判据 1 记的远端 tip、判据 8 的树身份都随时间变 —— 后者还是**推定/重构**的，见 §3 的 #8 行与
+`V410-OWNER-RULING.md` §1.2）：
 
 ```bash
 cd /Volumes/workspace/dev/wt-v410-base
@@ -98,7 +107,7 @@ python3 docs/refactor/v4.1.0-c/takeover/gen_verdict.py   # 重出 V410-READINESS
 |---|---|---|
 | **#4** | **映射层** | A2.2 **R1**（「每个 task 的 `approved_adr_refs` 至少 1 项」）被 **C01-15** 违反 —— `ADAPTER-MAPPING-PENDING.md` 的待决清单**非空**。ADR 的**机器字段**齐了、**10 条**变异臂全被拒（条数从 `--check` 的实际输出里数出来），但 `--check` **不担保 R1**（`verify_handoff.py:383-384` 空列表直接 return），它自己的输出是 `"adr_approval_state": "PENDING"` ⇒ 判据 4 = FAIL。**需属主裁决 O1**（补 ADR 引用 vs 裁定无需绑定） |
 | **#6** | **签署层** | 44 条有终态 ✓、双向差异表 ✓，但 **Oracle 副签 0 条**（38 条 `ASSERTION_UNREVIEWABLE` + 6 条 `JUDGED_PENDING_COUNTERSIGNATURE`；`assertion_review_performed_by` 是实施者本人）⇒ 需属主指认 1 名独立 Reviewer（R-T7-1） |
-| **#8** | **证据层** | 实跑（2026-11-25，树 = `base/v4.1.0-frozen` 的 tip `e2d98149d264…`）**RED=5/7 + INCONCLUSIVE=2/7（退出码 3）**；上一次记的是 **6/7 + 1/7**，跑在 commit **`b556199c86`**（**不是**冻结提交 `fd849ae205`，跨 SHA 的证据不可继承，C5）；两次都不是 7/7。fx15 因 composite release 重建超 7200s 预算（exit 124）⇒ INCONCLUSIVE；fx18 的覆盖率门禁**在完整树上就已红** ⇒ 注入的红不可归因 ⇒ INCONCLUSIVE |
+| **#8** | **证据层** | 实跑（2026-11-25，树 = **`09ba360f6cfbf0be2aa4cf7d2064c4b8b50f7958`**）**RED=5/7 + INCONCLUSIVE=2/7（退出码 3）**；上一次记的是 **6/7 + 1/7**，跑在 commit **`b556199c86`**（**不是**冻结提交 `fd849ae205`，跨 SHA 的证据不可继承，C5）；两次都不是 7/7。fx15 因 composite release 重建超 7200s 预算（exit 124）⇒ INCONCLUSIVE；fx18 的覆盖率门禁**在完整树上就已红** ⇒ 注入的红不可归因 ⇒ INCONCLUSIVE。**⚠ 这个树身份是「推定/重构」**：泳道日志本身**不含**树身份（`run.log` 里没有任何 40 位十六进制串），SHA 由 `git reflog` + 日志 mtime（2026-11-25 12:07:40，早于 `e2d98149d2` 的提交时刻 12:08:52）推定 ⇒ 泳道全程 HEAD = `09ba360f6c`。**结论不受影响**：`git diff --name-status 09ba360f6c HEAD` 里**没有**门禁脚本 / 负向夹具 / 门禁编目 / 产品代码的改动 ⇒ RED=5/7 与 FAIL 判定照旧。详见 `V410-OWNER-RULING.md` §1.2 |
 
 R2 外审包在 `…/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2/`（**兄弟目录副本**；R1 的 `package/`
 21 个文件在生成前后**逐字节未变**）；构建链在同目录的 `r2-build/`（`build_r2.sh` 是唯一入口，幂等）。
@@ -107,9 +116,10 @@ R2 外审包在 `…/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2/`（**兄弟目
 **⚠️ 判据 1 的一条观察（不改变判定）**：本任务运行期间 `develop/v4.1.0` 被合并了
 `base/v4.1.0-frozen`（PR #5928，merge commit `ea285c5fda`），所以远端 develop 的 tip 现在是
 BASE 的**后代**而非祖先（设计稿 §A5 #1 的字面检查因此不再成立）；冻结时点的 develop tip
-`8cbde5b6d3` 仍是 BASE 的祖先 ✓。远端 `base/v4.1.0-frozen` 的 tip 现为 `e2d98149d264b9cdbc7270229f3cd498b61e6072`
-（**控制者已把 Task 9 的提交推送上去**）；develop 里**还没有**冻结分支上最后两个提交
-（`d358289919`、`09ba360f6c`）。
+`8cbde5b6d3` 仍是 BASE 的祖先 ✓。远端 `base/v4.1.0-frozen` 的 tip 现为
+**`ebcf8bc2997649e333067bbb8497c1dbcdf09db3`**（= 本地 HEAD）；develop 里**还没有**冻结分支上的
+**7 个**提交（`d358289919`、`09ba360f6c`、`e2d98149d2`、`33f1c7ceb9`、`6c345db7cb`、
+`a2d0e3ecec`、`ebcf8bc299`）—— ⚠️ 旧版本这里写的是「最后两个提交」，**已按实测重算**。
 
 ---
 
@@ -182,15 +192,21 @@ BASE 的**后代**而非祖先（设计稿 §A5 #1 的字面检查因此不再�
 
 1. `cd /Volumes/workspace/dev/wt-v410-base`，确认分支 `base/v4.1.0-frozen` 与 tip。
 2. 读本文件 + `V410-READINESS-LEDGER.md`；再读 `V410-OWNER-RULING.md`（裁决请求）。
-3. **9 个任务已实施完成**（Task 9 修订第 1 轮已处理 1 Important + 8 Minor，**评审仍在进行**）。
+3. **9 个任务已实施完成**（Task 9 修订第 1 轮已处理 1 Important + 8 Minor；修订第 2 轮已处理 3 Important + 8 Minor；
+   **最终整支评审**返回 0 Critical / 9 Important / 11 Minor，**修复波已实施完成**，见
+   `.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/task-9-report.md` 的「最终整支评审 · 修复波」小节）。
    实施侧的剩余动作是**属主裁决**：在 `V410-OWNER-RULING.md` §4 的裁决位填
    「放行 C-ALPHA-02 / 不放行」（若豁免 #4 / #6 / #8，在 §2.2 的槽位 A / B / C 填 waiver 字段）。
 4. Task 9 的产物要**过完独立评审**（与前 8 个任务同一标准）；修订记录在
    `.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/task-9-report.md` 的「修订 1」小节。
 5. 若属主要求补齐 #6 / #8 后复评：复跑
    `bash audit/v4.1.0/neg/verify_neg_fixtures.sh`（判据 8）与
-   `python3 .superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/gen_verdict.py`（12 条判据，
+   `python3 docs/refactor/v4.1.0-c/takeover/gen_verdict.py`（12 条判据，
    一条命令重出 `V410-READINESS-VERDICT.json`），然后更新 `V410-OWNER-RULING.md` 的实测引用。
+   > ⚠️ **必须用仓内路径**（`docs/refactor/v4.1.0-c/takeover/gen_verdict.py`）。
+   > `.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/gen_verdict.py` 是**过时的副本，不得使用** ——
+   > 它是 git-ignored 的，改了树、没改源，跑它会把 R69 修掉的陈旧字符串重新写回裁决文件
+   > （这正是 R69 要消灭的那类回归）。
 6. R2 外审包的外发批准是**独立**于 C-ALPHA-02 的一步：属主可直接签
    `…/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2/EXPORT-APPROVAL-REQUEST.md`
    （批准栏留空，`owner/approvals/` 空）。**实施者不得代签**（C7）。
@@ -203,7 +219,7 @@ BASE 的**后代**而非祖先（设计稿 §A5 #1 的字面检查因此不再�
 | `.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/progress.md` | 原始 ledger（含全部裁决行与评审记录） |
 | `.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/task-*-brief.md` | 各任务的计划正文切片 |
 | `.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/task-*-report.md` | 各任务的实施者报告 + 修订记录 |
-| `.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/gen_verdict.py` | **Task 9 的判据重跑器**（一条命令重出 12 条判据的实测与判定） |
+| `.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/gen_verdict.py` | ⛔ **过时的副本，不得使用**。**用仓内那份**：`docs/refactor/v4.1.0-c/takeover/gen_verdict.py`（R69 已把它入仓） |
 | `.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/task-9-neg-logs/` | Task 9 的负向夹具泳道实测日志（run.log + 逐夹具日志） |
 | `.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/review-*.diff` | 评审包（**可删**，可由 git 重新生成） |
 

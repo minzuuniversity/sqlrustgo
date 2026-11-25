@@ -204,8 +204,22 @@ bash …/DSH-EXTERNAL-REVIEW-001/r2-build/build_r2.sh
 | `…/DSH-EXTERNAL-REVIEW-001/r2-build/` | **生成**链（`build_r2.sh` 等 6 个脚本，权威归属：DSH 仓） | 生成是写操作，留在 DSH 仓；本仓不复制 |
 
 > `verify_r2_package.py` 落在 `docs/refactor/v4.1.0-c/takeover/` 下，**不在 `MANIFEST_ROOTS` 内**
-> ⇒ 按 R67 **不需要重签 manifest**（`verify_handoff.py --check` 实测仍退出 0，`handoff_manifest_sha256`
-> 保持 `8b12989eeeebb96ab14190fd85f5d2cb54af7becda5fc29693e471a1ba6f6a66`）。
+> ⇒ 按 R67 **不需要重签 manifest**。
+>
+> **📌 2026-11-25 最终整支评审修复波的连带影响**：那次修复波改了
+> `docs/releases/v4.1.0/refactoring/TEST_COVERAGE_MATRIX.json`（`assertion_reviewed_commit` 重指 +
+> `assertion_reviewed_at` 改名 + 新增 `assertion_signed_at`），而**矩阵在 `MANIFEST_ROOTS` 内**
+> ⇒ **manifest 必须重签**。重签后的实测值：
+>
+> | 项 | 值 |
+> |---|---|
+> | `manifest_bound_files` | **314**（不变） |
+> | `handoff_manifest_sha256` | **`16f87dff194a215dcb3f466befe6f4a1041b582f0d4e307fa1149c6f9b970973`**（重签前为 `8b12989eeeebb96ab14190fd85f5d2cb54af7becda5fc29693e471a1ba6f6a66`） |
+> | `verify_handoff.py --check` | **exit 0** |
+>
+> **重签只改了三个机械字段**：`10_HANDOFF_MANIFEST.json` 的哈希表、`01_ARCHITECTURE_BASELINE.json`
+> 与 `evidence/SOURCE_BINDINGS.json` 的 `timestamp`（以及前者对后者 sha256 的引用）。
+> **没有改任何事实内容。**
 
 ### 9.1 两份 `verify_r2_package.py` 的字节漂移（N-10，**待属主裁决**）
 
