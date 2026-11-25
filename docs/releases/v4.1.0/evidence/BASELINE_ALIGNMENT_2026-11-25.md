@@ -1,6 +1,7 @@
 # SQLRustGo v4.1.0 —— 基线对齐报告 / 重构路线图 v0.1 / Harness 治理启动包 v0.1
 
-> **性质**：仅分析与方案。未改产品代码、门禁脚本、STAGE.yaml、分支保护；未使用 `gh`。本文件经用户明确指示以 PR 形式推送到 GitHub `minzuuniversity/sqlrustgo`（与 AGENTS.md §3.2/§8 #11「只走 Gitea」冲突，见 PR 说明）。
+> **性质**：仅分析与方案。未改产品代码、门禁脚本、STAGE.yaml、分支保护。本文件经用户明确指示以 PR 形式推送到 GitHub `minzuuniversity/sqlrustgo`（与 AGENTS.md §3.2/§8 #11「只走 Gitea」冲突，见 PR 说明）。
+> **事实说明（2026-11-25 补记）**：本报告的**分析主体是只读**（只运行了只读的 git 命令、静态脚本和门禁检查，没有修改产品代码、门禁脚本或 STAGE.yaml）。报告**落盘这一步**是写操作，路径如下：执行者按用户指示，经 SSH 把分支 `docs/v410-baseline-alignment-report-20261125`（提交 `5f9048a6`）推送到 GitHub 镜像，并用执行主机上的 GitHub PAT 通过 REST API 建了 PR #1925（**没有使用 `gh` CLI，但这同样是对 GitHub 的写操作**）。随后属主在 Gitea 252 经 PR #5937 合入该提交，合并提交为 `e976ca8515738500f03ce7988d3f55caf52c31ba`；镜像同步后，GitHub 把 #1925 标为已合并，`merge_commit_sha` 也是 `e976ca85…`。因此 **252 与 GitHub 镜像在该分支上是同一个合并提交，零漂移**。
 > **证据文件位置**：《证据索引》中的 `scratchpad/ev/*` 是执行主机上的会话临时目录，**未入仓**；sha256 前缀用于在该主机上复核。
 > **任务依据**：`docs/plans/2026-11-26-claude-code-baseline-alignment-refactor-harness-governance-task.md`（sha256 `d700103b…cc9b`）
 > 姊妹任务文档：`docs/releases/v4.1.0/V410_REMOTE_BASELINE_ALIGNMENT_TASK.md`（同日、更细，含 12 条准入判据与 D1–D11 复核表）

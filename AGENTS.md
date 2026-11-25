@@ -10,7 +10,7 @@
 ## 1. 最高原则 (P0, 不可降级)
 
 1. **Anti-Fabrication**: 不引文档 claim 当 PASS; 任何"完成/通过"必须含 `source_agent + source_run + timestamp + evidence_hash`。详见 `docs/governance/ANTI_FABRICATION_POLICY.md` + `docs/governance/adr/ADR-001-truthfulness-framework.md`。
-2. **Version Truth**: 当前事实以 `docs/releases/v4.1.0/STAGE.yaml` + 仓库 git HEAD 为准; Cargo.toml `version = "3.12.0-fix-zombie"` 是有意保留的发布口径 (README §0 已说明)。
+2. **Version Truth**: 当前事实以 `docs/releases/v4.1.0/STAGE.yaml` + 仓库 git HEAD 为准; 根 `Cargo.toml` 当前为 `version = "4.1.0"`（`Cargo.toml:61`），发布口径仍以 tag / STAGE.yaml 为准。
 3. **Gate-First**: CI 必须 `set -euo pipefail` + 失败即 exit 1。Gate 脚本在 `scripts/gate/`。Hard Gate 列表见 `docs/governance/GATE_CONDITIONS.md`。
 4. **Mod-Verification**: SQLRustGo 实现分 5 状态 — Implemented / Integrated / Tested / Verified / Release-ready。严禁把空函数或绕路实现声称"完成"。详见 `docs/agent-harness/IMPLEMENTATION_TRUTH.md`。
 5. **Production Path**: 修改任何模块前须确认其生产调用链 (不要只看测试路径)。FileStorage 当前生产实现在 `crates/storage/src/file_storage.rs`, 而 `BufferPool/Page/BPlusTree` 被 `src/lib.rs:49-63` 显式标为 "Test-only capability"。
@@ -58,7 +58,7 @@ bash scripts/gate/check_arch_sem_debt.sh     # D8 Gate (硬门禁)
 gitea252 → http://192.168.0.252:3000/openclaw/sqlrustgo.git (主, 可写)
 gitcode/gitee/github → 只读镜像, 禁止 push
 ```
-**严禁** `gh` CLI 或 GitHub。详见 `docs/gitea-only.md` + 项目 CLAUDE.md。
+**严禁** `gh` CLI 或 GitHub。详见本文件 §8 #11（`docs/gitea-only.md` 与根 `CLAUDE.md` 在本仓库中不存在；仓库内只有 `.claude/CLAUDE.md`，其中不含该条款）。
 
 ---
 

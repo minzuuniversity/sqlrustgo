@@ -193,6 +193,18 @@
       "target": "scripts/perf/test_ab08_criterion_ab.py",
       "category": "planned_artifact_never_committed",
       "reason": "该脚本随 PR #5754（AB-08 管道 + 守卫自测）提交，尚未合入 develop；合入后本条即可删除，指针届时指向真实文件"
+    },
+    {
+      "file": "evidence/BASELINE_ALIGNMENT_2026-11-25.md",
+      "target": "docs/gitea-only.md",
+      "category": "missing_artifact_documented_as_finding",
+      "reason": "报告在陈述「AGENTS.md §3.2/§8 #11 引用的 docs/gitea-only.md 在仓内不存在」这一事实本身，不是有效的文档指向；该引用已由 AGENTS.md 的订正补丁改为指向 §8 #11，剩余提及是历史陈述。待属主裁决（O-C）：补文件还是保留改引用"
+    },
+    {
+      "file": "evidence/BASELINE_FOLLOWUP_1926_2026-11-25.md",
+      "target": "docs/gitea-only.md",
+      "category": "missing_artifact_documented_as_finding",
+      "reason": "同上：T-C 一节引用了 docs/gitea-only.md 这个不存在的路径，作为「该引用是断的」这一发现的证据出现，不是有效的文档指向。待属主裁决（O-C）"
     }
   ]
 }

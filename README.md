@@ -11,8 +11,7 @@
 > - **v4.1.0 缺陷目录（新）**: [docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md](docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md)
 > **变更日志**: [docs/releases/v4.1.0/CHANGELOG.md](docs/releases/v4.1.0/CHANGELOG.md)
 >
-> 注：根 `Cargo.toml` 的 `version` 仍为 `3.12.0-fix-zombie`，五个 remote 一致，属
-> 有意保留的现状（发布口径以 tag / STAGE.yaml 为准），未随文档口径一并改动。
+> 注：根 `Cargo.toml` 的 `version` 当前为 `4.1.0`（`Cargo.toml:61`）；发布口径仍以 tag / STAGE.yaml 为准。
 >
 > ⚠️ **声明基线修正（2026-09-30；阶段口径 2026-10-25 订正）**：本 README §1 §8 §11 内容仍基于 v3.12.0 GA 视角，
 > v4.0.0 GA 撤销与 v4.1.0 阶段口径的全面统一尚未完成（v4.1.0 阶段 = **ALPHA**；发布线内 11 份产物共 18 处仍标 DRAFT，已记于 `docs/releases/v4.1.0/EVALUATION_REPORT.md` D1）。**当前最权威入口是上面 4 个
