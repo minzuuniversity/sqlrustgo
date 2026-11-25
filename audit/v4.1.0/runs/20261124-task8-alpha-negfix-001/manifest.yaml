@@ -19,6 +19,9 @@ artifacts:
     logs/fixtures/fx18-coverage-v312-crate-coverage-below-threshold.log: 3434c36d414e28b9c0caeae35fd471f4e211cc6b790e345e4d4f1358cfd452b5
     logs/fixtures/fx19-sql-corpus-gate-corpus-truncated.log: f69b475aed67badc9333263a421790238aa211b37d502c75ee29bad742908517
     logs/fixtures/fx20-g1-tpch-baseline-hash-tampered.log: 2086c67a6486ea345a3068a9caff89d8a1a4cb37cc69b45e12ef3c4caf856b37
+  rerun_after_g4:
+    logs/rerun-after-g4/003-neg-fixtures.stdout: 437883e2c83261fbab70d9c5004385b7dad3af3dd8d1ea6804abd3a963826f36
+    logs/rerun-after-g4/001-neg-fixtures-two-layer.stdout: c48018f327f9343cb9e7fd7dee539ff933b2f7e212f61c57985a698a3c5ef34c
 commands:
 - id: neg-fixtures-two-layer
   name: ALPHA 7 道门禁的两层 RED 逐道验证（夹具在仓库自身上注入并还原）
@@ -278,8 +281,8 @@ results:
   stderr_sha256: 273467381670c297b24985684a780b1fc70b3cc6f63d0122920dc96d859c93ef
   stdout_path: logs/017-coverage-control-intact-tree.stdout
   stderr_path: logs/017-coverage-control-intact-tree.stderr
-evidence_hash: sha256:e55344004d6fd861bd8f3a4c9f8ddd81936cc48b8268884eefaaa4110192dbe7
-completed_at: '2026-11-24T20:27:44Z'
+evidence_hash: sha256:9b851fab82e0646ae967f013bd9ab859aa577b56ee356828c06a97040138b599
+completed_at: '2026-11-25T01:15:57Z'
 notes:
 - Task 8（ALPHA 阶段执行点与 7 道负向夹具）修订 2 重建的证据 run。
 - '**全部 17 条命令都在同一个 commit 上执行**（b556199c86ae829f5f2f9f1c57e24dae43ef84c8）：本 run 的
@@ -289,7 +292,11 @@ notes:
   0 是设计意图 —— 超时/不可归因一律报 INCONCLUSIVE，不许凑数（R50）。
 - 003 是仓库自己的夹具泳道（probe_neg_fixtures.py fixtures）：audit/v4.1.0/neg/ 下每个 fx*.sh 都必须声明自己的期望值；共享
   helper 因此改名为 neg_two_layer.sh（否则它落进 fx*.sh 的 glob 里，expect_of() 返回 None ⇒ UNDECLARED-EXPECT
-  ⇒ 该子命令退出 1）。
+  ⇒ 该子命令退出 1）。**注意它的汇总行用的是 G-4 之前的口径**（pass=19 fail=0 error=0）：那时 exit 4 的夹具被并进了 pass
+  桶。G-4 之后（exit 4 一律单列 inconclusive）重跑同一批夹具，汇总行变成 **pass=17 inconclusive=2 fail=0
+  error=0** —— 两个 exit 4 的夹具（fx15 的超时、fx18 的不可归因）现在各自单列，不再被算成「证明了它的性质」。重跑的日志见 logs/rerun-after-g4/（sha256
+  记在 artifacts.rerun_after_g4 里）；它跑在更晚的提交上，因此**不**进本 run 的 results[]（本 run 的 17 条命令共享同一个
+  commit）。
 - '016 是端到端证据：阶段驱动在完整 ALPHA 清单上真跑了一遍（10 条 required_gates，含 3 条 cargo），耗时 23m58.64s，退出码
   1（冻结基线上 ALPHA 本来就红：composite、覆盖率门禁、anti_ignore、cargo fmt --check），其余六条 PASS。**时间窗是从证据推定的**，不是手填的：驱动的判决记录
   docs/releases/v4.1.0/logs/gate_alpha_b556199c86_20261124_190447Z.log 与本条 stdout
