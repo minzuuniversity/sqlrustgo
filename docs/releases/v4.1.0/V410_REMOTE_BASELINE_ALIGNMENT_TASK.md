@@ -4,7 +4,19 @@
 > **发件方**：SQLRustGo 本地会话（dsh-b 线）
 > **日期**：2026-11-26
 > **仓库**：`github.com/minzuuniversity/sqlrustgo`（**只读镜像**；权威仓库是内网 Gitea `192.168.0.252:3000/openclaw/sqlrustgo`）
-> **分支**：`develop/v4.1.0`
+> **基线分支**：`develop/v4.1.0`（tip `a604ed9ab3`）
+> **本任务书所在的分支**：`fix/v410-criterion8-evidence-layer-20261126`（tip `c5f938591c`）——
+> 它在 `develop/v4.1.0` 之上（PR #5933，**尚未合并**），含本轮的全部产出。
+>
+> ```bash
+> # 拿到本任务书与它依赖的全部材料：
+> git clone --branch fix/v410-criterion8-evidence-layer-20261126 \
+>     https://github.com/minzuuniversity/sqlrustgo.git
+> # 任务书：
+> #   docs/releases/v4.1.0/V410_REMOTE_BASELINE_ALIGNMENT_TASK.md
+> ```
+>
+> > 若该分支已被合入 `develop/v4.1.0`，直接取 `develop/v4.1.0` 即可。
 >
 > ## ⚠️ 本任务的性质
 >
