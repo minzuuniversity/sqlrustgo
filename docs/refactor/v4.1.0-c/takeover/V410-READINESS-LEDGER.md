@@ -412,3 +412,50 @@ duplicates a logic block. 9 rulings recorded above; 7 were applied to the plan t
 
 - Task 9: fix round 1/5 (8 addressed, 1 partial + 3 new Important + 8 Minor open; 提交 e2d98149d2..33f1c7ceb9)
 - Task 9: fix round 2/5 (11 addressed, 0 Important open, 3 Minor + 3 out-of-scope open; 提交 33f1c7ceb9..a2d0e3ecec)
+
+## 最终整支评审与修复波
+
+- **最终整支评审**（reviewer `a86c3fd`，opus，范围 = 27 个计划自撰代码文件 + 179 份文档/数据清单 + 35 条 deferred 分诊）：
+  **0 Critical / 9 Important / 11 Minor**。
+  - **I-1** 判据 8 的「实测树」SHA 是**假的**（三份属主可见文档照抄生成器参数 `e2d98149d2…`；泳道实际跑在 `09ba360f6c`）
+    ⇒ C5 缺陷类出现在**属主要签的那份文件**里。
+  - **I-2** 判据 6 的判定只看一个字段、**不看是谁签的**：`rc6`、差异表存在性与表头、终态检查全只打印不判定
+    ⇒ **属主指认 Reviewer 这个动作本身就会把 #6 翻成 PASS**（Task 7 评审点名的义务从未兑现）。
+  - **I-3/#33** Oracle 判定的 `assertion_reviewed_commit` 指向 BASE，而实际读到的树是 `2923612f51`；
+    且 Task 10 后来改了判定所依赖的 `TRANSACTION_INVARIANTS.md`。
+  - **I-4** 生成器 docstring 声称「Nothing is hand-written」，实际 6 条判据的 `observed` 嵌着手写散文。
+  - **I-5** R19 要求的披露（放弃 B3 的内容比对、靠 manifest 逐文件 sha256 顶上）在裁决记录里**缺失**。
+  - **I-6** 本支的校验器与变异探针自测**一个都没进 CI**；台账 `:62` 的 deferred minor 把它派给 Task 8，Task 8 没兑现，
+    也没有任何文档记着它还开着 ⇒ **12 条判据是一次性人工测量**。
+  - **I-7** 记忆锚点的续跑指令指向 git-ignored 的生成器 ⇒ 新会话会把 R69 修掉的回归写回去。
+  - **I-8** 唯一的豁免，其 `approved_by` 指向一份自称 **PROPOSED** 的设计稿 ⇒ 全支唯一一处治理声明是执行方自证的。
+  - **I-9** 属主可见的 tip 与提交数陈述过时，**合并指令是错的**（说合 2 个提交，实际缺 7 个 —— 合了会丢掉裁决文件与生成器）。
+  - deferred 分诊：35 条里 **5 条必修**（CI 接线、ADR 正文旧断言披露、`assertion_reviewed_at` 语义、`assertion_reviewed_commit` 绑定），
+    22 条可作残余，8 条已不适用。
+- **修复波**（实施者 `ad25207`）：11 条 finding **全 ADDRESSED**，无新增 Critical/Important；
+  **判定结果不变**（PASS 8 · FAIL 3 · WAIVED 1）。三条关键改动：
+  ① 判据 8 的树身份改成 `09ba360f6c…` 并**明写「推定/重构，不是观测值」**（泳道日志不含树身份）；
+  ② 判据 6 改成**六个条件同时成立**才 PASS（`rc6==0` + 差异表 + 终态 + 属主授权名单 + 签署人 ≠ 实施者），
+     **名单为空 ⇒ FAIL**；名单一授权 + 合法副签 ⇒ **自然变 PASS**（探针实测）；
+  ③ 44 条 Oracle 判定的 `assertion_reviewed_commit` 重指 `2923612f51…`、`assertion_reviewed_at` 改名
+     `assertion_judged_at`、新增 `assertion_signed_at`（44 条全 null），并**重签 manifest**（314 绑定文件、`16f87dff…`）。
+- **回归清扫**（修复波**自己**引入的 8 条 Minor，其中 4 条是 Owner 可见文档里的**新不实陈述**）：8/8 ADDRESSED。
+- **末轮两行更正**（C-1 判据 6 口径「四条」→「六条」与生成器对齐；C-2 STATE 的 Task 9 评审状态改成「已结束」）：2/2 ADDRESSED。
+
+### 最终残余（交给属主，本轮不再修）
+
+- 判据 8 的树身份**仍是推定**（reflog + mtime 两条独立证据很硬，但不是观测）⇒ 要变成观测需重跑泳道，或让脚本今后把 HEAD 写进日志。
+- 判据 (c)/(d) 相对于当前矩阵**未重新求值**（Task 10 改了 38 条 `invariant_ids`）⇒ 已如实登记为受影响。
+- **CI 仍未接线** ⇒ 12 条判据仍是一次性人工测量，2026-11-25 之后的回归可能无人察觉（属主专属决策，C1）。
+- 两份 `verify_r2_package.py` 仍未同步（DSH 那份 `75de8cce…` vs 本仓 `e8155879…`，内容等价、字节不同）；
+  R2 构建链无异地副本（DSH 仓无 remote）⇒ 需属主放行「同步这一个文件」并决定是否给 DSH 仓配 remote。
+- `ORACLE-REVIEW-LOG-T1.md` 仍在 manifest 哈希范围之外（R-T7-3）⇒ 属主可见的 Oracle 叙述仍无收据绑定。
+- 生成器 note 里的树 SHA 与三个时刻**仍是硬编码字面量**（已加适用范围限定，未参数化）。
+- 计划正文与设计稿仍写 `assertion_reviewed_at` 与旧绑定值（不在允许改动清单内，未动）；台账由控制者同步。
+- 「25 条待裁决项」沿用上一波修复波 §7 的计数，回归清扫未重数 ⇒ 属主按 §3 逐条数可能对不上。
+
+### 收尾状态
+
+- 9 个计划任务全部完成；每条任务都经过独立评审（Task 8 三轮修订、Task 9 两轮修订 + 修复波 + 回归清扫）。
+- **最终判定：PASS 8 · FAIL 3（#4 映射层 / #6 签署层 / #8 证据层）· WAIVED 1（#12）** ⇒ **不放行**。
+- 剩余待办**全部是属主裁决**：`docs/refactor/v4.1.0-c/takeover/V410-OWNER-RULING.md` §4 的裁决位（留空）。
