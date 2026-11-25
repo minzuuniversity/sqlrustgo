@@ -223,6 +223,7 @@ step "P16 step 2/3: verify no gate test is #[ignore]-marked"
 
 VIOLATIONS_FILE=$(mktemp)
 TOTAL_IGNORE_HITS=0
+MISSING_TESTS=0
 
 while IFS= read -r test_name; do
     [[ -z "$test_name" ]] && continue
@@ -315,7 +316,26 @@ PYEOF
     fi
 
     if [[ -z "$found_path" ]]; then
-        echo "  $(color_yellow WARN): gate test ${test_name} not found in any tests/ dir (referenced but missing)"
+        # #5598-class fail-closed: a gate-referenced test that cannot be
+        # located is a **broken dependency**, not a warning.
+        #
+        # The previous shape printed a WARN and continued, so a gate script
+        # that referenced `--test some_test` whose source file does not exist
+        # left the gate at rc=0 (PASS). Measured 2026-11-23 on the
+        # authoritative tree (8cbde5b6d3): adding one line
+        #   `cargo test --test dsb_nonexistent_gate_test_zzz`
+        # to a gate script produced "WARN: gate test ... not found in any
+        # tests/ dir (referenced but missing)" and the gate still exited 0.
+        # The gate therefore certified a reference it could not verify — and
+        # the referenced test would never run, which is precisely the
+        # "gate passes but nothing was executed" shape P16 exists to stop.
+        #
+        # The real tree has 0 missing gate tests (measured: 48 referenced,
+        # 48 located), so this is not a new red — it converts an unverified
+        # reference into a stated one.
+        fail "gate test ${test_name} referenced by a gate script but not found in any tests/ dir (missing dependency)"
+        echo "      ${test_name} => NOT FOUND (referenced by a gate script)" >> "$VIOLATIONS_FILE"
+        MISSING_TESTS=$((MISSING_TESTS + 1))
         continue
     fi
 
@@ -334,6 +354,21 @@ PYEOF
         pass "gate test ${test_name} runs by default ($found_path)"
     fi
 done <<< "${GATE_TESTS_RAW}"
+
+# A gate-referenced test that cannot be located is a broken dependency and
+# is NOT tolerated: the referenced test would never run, so any gate that
+# depends on it is asserting nothing. Checked independently of the
+# `#[ignore]` baseline mechanism — the two are different defects and must
+# not share a counter.
+if [[ "$MISSING_TESTS" -gt 0 ]]; then
+    fail "P16: $MISSING_TESTS gate-referenced test(s) could not be located in any tests/ dir"
+    echo "      A gate script references a test target that does not exist."
+    echo "      The referenced test would never run, so the gate that depends on"
+    echo "      it asserts nothing. This is a broken dependency, not a warning."
+    cat "$VIOLATIONS_FILE" | sed 's/^/      /'
+    rm -f "$VIOLATIONS_FILE"
+    exit 1
+fi
 
 # ============================================================================
 # 3.5 V312-29 + V312-31: scan gate scripts for `\|\| true` after `cargo test`

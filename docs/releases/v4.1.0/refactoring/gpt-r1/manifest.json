@@ -1,0 +1,47 @@
+{
+  "schema_version": "gpt-r1-handoff/v1",
+  "status": "CANDIDATE_NOT_ISSUED",
+  "source_agent": "DSH-B (opencode / MiniMax-M3)",
+  "source_run": "SQLRUSTGO-V410-REFACTOR-HARNESS-R1-20261123",
+  "timestamp": "2026-11-23T07:57:03+08:00",
+  "base_sha": "8cbde5b6d33c876fa1197474c46d50142a9823bd",
+  "base_sha_note": "权威开发分支 origin/develop/v4.1.0 的 tip。评审包 V1 绑定的 cd8cefe623 落后 242 个提交 / 1074 个文件。",
+  "stage": "ALPHA",
+  "branch": "dsh-b/v410-g0-baseline-reconcile-20261123",
+  "authority": {
+    "read_only_investigation": true,
+    "harness_gate_remediation": true,
+    "core_source_refactor": false,
+    "production_execution": false,
+    "stage_change": false,
+    "issue_closure": false,
+    "pr_merge": false,
+    "model_switch_bypass_local_only": false
+  },
+  "binding": {
+    "head_binding_mode": "GITEA_PR_FINAL_HEAD_PLUS_MANIFEST_SHA256",
+    "final_head_sha": null,
+    "final_head_bound_by": "Gitea PR head plus a DSH-A HANDOFF_READY receipt; a file cannot contain its own commit SHA without recursion",
+    "manifest_sha256_bound_by": "SHA256SUMS",
+    "sha256sums_file": "SHA256SUMS",
+    "note": "base_sha 绑定的是**实测来源树**，不是最终 HEAD —— 本包尚未提交，HEAD 未知。提交后需按 head_binding_mode 重签。"
+  },
+  "files_digest_algorithm": "sha256(sorted '<sha256>  <name>' lines for the 6 content files; excludes manifest.json and SHA256SUMS to avoid recursion)",
+  "files_digest": "c9a094964983cd61223e68df5da3d6ae3e21036e6a4d823f831ceb953118150e",
+  "content_files": [
+    "BASELINE-RECONCILIATION.md",
+    "HARNESS-P0-FINDINGS.md",
+    "CONTROL-PLANE-GAP-MATRIX.json",
+    "EXECUTOR-CAPABILITY-PLAN.md",
+    "TEST-FACTORY-RECOVERY-PLAN.md",
+    "EXTERNAL-REVIEW-PACK-V2-CANDIDATE.md"
+  ],
+  "conflict_resolution": "凡与既有文档冲突处以本包实测为准；涉及 Owner 裁定的条目一律标 REPORTED / UNKNOWN，不代裁。",
+  "not_run": [
+    "交接包 files_digest 独立复算",
+    "check_anti_fabrication.sh 在权威树上的全量实跑",
+    "75 场景矩阵重跑 / 30 个试点用例重跑",
+    "Swift 能力项 B / C / E（执行准入与控制面准入未就绪）",
+    "全量 cargo test --all-features"
+  ]
+}

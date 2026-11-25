@@ -812,6 +812,10 @@ name = "alpha_gate_blocker_test"
 path = "tests/integration/gate/alpha_gate_blocker_test.rs"
 
 [[test]]
+name = "gate_behavior_contract_test"
+path = "tests/integration/gate/gate_behavior_contract_test.rs"
+
+[[test]]
 name = "gate_criterion_existence_test"
 path = "tests/integration/gate/gate_criterion_existence_test.rs"
 
