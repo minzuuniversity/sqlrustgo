@@ -1,0 +1,484 @@
+{
+  "schema_version": "control-plane-gap-matrix/v1",
+  "source_agent": "DSH-B (opencode / MiniMax-M3)",
+  "source_run": "SQLRUSTGO-V410-REFACTOR-HARNESS-R1-20261123 / G2",
+  "timestamp": "2026-11-23T09:30:00+08:00",
+  "base_sha": "8cbde5b6d33c876fa1197474c46d50142a9823bd",
+  "evidence_hash_ref": "docs/releases/v4.1.0/refactoring/gpt-r1/manifest.json#files_digest",
+  "conflict_resolution": "G2 只做只读核验，不新建调度器、不改执行权/Lease/Receipt 权威。凡仓库自身文档与代码冲突处，以代码为准并逐条记录（见 conflicts 段）。",
+  "method": {
+    "type": "read-only",
+    "mutations": "none",
+    "commands_run_against_tree": [
+      "audit/v4.1.0/audit_run.py verify --run-id 20261105-lb1-006-mcode (read-only verifier; rc=2)"
+    ],
+    "note": "未运行任何写操作、未启动服务、未改动任何文件。"
+  },
+
+  "headline": "本仓不存在 Task→Run→Attempt→Lease→Receipt 的控制面。存在的是一套 manifest 台账 (audit_run.py) 加若干彼此不组合的独立执行器。仓库自己的设计分析就写着 CONTROL PLANE (缺失!)。因此 G2 的 7 项多数不是「有洞」而是「构件不存在」—— 这决定了整改方向是补齐最小闭环，而不是修补。",
+
+  "questions": [
+    {
+      "id": "Q1",
+      "topic": "是否存在唯一调度器",
+      "verdict": "VERIFIED",
+      "finding": "存在 11 个彼此独立、互不组合的调度/派发入口；没有任何一个把它们组合起来。",
+      "dispatcher_like_entry_points": [
+        {
+          "id": 1,
+          "path": "audit/v4.1.0/audit_run.py",
+          "commands": ["freeze", "scaffold", "scaffold-v2", "run", "verify", "sha256sums", "check-aliases"],
+          "trigger": "manual CLI",
+          "evidence": "audit/v4.1.0/audit_run.py:637-682"
+        },
+        {
+          "id": 2,
+          "path": "scripts/gate/run_gates.py",
+          "commands": ["plan", "execute"],
+          "trigger": "manual CLI",
+          "evidence": "scripts/gate/run_gates.py:208-219"
+        },
+        {
+          "id": 3,
+          "path": "scripts/gate/gate_report.py",
+          "commands": ["three-state gate summarizer"],
+          "trigger": "manual CLI",
+          "evidence": "scripts/gate/gate_report.py:122-157"
+        },
+        {
+          "id": 4,
+          "path": "scripts/gate/expert_ladder.py",
+          "commands": ["health", "ask", "adjudicate"],
+          "trigger": "manual CLI",
+          "evidence": "scripts/gate/expert_ladder.py:23-31"
+        },
+        {
+          "id": 5,
+          "path": "scripts/gate/gov_probe.py",
+          "commands": ["governance measurement probe"],
+          "trigger": "manual CLI",
+          "evidence": "scripts/gate/gov_probe.py:11-29"
+        },
+        {
+          "id": 6,
+          "path": "scripts/gate/kanban_render.py",
+          "commands": ["check", "render", "counts"],
+          "trigger": "manual CLI",
+          "evidence": "docs/governance/STAGE_KANBAN.md:60-61"
+        },
+        {
+          "id": 7,
+          "path": "scripts/stability/run_registry.sh",
+          "commands": ["register", "unregister", "list", "suggest-port", "suggest-data-dir"],
+          "trigger": "manual + cron",
+          "evidence": "scripts/stability/run_registry.sh:203-215"
+        },
+        {
+          "id": 8,
+          "path": "scripts/stability/dispatch_168h_when_72h_done.sh",
+          "commands": ["auto-dispatch loop, polls every 300s"],
+          "trigger": "autonomous background loop",
+          "evidence": "scripts/stability/dispatch_168h_when_72h_done.sh:18-43"
+        },
+        {
+          "id": 9,
+          "path": ".gitea/workflows/*.yml (9 个工作流)",
+          "commands": ["ci", "gate", "reconciliation", "ci-trusted-baseline", "soak_168h", "soak_probe", "z6g4-168h-soak", "z6g4-tpch-sf1-cell-diff"],
+          "trigger": "Gitea Actions events",
+          "evidence": ".gitea/workflows/gate.yml:1-40"
+        },
+        {
+          "id": 10,
+          "path": "crates/server/src/scheduler.rs",
+          "commands": ["in-memory Task/Workflow/Agent/ExecutionRecord store"],
+          "trigger": "NONE in production",
+          "evidence": "crates/server/src/lib.rs:19-24; crates/server/src/scheduler.rs:164-186",
+          "note": "编译进库但无生产调用方；状态纯内存 (Arc<RwLock<HashMap<..>>>)，无持久化、无 lease、无 receipt。"
+        },
+        {
+          "id": 11,
+          "path": "crates/executor/src/task_scheduler.rs",
+          "commands": ["Rayon thread-pool scheduler for the SQL parallel executor"],
+          "trigger": "query execution",
+          "evidence": "crates/executor/src/task_scheduler.rs:1-8",
+          "note": "查询级并行度调度器，与 Agent 派发无关。"
+        }
+      ],
+      "self_declared_gap": {
+        "claim": "多 Agent 协作系统必须有 Control Plane，但我们的 Control Plane = Hermes，而 Hermes 同时是 Executor",
+        "evidence": "docs/plans/2026-05-01-brainstorming-ai-factory-control-plane.md:20",
+        "target_diagram_caption": "CONTROL PLANE (缺失!)",
+        "target_diagram_evidence": "docs/plans/2026-05-01-brainstorming-ai-factory-control-plane.md:226"
+      }
+    },
+
+    {
+      "id": "Q2",
+      "topic": "Task / Run / Attempt / Lease / Receipt 是否完整绑定",
+      "verdict": "VERIFIED",
+      "answer": "NO。只有 Task 与 Run 存在；Attempt / Lease / Receipt 作为控制面实体不存在；Task↔Run 只是散文里的子串，不是外键。",
+      "entities": {
+        "Task": {
+          "exists": true,
+          "form": "看板台账里的稳定字符串 id (BIN-1 / CI-1 / DISK-1 / DR-1)",
+          "fields": ["id", "task", "status", "acceptance", "evidence", "blocked_by", "domain", "priority"],
+          "evidence": "docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:1-4",
+          "schema": "docs/governance/STAGE_KANBAN.md:49-50"
+        },
+        "Run": {
+          "exists": true,
+          "form": "audit/v4.1.0/runs/<run_id>/manifest.yaml",
+          "fields": ["run_id", "frozen_commit", "commands[]", "results[]", "evidence_hash"],
+          "evidence": "audit/v4.1.0/runs/20261116-next-queue-001/manifest.yaml:1-5"
+        },
+        "Attempt": {
+          "exists": false,
+          "verdict": "UNKNOWN",
+          "searched": ["attempt (repo-wide)"],
+          "nearest_hits": [
+            "soak attempt 目录 scripts/soak/run_v410_168h_soak_on_z6g4.sh:508",
+            "测试里的重试计数 tests/e2e/e2e_canonical_subprocess.rs:81"
+          ],
+          "note": "没有任何 Attempt 记录绑定到 Run。"
+        },
+        "Lease": {
+          "exists": false,
+          "verdict": "UNKNOWN",
+          "searched": ["lease", "租约"],
+          "nearest_hits": [
+            "git --force-with-lease scripts/sync/5remotes_sync.sh:262",
+            "Raft 存储租约（仅计划文档）docs/plans/2026-04-16-distributed-storage-shardgraph-shardvector-implementation.md:9",
+            "分支保护 lease 文档 docs/governance/BRANCH_GOVERNANCE.md"
+          ],
+          "note": "不存在执行器租约。"
+        },
+        "Receipt": {
+          "exists": false,
+          "verdict": "UNKNOWN",
+          "searched": ["receipt", "回执"],
+          "nearest_hits": [
+            "TPC-H 的 l_receiptdate 列",
+            "治理概念「独立 Reviewer 回执」（人工件）docs/releases/v4.1.0/STAGE.yaml:221"
+          ],
+          "note": "最接近的机器可读回执是 run manifest 内的 evidence_hash / manifest_sha256（audit/v4.1.0/audit_run.py:58-99），但它不是独立的回执实体，也没有权威声明。"
+        }
+      },
+      "task_run_binding": {
+        "mechanism": "散文 evidence 字段里的子串",
+        "example": "docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:1 — \"evidence\": \"run:20261106-cap-smoke-001 的 arm_nonproduction.obs：…\"",
+        "enforced": false,
+        "reverse_index": false,
+        "machine_check": false
+      },
+      "only_binding_mechanism": {
+        "mechanism": "run 自身的 self-hash",
+        "detail": "evidence_hash = hash(run_id + frozen_commit + artifacts + results)",
+        "evidence": "audit/v4.1.0/audit_run.py:58-91",
+        "gap": "manifest 上没有字段指向它所服务的看板任务 ⇒ Run→Task 单向且无校验。"
+      }
+    },
+
+    {
+      "id": "Q3",
+      "topic": "基线漂移是否保持逻辑任务身份",
+      "verdict": "VERIFIED",
+      "answer": "身份保持（id 与 commit SHA 无关）；但守卫是「整轮拒绝」而不是「任务身份重绑」。另有一个已实现、已文档化的身份机制在本基线上完全没有落地。",
+      "stable_identity": {
+        "task_id": "语义字符串 (BIN-1 / CI-1)，与 commit SHA 无关",
+        "evidence": "docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl:1-4",
+        "run_id": "run_id: 20261116-next-queue-001，frozen_commit 是**另一个字段**",
+        "evidence2": "audit/v4.1.0/runs/20261116-next-queue-001/manifest.yaml:2,13"
+      },
+      "drift_guards": [
+        {
+          "id": "run-refuses-on-head-drift",
+          "behavior": "fail-closed，整轮拒绝",
+          "evidence": "audit/v4.1.0/audit_run.py:210-213 — if head != frozen: die(\"HEAD {head} != frozen_commit {frozen}; refusing to run\")",
+          "v2_path": "audit/v4.1.0/audit_run.py:378-380"
+        },
+        {
+          "id": "freeze-requires-ancestry",
+          "behavior": "冻结的 commit 必须从 base 分支派生",
+          "evidence": "audit/v4.1.0/audit_run.py:190-197 — git merge-base --is-ancestor commit base → die",
+          "default_base": "origin/develop/v4.1.0 (audit/v4.1.0/audit_run.py:639)"
+        },
+        {
+          "id": "gate-layer-stale-plan",
+          "behavior": "plan 指纹写入 expected_sha256，报告时复算，不一致 → INCOMPLETE",
+          "evidence": "scripts/gate/run_gates.py:47-52,123; scripts/gate/gate_report.py:50-52 — \"stale-plan: plan fingerprint … != authoritative … (plan 是在别的树上生成的，不得拿来给这棵树记账)\""
+        },
+        {
+          "id": "ci-pinned-baseline",
+          "behavior": "checkout 不等于 inputs.pinned_sha 即硬失败",
+          "evidence": ".gitea/workflows/ci-trusted-baseline.yml:123-135 — \"a baseline without a pinned commit is not a baseline\""
+        }
+      ],
+      "canonical_run_aliases": {
+        "purpose": "处理 run **改名**，不是基线漂移",
+        "implemented_in": "audit/v4.1.0/audit_run.py:58-66, :158-174",
+        "registry_file": "audit/v4.1.0/canonical_run_aliases.json",
+        "registry_present": false,
+        "consequence_verified": {
+          "command": "audit_run.py verify --run-id 20261105-lb1-006-mcode",
+          "rc": 2,
+          "stderr": "canonical_run_id=20261105-lb1-006 but this run is not registered in audit/v4.1.0/canonical_run_aliases.json",
+          "manifest": "audit/v4.1.0/runs/20261105-lb1-006-mcode/manifest.yaml:6"
+        }
+      },
+      "repo_freeze_point_stale": {
+        "file": "audit/v4.1.0/commit.txt",
+        "value": "93c8a9dbbe9f60ba1c2a3bf6a9c4ce59d1543b51",
+        "head": "8cbde5b6d33c876fa1197474c46d50142a9823bd",
+        "verdict": "STALE"
+      }
+    },
+
+    {
+      "id": "Q4",
+      "topic": "旧租约执行器是否可继续写入",
+      "verdict": "UNKNOWN",
+      "answer": "N/A —— 没有租约，因此既没有租约有效性检查，也没有任何写入被「因租约过期」而拒绝的机制。",
+      "searched": ["lease type", "lease TTL", "lease validity function"],
+      "nearest_analogues": [
+        {
+          "kind": "基线守卫，但只在开跑时检查一次",
+          "evidence": "audit/v4.1.0/audit_run.py:210-213 (检查在命令循环之前) vs :264-267 (写 manifest 时不再复检 frozen_commit)",
+          "consequence": "开跑时基线正确、过程中树漂移的 run 仍会写出 manifest。"
+        },
+        {
+          "kind": "TTL 式回收，仅告警",
+          "evidence": "scripts/stability/run_registry.sh:76-96 — gc() 按 pid 消失或 age > GC_MAX_AGE_S=7200 驱逐",
+          "note": "只被 suggest_port / list 使用，不作为写入准入门。"
+        },
+        {
+          "kind": "阻塞锁，超时 fail-closed",
+          "evidence": "scripts/gate/expert_ladder.py:136-153 — fcntl.flock(LOCK_EX|LOCK_NB) + raise TimeoutError"
+        }
+      ],
+      "drift_after_the_fact_detectable": {
+        "evidence": "audit/v4.1.0/audit_run.py:317-330 (verify 重新哈希每个 log 与 manifest)",
+        "caveat": "可发现 ≠ 可阻止。"
+      }
+    },
+
+    {
+      "id": "Q5",
+      "topic": "已失效入口是否可以绕过准入",
+      "verdict": "VERIFIED",
+      "answer": "存在多条具体绕过路径；最大的一条是——本应把关「每个已提交 audit run 都必须通过 verify」的那道证据完整性门禁，根本没有任何执行点。",
+      "bypasses": [
+        {
+          "id": "B1",
+          "severity": "P0",
+          "desc": "证据准入门禁是孤儿门禁",
+          "evidence": "docs/releases/v4.1.0/GATE_CATALOG.jsonl:29 — class=orphan_referenced, disposition=needs-execution-point",
+          "detail": "scripts/gate/check_audit_manifest.sh 不在任何 STAGE_CONFIG.yaml 的 required_gates 清单（DRAFT/ALPHA/BETA/RC/GA），也不在任何 .gitea/workflows/*.yml ⇒ 它检查的东西（scripts/gate/check_audit_manifest.sh:17）从来没有被执行。"
+        },
+        {
+          "id": "B2",
+          "severity": "P1",
+          "desc": "plan→execute→stale-plan 准入机制同样未接线",
+          "evidence": "scripts/gate/run_gates.py + scripts/gate/gate_report.py 不在任何 CI 工作流，也不在任何 required_gates 清单",
+          "detail": "⇒ C1–C7 检查与 C7 stale-plan 漂移守卫在 CI 路径上不可用。"
+        },
+        {
+          "id": "B3",
+          "severity": "P1",
+          "desc": "显式 CLI 豁免",
+          "evidence": "scripts/gate/check_audit_manifest.sh:38-41, 108-114, 131-137, 217-219",
+          "detail": "--exclude-run <id> 把该 run 标为 SKIP，不判失败。"
+        },
+        {
+          "id": "B4",
+          "severity": "P1",
+          "desc": "仓库状态读不出来 ⇒ PASS",
+          "evidence": "scripts/gate/check_audit_manifest.sh:140-143 — if ! git rev-parse --verify HEAD; then echo \"PASS: no committed audit runs yet\"; exit 0",
+          "detail": "HEAD 不可读时判 PASS 而不是判红。"
+        },
+        {
+          "id": "B5",
+          "severity": "P1",
+          "desc": "回执写入器没有「已执行」准入",
+          "evidence": "audit/v4.1.0/audit_run.py:203-270 — cmd_run 对已存在的 results / evidence_hash 无守卫，直接覆盖。"
+        },
+        {
+          "id": "B6",
+          "severity": "P2",
+          "desc": "CI 步骤层没有 plan 指纹，漂移守卫不可用",
+          "evidence": ".gitea/workflows/ci.yml:264,298,310,321,323-325 — 各门禁脚本逐个 run: 步骤调用",
+          "detail": "对比：scaffold 对比 cmd_run 反而有守卫（audit_run.py:352-353 — if exists: die(\"already exists\")）。"
+        },
+        {
+          "id": "B7",
+          "severity": "P2",
+          "desc": "Gitea 写入路径各自为政，无共享准入门",
+          "evidence": ["audit/v4.1.0/issue_create.py (dry-run 默认, --post 才写, 自带查重)", "audit/v4.1.0/handoff_publish.py:90-95 (PATCH body)", "audit/v4.1.0/handoff_pin.py:263-288 (marker create-or-update)", "audit/v4.1.0/gen_kanban_issue.py:196-201 (PATCH board body)"]
+        },
+        {
+          "id": "B8",
+          "severity": "P2",
+          "desc": "soak 注册表不保证端口唯一",
+          "evidence": "scripts/stability/run_registry.sh:97-125 (register 无条件追加) vs :152-169 (只有 suggest_port 检查 registry + lsof)",
+          "detail": "并发 register 可认领同一端口。"
+        }
+      ]
+    },
+
+    {
+      "id": "Q6",
+      "topic": "状态损坏后是否 fail-closed",
+      "verdict": "VERIFIED",
+      "answer": "总体 fail-closed，但有 3 处具体的 fail-open。",
+      "fail_closed": [
+        {"evidence": "audit/v4.1.0/audit_run.py:112-118 — 非 mapping 的 manifest → die(\"manifest is not a mapping\")"},
+        {"evidence": "audit/v4.1.0/audit_run.py:315-330 — 缺 results/evidence_hash → die；缺 log → die；哈希不符 → die"},
+        {"evidence": "audit/v4.1.0/audit_run.py:136-154 — 别名文件损坏 → die（非对象条目 / 缺 current_run_id / 重复 current_run_id / 一个 canonical_run_id 归属两个 run）"},
+        {"evidence": "scripts/gate/check_audit_manifest.sh:75-79, 87-92, 98-102, 144-147, 204-213, 221-226 — 解释器不可用 / 无可用解释器 / 别名文件非法 / git ls-tree 失败 / run 目录无 manifest / verify 失败 ⇒ 全部 exit 1"},
+        {"evidence": "scripts/gate/run_gates.py:107-109, 135-137, 192-200 — 空权威集 / 缺 plan / 任何 INCOMPLETE 或 planned==0 ⇒ INCOMPLETE exit 2"},
+        {"evidence": "scripts/gate/gate_report.py:105-116 — coverage-short / missing-result / duplicate-result / unregistered-gate / stale-plan ⇒ INCOMPLETE exit 2，\"没跑全/记不清 => 没有资格给结论\""}
+      ],
+      "fail_open": [
+        {
+          "id": "F1",
+          "severity": "P1",
+          "desc": "HEAD 读不出来 ⇒ PASS",
+          "evidence": "scripts/gate/check_audit_manifest.sh:140-143"
+        },
+        {
+          "id": "F2",
+          "severity": "P1",
+          "desc": "别名注册表**缺失**被当成「没有别名」而不是「状态损坏」",
+          "evidence": "audit/v4.1.0/audit_run.py:131-132 (return {}) vs :304-305 (打印 \"canonical_run_aliases: OK (0 entrie(s))\", exit 0)",
+          "detail": "这正是当前树的状态 ⇒ scripts/gate/check_audit_manifest.sh:98-102 的别名合法性门禁今天是**空转**的。"
+        },
+        {
+          "id": "F3",
+          "severity": "P2",
+          "desc": "回执在判决之前就写出",
+          "evidence": "audit/v4.1.0/audit_run.py:264-270 — \"manifest written for forensic use\", exit 1",
+          "detail": "命令失败的 run 仍然在树里留下 manifest ⇒ 工件的存在 ≠ 成功（设计如此，但必须被下游知道）。"
+        },
+        {
+          "id": "F4",
+          "severity": "P2",
+          "desc": "注册表 gc 的 awk 失败回退可能静默截断",
+          "evidence": "scripts/stability/run_registry.sh:93 附近 — 回退到 cp \"$REGISTRY_FILE\" \"$tmp\"",
+          "detail": "注册表被清空后 suggest_port 可能发出一个在用端口。"
+        }
+      ]
+    },
+
+    {
+      "id": "Q7",
+      "topic": "同任务是否可能重复产生副作用",
+      "verdict": "VERIFIED",
+      "answer": "YES —— run 回执路径可以：同一个 --run-id 重跑会静默覆盖回执。Gitea issue/comment 写入与门禁台账有去重，run 回执没有。",
+      "duplicate_possible": [
+        {
+          "id": "D1",
+          "severity": "P0",
+          "desc": "run 回执可被覆盖",
+          "evidence": "audit/v4.1.0/audit_run.py:203-270 — cmd_run 载入已有 manifest，重跑 commands[]，然后 m[\"results\"] = results; m[\"evidence_hash\"] = evidence_hash_of(m); save_manifest(...):264-267",
+          "missing_guard": "没有「已完成/已封存」守卫（对比 cmd_scaffold: audit_run.py:352-353 — if (run_dir/\"manifest.yaml\").exists(): die(\"already exists\")）",
+          "consequence": "重跑同一 --run-id 会用一份同样「合法」的新回执替换旧回执，verify 对替换后的版本依然通过 ⇒ 旧证据不可追溯。"
+        }
+      ],
+      "duplicate_blocked": [
+        {"desc": "门禁结果重复", "evidence": "scripts/gate/gate_report.py:77-79 — \"duplicate-result: {g} appears {n} times\" ⇒ INCOMPLETE"},
+        {"desc": "重复建 ISSUE", "evidence": "audit/v4.1.0/issue_create.py:81-98 (open_title_hits 翻完所有 open issue，因为 Gitea 的 q= 过滤会漏页) + :136-138 — \"查重命中（同 ID 已有 open ISSUE）\" ⇒ exit 1，POST 之前"},
+        {"desc": "重复 handoff pin", "evidence": "audit/v4.1.0/handoff_pin.py:137-146 (按 HANDOFF-PIN 标记找), :267-278 (0 条→创建, 1 条→PATCH, >1 条→INCOMPLETE \"已存在 N 条 pin 评论 … 不猜哪条是当前的\", exit 2)"},
+        {"desc": "handoff / 看板正文重复", "evidence": "audit/v4.1.0/handoff_publish.py:90-95 (PATCH body); audit/v4.1.0/gen_kanban_issue.py:196-201 (PATCH board body; \"A1: 默认模式（无 --post）绝不允许 PATCH 线上 ISSUE\" — :227)"},
+        {"desc": "canonical_run_id 唯一性（代码已实现，但注册表缺失 ⇒ 规则空转）", "evidence": "audit/v4.1.0/audit_run.py:136-154"},
+        {"desc": "归档证据被测试覆盖", "evidence": "scripts/gate/check_tests_dont_write_archived_evidence.sh:1-33（L1 静态写调用扫描 + L2 工作树 diff）；该门禁是 GA required_gates 成员"}
+      ],
+      "documented_real_incident": {
+        "verdict": "REPORTED",
+        "desc": "控制面把任务记为 COMPLETED，而该任务的第二次执行产出至今未提交",
+        "evidence": "docs/releases/SSOT_DRIFT_REPORT_2026-10-25.md:198（任务 id TASK-20261023-124503, source: wp-update-regression）; :428（R8 「控制面把『COMPLETED』与『产出已落地』解耦」）",
+        "caveat": "该控制面**不在本仓**；引用的 KOS-S0-2-CLOSURE-AND-CONTROL-STATE-POC.md 不在本树 ⇒ 任务 id 方案 TASK-<YYYYMMDD>-<HHMMSS> 是跨项目的外部约定。"
+      }
+    }
+  ],
+
+  "authority_boundary": {
+    "verdict": "VERIFIED",
+    "documented_control_plane_contract_in_docs_agent_harness": false,
+    "docs_agent_harness_contents": [
+      "docs/agent-harness/AOCI_GUIDE.md",
+      "docs/agent-harness/DOCUMENTATION_INDEX.md",
+      "docs/agent-harness/GITNEXUS_ARCHITECTURE_MAP.md",
+      "docs/agent-harness/IMPLEMENTATION_TRUTH.md",
+      "docs/agent-harness/INDEX.md",
+      "docs/agent-harness/REPOSITORY_MAP.md"
+    ],
+    "closest_contract_outside_agent_harness": "docs/releases/v4.1.0/IAIA_410_SSOT.md（§0 权威边界表 :24-42；§5 iaia410-manifest/v1 布局，audit/v4.1.0/audit_run.py:29-31）",
+    "lease_receipt_vocabulary_used_anywhere": false,
+    "actual_authority_statements": [
+      {"claim": "阶段推进的证据必须是：归档 run id + evidence_hash(sha256) + 门禁 rc + 干净检出复现命令 + 独立 Reviewer 回执；执行者不自签（reviewers 2 + codeowner/governance）", "evidence": "docs/releases/v4.1.0/STAGE.yaml:221-223, :755-760"},
+      {"claim": "独立 Reviewer 回执是 GA 硬阻断项，且是人工件", "evidence": "docs/releases/v4.1.0/GA_BLOCKER_MAP_2026-11-14.md:21 — \"C4 | 独立 Reviewer 回执 | Hub ai-project-hub #133 未回；不许自签\""},
+      {"claim": "模型输出 = 无权威 (Soft Gate)；反向变异夹具是决定性的；人（owner/architect）是最终批准", "evidence": "docs/governance/EXPERT_ADJUDICATION.md:21-32"},
+      {"claim": "任何席位都没有门禁决策权威（AFP §5.1：AI 结论=Soft Gate）", "evidence": "docs/governance/EXPERT_SEATS.yaml:10"},
+      {"claim": "台账的权威副本是文档；ISSUE 是它的展示与讨论面；看板制度不授予任何跃迁权威", "evidence": "docs/governance/STAGE_KANBAN.md:72, :91"},
+      {"claim": "run 回执权威：某次运行的 commit、环境、命令、退出码、日志哈希 ⇒ 唯一权威来源是 audit/v4.1.0/<run_id>/manifest.yaml；看板必须引用机器可核对的 run", "evidence": "docs/releases/v4.1.0/IAIA_410_SSOT.md:31; docs/governance/STAGE_KANBAN.md:37-40"},
+      {"claim": "控制面实施计划（从未落地）：Hermes merge authority → System Gate 权力矩阵；P0-2 实现 B-Gate pre-merge hook", "evidence": "docs/plans/2026-05-01-brainstorming-ai-factory-control-plane.md:78-85, :263"}
+    ]
+  },
+
+  "existing_control_plane_tests": {
+    "verdict": "VERIFIED",
+    "paths": [
+      "scripts/gate/test_audit_manifest_integrity.py",
+      "scripts/gate/test_gate_run_tristate.py",
+      "scripts/gate/test_gate_executability.py",
+      "scripts/gate/test_gate_registry.py",
+      "scripts/gate/test_expert_ladder.py",
+      "scripts/gate/test_expert_triage.py",
+      "scripts/gate/test_gov_probe.py",
+      "scripts/gate/test_kanban_render.py",
+      "scripts/gate/mutation_runner.py",
+      "scripts/gate/probe_hard_gate_mutation.sh",
+      "audit/v4.1.0/il6_selfref_probe.py",
+      "audit/v4.1.0/il6_inflight_experiment.py",
+      "audit/v4.1.0/directory_policy.py",
+      "audit/v4.1.0/dir_policy_mutations_omp.py",
+      "audit/v4.1.0/verify_ledger.py",
+      "audit/v4.1.0/verify_ledger_mutation.sh",
+      "audit/v4.1.0/probe_ci_roots.py",
+      "audit/v4.1.0/probe_neg_fixtures.py",
+      "audit/v4.1.0/probe_tristate_e2e.py",
+      "audit/v4.1.0/probe_unbuilt_matrix_read.py",
+      "audit/v4.1.0/evidence_inventory.py",
+      "audit/v4.1.0/evidence_inventory_ledger_omp.py",
+      "audit/v4.1.0/evidence_inventory_mutations.py",
+      "audit/v4.1.0/audit_integrity_report.py",
+      "crates/server/tests/scheduler_integration_test.rs",
+      "crates/server/benches/scheduler_bench.rs"
+    ],
+    "coverage_gap": "没有任何测试覆盖 lease、admission 检查、或 audit_run.py run 的重复回执守卫。"
+  },
+
+  "conflicts": [
+    {"claim": "存在 Task→Run→Attempt→Lease→Receipt 控制面", "reality": "Attempt / Lease / Receipt 在本仓不存在；只有 Task（看板 id）与 Run（manifest）。", "resolution": "以代码为准"},
+    {"claim": "canonical_run_aliases.json 提供 run 改名的身份保持", "reality": "该文件在本基线上不存在 ⇒ 该机制空转，verify 对已改名的 run 返回 rc=2。", "resolution": "以文件系统实测为准"},
+    {"claim": "check_audit_manifest.sh 把关「每个已提交 audit run 都必须通过 verify」", "reality": "该门禁无任何执行点（不在任何 required_gates、不在任何 CI 工作流）。", "resolution": "以 GATE_CATALOG.jsonl 的 class=orphan_referenced + 清单检索为准"},
+    {"claim": "docs/agent-harness/ 里有控制面契约文档", "reality": "该目录 6 个文件，无控制面契约；契约在 docs/releases/v4.1.0/IAIA_410_SSOT.md。", "resolution": "以目录清单为准"}
+  ],
+
+  "minimum_closure_recommendation": {
+    "note": "以下为建议，未实施。实施需要 Owner 授权（正式核心源码改动）。任务书 §3 要求「核验现有唯一调度器，不建立第二调度器」—— 核验结论是**不存在唯一调度器**，因此最小闭环的正确形态是**指定现有 audit_run.py 为唯一 run 级权威并补上缺失实体**，而不是新造一套。",
+    "steps": [
+      {"order": 1, "action": "补 audit/v4.1.0/canonical_run_aliases.json 并把「文件缺失」从「OK (0 entries)」改为「缺注册表 ⇒ INCOMPLETE」", "closes": ["Q3.consequence_verified", "Q6.F2"], "risk": "会让历史 run 的 verify 从 rc=2 变成明确的 rc=2 原因，需与 #5698 的改名修复一起做", "needs_owner": true},
+      {"order": 2, "action": "给 audit_run.py cmd_run 加「已封存」守卫（对齐 cmd_scaffold 的 already-exists 检查），并允许显式 --force-reseal", "closes": ["Q7.D1"], "risk": "低；默认更严，显式开关保留可重跑能力", "needs_owner": true},
+      {"order": 3, "action": "把 check_audit_manifest.sh 接入至少一个阶段的 required_gates（先 GA），并修掉 HEAD 读不出来就 PASS 的 fail-open", "closes": ["Q5.B1", "Q6.F1"], "risk": "接上后会立刻暴露历史 run 的 verify 失败 ⇒ 需要先跑一轮清账", "needs_owner": true},
+      {"order": 4, "action": "把 frozen_commit 的复检从「开跑一次」移到「写回执时」", "closes": ["Q4.基线守卫只在开跑时检查"], "risk": "中；运行期漂移会让 run 判失败，需定义是否允许运行中漂移", "needs_owner": true},
+      {"order": 5, "action": "若确需 Lease/Attempt 概念，先在文档层定义其语义与权威边界，再谈实现", "closes": ["Q2.Attempt", "Q2.Lease", "Q2.Receipt"], "risk": "定义不当会造成第二份事实 SSOT —— 交接包 00_README 明确禁止", "needs_owner": true}
+    ]
+  },
+
+  "not_run": [
+    "未运行任何 write 路径（issue_create / handoff_publish / handoff_pin / gen_kanban_issue 均未 --post）",
+    "未启动 soak、未注册 run、未占用端口",
+    "未执行 scripts/stability/dispatch_168h_when_72h_done.sh",
+    "未修改 audit/v4.1.0/canonical_run_aliases.json（该文件本就不存在）"
+  ]
+}
