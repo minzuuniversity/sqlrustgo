@@ -78,12 +78,13 @@
 
 ## 4. WP-A..G detailed backlog (v4.1.0 scope)
 
-The following 24 issues are in v4.1.0 scope. 12 were **deferred** from
+The following 20 issues are in v4.1.0 scope. 12 were **deferred** from
 v4.0.0 to v4.0.1 (now v4.1.0) via `docs/releases/v4.0.0/WP_LEGACY_TRIAGE.md`
 §Detailed Status (§4.1–§4.4 below); 6 WP-B + 1 WP-E (#4626) are **carry-forward
-completions** of partial work; 1 (#4639) is the WP-H v4.1-targeted item;
-4 WP-A items (§4.0) are **re-opened** 2026-09-30 after re-verification
-found the v4.0.0 closure claim unsupported.
+completions** of partial work; 1 (#4639) is the WP-H v4.1-targeted item.
+The 4 WP-A items (§4.0) were **re-opened** 2026-09-30 and **re-verified
+fixed 2026-11-26** — they are kept in §4.0 for traceability but are **not
+counted** in the backlog any more.
 
 > **计数口径修正**（2026-09-30）：本节原写 "The following 18 issues"，
 > 与 §4.7 汇总的 20 不自洽（12 + 6 + 1 + 1 = 20）。已订正为 20 并标明构成。
@@ -94,8 +95,17 @@ found the v4.0.0 closure claim unsupported.
 > 连带重编 §4.1–§4.7 从而破坏 `ALIGNMENT_AUDIT_2026-09-30.md`
 > （§4.1/§4.2/§4.7）、`PHASE_1_SCOPE.md`（§4.7）、`DEV_PLAN.md`（§4.7）
 > 的既有跨文档小节号引用。**请勿"顺手"把它改成 §4.1**。
+>
+> **2026-11-26 第三次修正**：WP-A 4 条经实跑复验全部 FIXED（parser 层 +
+> E2E 层双绿），**移出待办**，总数 24 → **20**。§4.0 保留为可追溯记录，
+> 小节编号不动。依据：
+> `docs/releases/v4.1.0/evidence/wp-a-reverify-2026-11-26/wp_a_reverify.txt`
+> (sha256 `101682c020bd01027fd6003dc235d13a3e292288749708f1a12abe7ea33b9ee1`)；
+> 同步修订 `STAGE.yaml` `legacy_chain_audit_2026_09_30.false_done_wp_a`、
+> `FEATURE_MATRIX.md` P-01/P-03、`EVALUATION_REPORT.md` D6/D8、
+> `VERSION_PLAN.md` §1。
 
-### 4.0 WP-A — Parser legacy (4 issues, RE-OPENED 2026-09-30)
+### 4.0 WP-A — Parser legacy (4 issues, RE-OPENED 2026-09-30 → RE-VERIFIED FIXED 2026-11-26)
 
 > **为什么加回来**（`LEGACY_LEDGER_v3.6_to_v4.1.md` §2.1）：
 > 这 4 条在 Gitea 上均为 `closed`（2026-09-03），并被 v4.0.0 文档当作
@@ -103,15 +113,33 @@ found the v4.0.0 closure claim unsupported.
 > 且被一条**未登记在 `ignore_registry.json` 的 `#[ignore]`** 掩盖。
 > 依据：`docs/releases/v4.1.0/evidence/wp-a-reverify-2026-09-30/wp_a_reverify.txt`
 > (sha256 `e5f2820f22adaf24ef20a8e06dd5f86c7c607c5d1498752580c95e68cb1f0d4f`)。
+>
+> **2026-11-26 复验结论（本文档此前的 ❌/⚠️ 判定已失效）**：
+> 2026-09-30 的复验在**当时是对的**，但 **#4708 的块注释缺陷已于 2026-10-08
+> 在 `Lexer::skip_whitespace` 修好**（`#[ignore]` 被移除、测试保留为回归见证，
+> 见 `tests/baseline/ignore_registry.json` → `resolved_removed_ignores`），
+> 而 v4.1.0 的这些记录**没有随之刷新**，于是"未修复 / PARTIAL"被一直带到了
+> 2026-11-26。2026-11-26 实跑复验（base commit `dc9c035691`）：
+> parser 层 35/35 绿（0 ignored），E2E 层逐条绿，且为 #4708 补上了**永久**
+> E2E 见证 `tests/integration/sql/chinese_identifier_e2e_test.rs`（3/3 绿）。
+> 依据：
+> `docs/releases/v4.1.0/evidence/wp-a-reverify-2026-11-26/wp_a_reverify.txt`
+> (sha256 `101682c020bd01027fd6003dc235d13a3e292288749708f1a12abe7ea33b9ee1`)。
+> **四条 issue 在 Gitea 上保持 closed（2026-09-03），不做 reopen。**
 
 | Issue | Title | Gitea state | 复验结论 | Status | v4.1.0 plan |
 |---|---|---|---|---|---|
-| #4708 | 中文表名/列名 + 中文注释 + MySQL 反引号 + 双引号标识符 | closed 2026-09-03T18:46:27Z (PR #4746) | ❌ **未修复** — 块注释 `/* */` parser 完全不支持 | **RE-OPENED** | own |
-| #4696 | UPDATE 无 WHERE 子句报 parse error | closed 2026-09-03T15:22:19Z | ⚠️ parser 层回归测试通过，E2E 未验证 | **PARTIAL** | own |
-| #4710 | TIMESTAMPDIFF unit keyword 被当列名 | closed 2026-09-03T14:27:32Z | ⚠️ parser 层 9 项回归通过，E2E 未验证 | **PARTIAL** | own |
-| #4720 | `SET @var` Parse error: Unexpected token LBracket | closed 2026-09-03T14:27:33Z | ⚠️ parser 层 7 项回归通过，E2E 未验证 | **PARTIAL** | own |
+| #4708 | 中文表名/列名 + 中文注释 + MySQL 反引号 + 双引号标识符 | closed 2026-09-03T18:46:27Z (PR #4746) | 2026-09-30: ❌ **未修复**（块注释 parser 完全不支持）→ **2026-11-26: ✅ 已修复**（块注释 2026-10-08 已修；parser 35/35 + 新增永久 E2E 见证 3/3） | **FIXED**（2026-11-26 复验） | 无（已闭环） |
+| #4696 | UPDATE 无 WHERE 子句报 parse error | closed 2026-09-03T15:22:19Z | 2026-09-30: ⚠️ parser 层通过、E2E 未验证 → **2026-11-26: ✅ parser + E2E 双绿**（`UPDATE t SET a=99` → 3 affected rows） | **FIXED**（2026-11-26 复验） | 无（已闭环） |
+| #4710 | TIMESTAMPDIFF unit keyword 被当列名 | closed 2026-09-03T14:27:32Z | 2026-09-30: ⚠️ parser 层 9 项通过、E2E 未验证 → **2026-11-26: ✅ parser 9 项 + E2E delta 用例双绿** | **FIXED**（2026-11-26 复验） | 无（已闭环） |
+| #4720 | `SET @var` Parse error: Unexpected token LBracket | closed 2026-09-03T14:27:33Z | 2026-09-30: ⚠️ parser 层 7 项通过、E2E 未验证 → **2026-11-26: ✅ parser + MySQL 协议 E2E（`SET @x = 1`）双绿** | **FIXED**（2026-11-26 复验） | 无（已闭环） |
 
-**#4708 复验详情（唯一的硬 FAIL）**
+**#4708 复验详情（2026-09-30 的唯一硬 FAIL —— 已被 2026-10-08 的修复推翻）**
+
+> ⚠️ **以下内容是 2026-09-30 的历史记录，保留作审计留痕，不再代表当前状态。**
+> 其中"块注释 parser 完全不支持""27 passed; 1 ignored"等结论在 2026-10-08
+> 修复块注释支持后即失效；当前状态见上表与
+> `docs/releases/v4.1.0/evidence/wp-a-reverify-2026-11-26/wp_a_reverify.txt`。
 
 实跑 `cargo test -p sqlrustgo-parser --test wp_a_legacy`：
 
@@ -236,7 +264,6 @@ Per `CLAIM_DOWNGRADE_MANIFEST.md §3.8` (Cross-model transaction V400-05):
 
 | Category | Count |
 |---|---|
-| WP-A Parser legacy (re-opened 2026-09-30, §4.0) | 4 |
 | WP-C DDL / Integrity | 6 |
 | WP-D Join / Subquery | 4 |
 | WP-F Schema Migration | 1 |
@@ -244,13 +271,14 @@ Per `CLAIM_DOWNGRADE_MANIFEST.md §3.8` (Cross-model transaction V400-05):
 | WP-B completion | 6 |
 | WP-E completion (#4626) | 1 |
 | WP-H #4639 (carried from v4.0.0) | 1 |
-| **Total** | **24** |
+| **Total** | **20** |
 
-> 20 → 24 的变更为 2026-09-30 WP-A 回填所致。**同一日新增的门禁债
-> `UNREG-IGNORE-WP-A`（`wp_a_legacy.rs:68` 的 `#[ignore]` 未登记）
-> 未计入本表**——它属于 §4 范围外的门禁完整性债，登记在
-> `STAGE.yaml` `legacy_chain_audit_2026_09_30.gate_debt`，
-> 修复后应作为 #4708 的验收前置条件。
+> 计数沿革：18 → 20（2026-09-30 第一次修正）→ 24（2026-09-30 第二次修正，
+> 因 WP-A 4 条回填）→ **20**（2026-11-26 第三次修正：WP-A 4 条复验为 FIXED，
+> 移出待办；§4.0 保留可追溯记录，小节编号不动）。
+> 2026-09-30 提到的门禁债 `UNREG-IGNORE-WP-A`（`wp_a_legacy.rs:68` 的
+> `#[ignore]` 未登记）**已于 2026-10-08 消解**：该 `#[ignore]` 随块注释支持
+> 一并移除，registry 以 `resolved_removed_ignores` 记录，故不再计入本表。
 
 **Estimated work**: 6-10 weeks total for v4.1.0 to close these items,
 assuming 1-2 issues per WP category per week with proper code review and

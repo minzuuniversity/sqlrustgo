@@ -61,7 +61,7 @@ SQLite 的关键特征是单文件、嵌入式、动态类型、成熟的 SQL �
 | AUTOINCREMENT | 仍有 issue 继承与 v4.1 BLK-3 类问题 | 不可声明 SQLite/MySQL 自增语义完整 |
 | ON CONFLICT / UPSERT | 部分缺口 | 不可声明完整 SQLite DML 方言 |
 | JSON / GROUP_CONCAT / 函数生态 | 多项 caveat | 不可声明 SQLite 函数兼容 |
-| 块注释 `/* */` | #4708 复验显示未修 | 基础 parser 方言仍有明显缺口 |
+| 块注释 `/* */` | ~~#4708 复验显示未修~~ → **2026-11-26 复验：已修复**（lexer 支持 `/* */`，parser + E2E 双绿） | 基础 parser 方言仍有明显缺口 |
 | 单文件嵌入式体验 | 不是 SQLite 的同类产品 | SQLRustGo 更偏 server / engine / multi-model |
 
 结论：v4.1.0 可继续用 SQLite 作为 sqllogictest 和 cell-level oracle，但产品声明必须避免“SQLite 替代”。与 SQLite 相比，SQLRustGo 的优势方向是 Rust-native、MySQL wire、WAL/MVCC、多模型；劣势是方言完整性、catalog 兼容、嵌入式成熟度。
@@ -106,7 +106,7 @@ SQLRustGo 当前不是 PostgreSQL 兼容数据库。v3.9 文档中曾出现 Post
 | 事务隔离与 GC 未闭环 | MySQL/PostgreSQL 级事务语义 | #4974、#4986、PR #4987 open |
 | anti-ignore registry drift | 测试可信度 | `check_anti_ignore_gate.sh` 实跑：real `#[ignore]`=102，registry=98 |
 | DRAFT 文档结构缺失 | 发布治理 | `check_stage.sh --version v4.1.0 --stage DRAFT --dry-run` 缺 `ARCHITECTURE.md` |
-| SQLite dialect backlog | SQLite 兼容 | WP-A/WP-C/WP-D/WP-F/WP-G 仍有 open/not started |
+| SQLite dialect backlog | SQLite 兼容 | WP-C/WP-D/WP-F/WP-G 仍有 open/not started（WP-A 4 条已于 2026-11-26 复验 FIXED 并移出待办） |
 | MySQL OLTP/sysbench 阻断 | MySQL 兼容 | #4981、#4983、#4986 等 2026-10-04 P0 |
 | 多模型一致性证据不足 | v4.x 产品目标 | v4.0 GA 撤销后转入 v4.1 整改 |
 | 覆盖率与大文件架构债 | 工程质量 | parser/mysql-server coverage 债；`expr/mod.rs` 等超 1600 行但非 hard gate |
@@ -114,7 +114,7 @@ SQLRustGo 当前不是 PostgreSQL 兼容数据库。v3.9 文档中曾出现 Post
 ## 8. 近期整改建议
 
 1. 先关闭事务隔离主链路：#4974、#4983、#4986、#4987 必须有 merged PR + 回归测试 + issue closure evidence。
-2. 把 SQLite/MySQL 方言 backlog 分成“必须修”和“永久 caveat”：尤其 #4708、#4672、#4846、#4848、#4656、#4636。
+2. 把 SQLite/MySQL 方言 backlog 分成“必须修”和“永久 caveat”：尤其 ~~#4708~~（已于 2026-11-26 复验 FIXED）、#4672、#4846、#4848、#4656、#4636。
 3. 重写兼容性矩阵：按 SQL-92 / SQLite / MySQL / PostgreSQL 四列维护，禁止用“兼容”二字覆盖细节。
 4. anti-ignore / P16 先 fail-closed，再清 registry drift，避免再次出现“测试通过但没跑”的假象。
 5. 为 v4.1.0 补 `ARCHITECTURE.md`，内容应说明当前不是 SQLite/MySQL/PostgreSQL clone，而是 Rust-native 多模型数据库。
