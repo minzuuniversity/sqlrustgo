@@ -1137,7 +1137,7 @@ fn run_gate_with_env(
         .env("STUB_CARGO_REPORT", report)
         .env_remove("TPCH_DATA_DIR")
         .output()
-        .expect("failed to spawn bash");
+        .unwrap_or_else(|e| panic!("failed to spawn bash ({}): {}", tag, e));
     let mut text = String::from_utf8_lossy(&out.stdout).to_string();
     text.push_str(&String::from_utf8_lossy(&out.stderr));
     (out.status.code().unwrap_or(-1), text)
