@@ -13,8 +13,11 @@
 
 **9 个计划任务已实施完成**（Task 1–8 + Task 10 通过独立评审；Task 9「放行判据汇总 + R2 外审包 +
 属主放行裁决」**已实施完成** —— 修订第 1 轮处理 1 Important + 8 Minor，修订第 2 轮处理 3 Important + 8 Minor，
-**最终整支评审修复波**处理 9 Important + 4 条必修 minor）。
+**最终整支评审修复波**处理 9 Important + 4 条必修 minor，**回归清扫**再处理 8 条 Minor ——
+**评审与修订全部结束，没有待评审项**）。
 **12 条准入判据的实测判定：PASS 8 · FAIL 3（#4、#6、#8）· WAIVED 1（#12）**（判定结果**未变**）。
+**剩余待办全部是属主裁决**：判据 **4 / 6 / 8** 的处置 + **25 条待裁决项**
+（逐条清单见 `V410-OWNER-RULING.md` §3）。
 
 当前**不能**宣布放行，也**不能**宣布「整备失败」：**材料层全绿**（基线、SHA 绑定、ADR 机器字段、
 manifest、门禁编目、外审包三套统计与 dead 口径都自洽），缺的是**证据层**（#8：夹具泳道未达 7/7）
@@ -70,7 +73,7 @@ manifest、门禁编目、外审包三套统计与 dead 口径都自洽），缺
 | **Task 7** | Oracle 逐条判定（**判定完成，签署 BLOCKED**） | `takeover/ORACLE-REVIEW-LOG-T1.md` | ✅ 实质交付通过 |
 | **Task 8** | ALPHA 阶段执行点 + 7 道负向夹具 | `.gitea/workflows/ci-alpha-stage.yml`、`audit/v4.1.0/neg/fx*.sh` | ✅ 修订 2 后通过 |
 | **Task 10** | 逐用例重做 invariant 映射 + 修复 38 条不可判定断言 | `TRANSACTION_INVARIANTS.md:30`、`ORACLE-REVIEW-LOG-T1.md:505-511` | ✅ 评审通过 |
-| **Task 9** | 12 条判据汇总 + R2 外审包 + 属主放行裁决（**裁决请求**，属主未签） | `takeover/V410-READINESS-VERDICT.json`、`takeover/R2-RELEASE-PACKAGE.md`、`takeover/V410-OWNER-RULING.md`、`takeover/verify_r2_package.py`（判据 10/11 的可复算锚点）；R2 包 `…/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2/`（zip sha256 `ea3611eee5da3ab0…`） | 🔄 已实施完成，**评审中**（修订第 1 轮已处理 1 Important + 8 Minor）；判定 **PASS 8 / FAIL 3 / WAIVED 1** |
+| **Task 9** | 12 条判据汇总 + R2 外审包 + 属主放行裁决（**裁决请求**，属主未签） | `takeover/V410-READINESS-VERDICT.json`、`takeover/R2-RELEASE-PACKAGE.md`、`takeover/V410-OWNER-RULING.md`、`takeover/verify_r2_package.py`（判据 10/11 的可复算锚点）；R2 包 `…/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2/`（zip sha256 `ea3611eee5da3ab0…`） | ✅ 已实施完成，**评审与修订全部结束**（修订第 1 轮 1 Important + 8 Minor；修订第 2 轮 11 findings 全部 ADDRESSED；**最终整支评审**返回 0 Critical / 9 Important / 11 Minor，**修复波**经 re-review 判定 11 条 finding 全部 ADDRESSED；**回归清扫** 8 条全部 ADDRESSED —— **无待评审项**）；判定 **PASS 8 / FAIL 3 / WAIVED 1**；剩余待办 = **属主裁决**（判据 4 / 6 / 8 + 25 条待裁决项） |
 
 ---
 
@@ -195,12 +198,17 @@ develop 里**还没有**冻结分支上的**7 个**提交（在远端 tip `ebcf8
 1. `cd /Volumes/workspace/dev/wt-v410-base`，确认分支 `base/v4.1.0-frozen` 与 tip。
 2. 读本文件 + `V410-READINESS-LEDGER.md`；再读 `V410-OWNER-RULING.md`（裁决请求）。
 3. **9 个任务已实施完成**（Task 9 修订第 1 轮已处理 1 Important + 8 Minor；修订第 2 轮已处理 3 Important + 8 Minor；
-   **最终整支评审**返回 0 Critical / 9 Important / 11 Minor，**修复波已实施完成**，见
-   `.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/task-9-report.md` 的「最终整支评审 · 修复波」小节）。
-   实施侧的剩余动作是**属主裁决**：在 `V410-OWNER-RULING.md` §4 的裁决位填
-   「放行 C-ALPHA-02 / 不放行」（若豁免 #4 / #6 / #8，在 §2.2 的槽位 A / B / C 填 waiver 字段）。
-4. Task 9 的产物要**过完独立评审**（与前 8 个任务同一标准）；修订记录在
-   `.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/task-9-report.md` 的「修订 1」小节。
+   **最终整支评审**返回 0 Critical / 9 Important / 11 Minor，**修复波已实施完成**（re-review 判定 11 条 finding
+   全部 ADDRESSED），**回归清扫已实施完成**（8 条全部 ADDRESSED），见
+   `.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/task-9-report.md` 的「修订 1 / 修订 2 /
+   最终整支评审 · 修复波 / 回归清扫」小节）—— **评审已全部结束，没有待评审项**。
+   实施侧的剩余动作**只有属主裁决**：在 `V410-OWNER-RULING.md` §4 的裁决位填
+   「放行 C-ALPHA-02 / 不放行」（若豁免 #4 / #6 / #8，在 §2.2 的槽位 A / B / C 填 waiver 字段），
+   并逐条处置 **25 条待裁决项**（清单在 `V410-OWNER-RULING.md` §3）。
+4. Task 9 的产物**已过完独立评审**（与前 8 个任务同一标准）—— 两轮修订 + 最终整支评审修复波 + 回归清扫
+   全部 ADDRESSED，**没有待评审项**；修订记录在
+   `.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/task-9-report.md` 的「修订 1 / 修订 2 /
+   最终整支评审 · 修复波 / 回归清扫」小节。
 5. 若属主要求补齐 #6 / #8 后复评：复跑
    `bash audit/v4.1.0/neg/verify_neg_fixtures.sh`（判据 8）与
    `python3 docs/refactor/v4.1.0-c/takeover/gen_verdict.py`（12 条判据，

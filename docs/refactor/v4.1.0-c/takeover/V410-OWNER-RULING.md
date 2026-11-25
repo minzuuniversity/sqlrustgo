@@ -275,14 +275,24 @@
 <!-- OWNER_APPROVED_REVIEWERS:END -->
 
 **判据 6 的新判定逻辑（2026-11-25 整支评审 I-2 重写）** ——
-PASS 需**同时**满足以下四条：
+PASS 需**同时**满足以下**六条** —— 机器门槛是 `all(cond6.values())`，覆盖**六个**键
+（**其中四条是实质条件，另两条是防空判护栏**）。下面六条与生成器在 `observed` 里逐条打印的
+六个键**一一对应**（编号 (1)…(6) 即 `cond6` 的插入序；**键名用生成器原文**）：
 
-1. `verify_matrix.py` 退出码 = 0；
-2. 双向差异表存在**且表头逐字符匹配**；
-3. L1 切片**全部**用例有终态；
-4. **每条被判 PASS 的用例**（`assertion_review_verdict` 存在且不是 `ASSERTION_UNREVIEWABLE`）
+1. `c6_verify_matrix_exit_0` —— `verify_matrix.py` 退出码 = 0；
+2. `c6_diff_table_exists_and_header_matches` —— 双向差异表存在**且表头逐字符匹配**；
+3. `c6_all_l1_have_terminal_status` —— L1 切片**全部**用例有终态；
+4. `c6_owner_approved_reviewer_list_present` —— 属主授权的 Reviewer 名单**必须存在且可读**
+   （**防空判护栏**）；
+5. `c6_at_least_one_case_judged_pass` —— **至少有一条被判 PASS 的用例**
+   （`assertion_review_verdict` 存在且不是 `ASSERTION_UNREVIEWABLE`）——（**防空判护栏**）；
+6. `c6_every_judged_pass_case_qualified_signer` —— **每条被判 PASS 的用例**
    都有 `assertion_reviewed_by`，且该值 **≠** `assertion_review_performed_by`（R-ORACLE），
    **且**落在上面那张**属主授权名单**里。
+
+**实质条件 = (1)(2)(3)(6)**；**(4)(5) 是防空判护栏** —— 缺了它们，「零条被判 PASS」会让 (6)
+**空判为真**（`all()` 对空集合取真），判据 6 会被错误地判成 PASS。
+判据 6 FAIL 时，`observed` 会把**六个键全部打印**并列出为假的键，可直接读出是哪一条不成立。
 
 - **名单为空 ⇒ 一律判 FAIL**，并在裁决 JSON 的 `criteria[5].observed` 里写明
   「**没有属主授权的 Reviewer 名单**」；
