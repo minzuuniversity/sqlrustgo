@@ -24,7 +24,7 @@ object pool.
 ```bash
 scripts/sync/5remotes_sync.sh main                # sync main from gitea252
 scripts/sync/5remotes_sync.sh develop/v4.1.0 gitea252  # sync develop/v4.1.0 from gitea252
-scripts/sync/5remotes_sync.sh --all              # sync the 3 core branches: develop/v4.1.0, main, release/v4.0.0
+scripts/sync/5remotes_sync.sh --all              # sync the 4 core branches: develop/v4.1.0, main, release/v4.0.0, base/v4.1.0-frozen
 ```
 
 Steps:
@@ -356,6 +356,11 @@ Credentials: `GITEA_URL` / `GITEA_REPO` environment overrides,
   because gitcode retains 5 gitcode-only commits on that branch
   (BINARY collation, Windows compat, etc.) that should not be lost.
   Sync it explicitly with `scripts/sync/5remotes_sync.sh develop/v4.0.0`.
+- `base/v4.1.0-frozen` **is** in the `--all` branch list (added 2026-11-26).
+  It is the frozen baseline ref the v4.1.0 readiness work is bound to
+  (`BASELINE_FREEZE.json` → `source_ref`); it used to exist only on
+  gitea252/gitee, so the github mirror never had it. It is an ancestor of
+  `develop/v4.1.0`, so syncing it is a fast-forward everywhere.
 
 ## References
 
