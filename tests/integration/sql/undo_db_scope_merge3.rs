@@ -113,7 +113,9 @@ fn file_engine() -> (ExecutionEngine<FileStorage>, PathBuf) {
     let dir = std::env::temp_dir().join(format!("undo_merge3_file_{}_{}", std::process::id(), n));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let e = ExecutionEngine::new(Arc::new(RwLock::new(FileStorage::new(dir.clone()).unwrap())));
+    let e = ExecutionEngine::new(Arc::new(RwLock::new(
+        FileStorage::new(dir.clone()).unwrap(),
+    )));
     (e, dir)
 }
 
@@ -135,20 +137,24 @@ fn memory_engine() -> ExecutionEngine<MemoryStorage> {
 fn seed(e: &mut ExecutionEngine<FileStorage>) {
     e.execute("CREATE DATABASE d1").unwrap();
     e.execute("USE `d1`").unwrap();
-    e.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT)").unwrap();
+    e.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT)")
+        .unwrap();
     e.execute("INSERT INTO t (id, v) VALUES (10, 1)").unwrap();
     e.execute("USE `default`").unwrap();
-    e.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT)").unwrap();
+    e.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT)")
+        .unwrap();
     e.execute("INSERT INTO t (id, v) VALUES (30, 1)").unwrap();
 }
 
 fn seed_memory(e: &mut ExecutionEngine<MemoryStorage>) {
     e.execute("CREATE DATABASE d1").unwrap();
     e.execute("USE `d1`").unwrap();
-    e.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT)").unwrap();
+    e.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT)")
+        .unwrap();
     e.execute("INSERT INTO t (id, v) VALUES (10, 1)").unwrap();
     e.execute("USE `default`").unwrap();
-    e.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT)").unwrap();
+    e.execute("CREATE TABLE t (id INT PRIMARY KEY, v INT)")
+        .unwrap();
     e.execute("INSERT INTO t (id, v) VALUES (30, 1)").unwrap();
 }
 
@@ -333,7 +339,10 @@ fn file_backend_rollback_in_a_named_database_restores_the_deleted_row_5891_5896_
     e.execute("USE `d1`").unwrap();
     e.execute("BEGIN").unwrap();
     e.execute("DELETE FROM t WHERE id = 10").unwrap();
-    assert!(file_rows(&mut e, "d1").is_empty(), "gone inside the transaction");
+    assert!(
+        file_rows(&mut e, "d1").is_empty(),
+        "gone inside the transaction"
+    );
 
     e.execute("ROLLBACK").unwrap();
 
