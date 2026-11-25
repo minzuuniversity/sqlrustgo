@@ -120,6 +120,9 @@ MUT8 = {
  "scripts/gate/check_arch_invariants.sh": ("fx16-arch-invariants-invariant-impl-removed.sh", "cargo",
    "摘掉 C-ARCH-05 的实现对象 src/execution_engine.rs 后，门禁必须 fail closed（'cannot be evaluated - target file not found'）⇒ invariant-impl-removed 可证伪",
    "摘掉一条 invariant 的实现 ⇒ 必须变红", None),
+ "scripts/gate/check_coverage_v312.sh": ("fx18-coverage-v312-crate-coverage-below-threshold.sh", "cargo",
+   "把 sqlrustgo-transaction 的覆盖率表压到阈值之下（追加 8000 个无人调用的函数）后门禁报 'FAIL: average X% < threshold Y%' ⇒ crate-coverage-below-threshold 可证伪。**基线曾是红的**：RED-by-design 的特征测试（crates/storage/tests/tf_t4_*.rs）让 sqlrustgo-storage 完全测不出 ⇒ L1_8 样本只有 7 of 8 ⇒ 门禁走 fail-closed 分支，红无法归因于注入，夹具如实报 INCONCLUSIVE；该基线红已在**测量层**移除（common.sh 的 COVERAGE_RED_CHARACTERISATION_TEST_FILES：只排除测量，不排除测试，RED 特征测试仍 RED #5913/#5914），随后控制臂在完整树为绿 ⇒ 红可归因。阈值档显式钉死为 stage=ga(85)（不是 check_stage.sh 的 stage=alpha(50)，见看板 COVM-1）",
+   "把某个 crate 的覆盖率表替换成低于阈值的值 ⇒ 必须变红（阈值档 stage=ga）", None),
  "scripts/gate/check_g1_tpch_baseline.sh": ("fx20-g1-tpch-baseline-hash-tampered.sh", "runtime",
    "篡改 tests/tpch_hashes_v380.json 的 SF1 基线数字后，门禁比对的就是被篡改的那个数 ⇒ hash-tampered 可证伪。对照是绿的：冻结基线上门禁 exit 0、算出的哈希等于基线数字 7439ce80…，所以红可归因于篡改",
    "篡改 SF1 基线数字 ⇒ 必须变红；需要 SF1 数据集与热 target", None),
@@ -146,7 +149,6 @@ PEND = {
  "scripts/gate/check_arch_sem_debt.sh": ("cargo", "把语义债表里一条 CLOSED 改回 ACTIVE 且无计划 ⇒ 必须变红"),
  "scripts/gate/check_backup_restore.sh": ("runtime", "让 backup→restore 往返丢行（截断备份）⇒ 必须变红；需要构建产物"),
  "scripts/gate/check_beta_gate.sh": ("composite", "把 BETA 覆盖率实测降到 COVERAGE_MIN_BETA 之下 ⇒ 必须变红"),
- "scripts/gate/check_coverage_v312.sh": ("cargo", "把某个 crate 的覆盖率表替换成低于阈值的值 ⇒ 必须变红；llvm-cov 实测 >720s 未跑完"),
  "scripts/gate/check_full_gate_verification.sh": ("cargo", "让它调用的某道子门禁必然变红（复用 fx04 的夹具文件），composite 必须报该子门禁 FAIL 而不是吞掉退出码"),
  "scripts/gate/check_g16_compatibility.sh": ("external", "把一个兼容性用例期望改错或断掉 oracle ⇒ 必须变红；需要外部 MySQL/Oracle"),
  "scripts/gate/check_gate_self_verification.sh": ("cargo", "注入一个 `0 tests run` 的 cargo test 目标 ⇒ 必须按它自己声明的 V1 判红"),
@@ -189,6 +191,23 @@ NOTEXEC = {
  "orphan_referenced": "该门禁 class=orphan_referenced：被引用但不在阶段清单里执行。先解决执行点归属（#5597），夹具才有意义",
 }
 
+# Gates whose MUT8 evidence run differs from the shared one.
+#
+# fx18's property was established by the 2026-11-26 two-layer lane run, not by
+# the 2026-11-24 run: on that earlier tree the coverage gate was ALREADY red
+# (the RED-by-design characterisation tests made `sqlrustgo-storage`
+# unmeasurable), so the mutation could not be attributed and the fixture
+# honestly reported INCONCLUSIVE.  The baseline red was removed at the
+# measurement layer (COVERAGE_RED_CHARACTERISATION_TEST_FILES in
+# scripts/gate/common.sh) and the property was established afterwards.
+#
+# The evidence must point at the log that recorded the red, so this row cites
+# the run that actually recorded it — the shared run8 would be a false
+# citation.
+EVIDENCE_RUN_OVERRIDE = {
+    "scripts/gate/check_coverage_v312.sh": "20261126-criterion8-negfix-001",
+}
+
 
 def build_rows(run, run8):
     """Build the ledger rows for the two evidence runs.
@@ -208,9 +227,14 @@ def build_rows(run, run8):
                      "evidence_run": run, "evidence_log": log_fx, "cost": cost, "note": note})
 
     for gate, (fx, cost, note, target, hole) in sorted(MUT8.items()):
+        # A gate whose property was established by a LATER lane run cites that
+        # run, not the shared one: the evidence must point at the log that
+        # actually recorded the red.  The override is explicit, not inferred.
+        ev_run = EVIDENCE_RUN_OVERRIDE.get(gate, run8)
+        ev_log = "audit/v4.1.0/runs/%s/logs/003-neg-fixtures.stdout" % ev_run
         row = {"gate": gate, "stages": cat[gate].get("stages") or [], "class": cat[gate]["class"],
                "kind": "mutation-verified", "fixture_id": fx[:-3], "fixture": NEG + fx,
-               "evidence_run": run8, "evidence_log": log_fx8, "cost": cost, "note": note}
+               "evidence_run": ev_run, "evidence_log": ev_log, "cost": cost, "note": note}
         if target:
             row["target"] = target
             row["close_run"] = ISSUE
@@ -268,14 +292,15 @@ def build_rows(run, run8):
                      "falsification_attempt": NEG + attempt,
                      "evidence_run": run, "evidence_log": log_fx, "cost": "static"})
 
-    # Pending gates that already HAVE a fixture script trying to close them.  The
-    # row still says kind=pending-fixture (the property is not established), but
-    # the script is registered so a reader can find it -- and so the lane knows
-    # which script to run and what to expect of it.
-    pend_fixture = {
-        "scripts/gate/check_coverage_v312.sh": ("fx18-coverage-v312-crate-coverage-below-threshold.sh",
-           "fx18-coverage-v312-crate-coverage-below-threshold"),
-    }
+    # Pending gates that already HAVE a fixture script trying to close them.
+    # The row still says kind=pending-fixture (the property is not
+    # established), but the script is registered so a reader can find it --
+    # and so the lane knows which script to run and what to expect of it.
+    #
+    # (The map is empty today: fx18 was its only entry and moved to MUT8 when
+    # its property was established.  It is kept as the extension point so a
+    # future pending-but-scripted gate has a home.)
+    pend_fixture = {}
 
     for gate, (cost, target) in sorted(PEND.items()):
         row = {"gate": gate, "stages": cat[gate].get("stages") or [], "class": cat[gate]["class"],

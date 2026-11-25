@@ -744,9 +744,46 @@ COVERAGE_PERF_BOUND_TEST_FILES=(
     "crates/storage/tests/b22_concurrent_flush_ab.rs"
 )
 
+# Test files that are RED **by design** — characterisation tests whose whole
+# purpose is to assert a known defect, so they are EXPECTED to fail.
+#
+# `crates/storage/tests/tf_t4_ai_candidate_v1.rs` and
+# `crates/storage/tests/tf_t4_stub_silent_success.rs` assert the
+# "STUB_SILENT_SUCCESS" defect on purpose: the test factory's T4 storage
+# capability is a red suite by definition (see the two files' own headers).
+#
+# Why they must be excluded from the coverage MEASUREMENT (and only from the
+# measurement):
+#
+#   * a failing test target makes `cargo llvm-cov` exit 101, so the crate
+#     produces NO coverage table at all — the L1_8 sample becomes 7 of 8 and
+#     `coverage_verdict` takes its fail-closed "measured N of M crates" path.
+#     That verdict says "the measurement did not happen"; it says NOTHING about
+#     the coverage of the seven crates that did measure.  A gate that cannot
+#     produce a number cannot be mutated into producing a number, so a negative
+#     fixture targeting "a below-threshold coverage table" can never be
+#     attributed to its injection while the baseline is red.
+#
+# What is NOT excluded:
+#
+#   * the tests themselves keep running and keep failing — they are the RED
+#     characterisation suite tracked in RED-LEDGER (#5913/#5914).  This array
+#     removes them from the coverage MEASUREMENT, not from the repository.
+#   * `coverage_verdict` is untouched: any OTHER reason for a crate being
+#     unmeasurable still FAILS the gate and still names the crate.
+#
+# The excluded FUNCTION NAMES are extracted from these files at run time, so a
+# new RED characterisation test is covered without touching this list.
+COVERAGE_RED_CHARACTERISATION_TEST_FILES=(
+    "crates/storage/tests/tf_t4_ai_candidate_v1.rs"
+    "crates/storage/tests/tf_t4_stub_silent_success.rs"
+)
+
 coverage_excluded_test_names() {
     local file
-    for file in "${COVERAGE_EXCLUDED_TEST_FILES[@]}" "${COVERAGE_PERF_BOUND_TEST_FILES[@]}"; do
+    for file in "${COVERAGE_EXCLUDED_TEST_FILES[@]}" \
+                "${COVERAGE_PERF_BOUND_TEST_FILES[@]}" \
+                "${COVERAGE_RED_CHARACTERISATION_TEST_FILES[@]}"; do
         [ -f "$COMMON_SH_REPO_ROOT/$file" ] || continue
         python3 - "$COMMON_SH_REPO_ROOT/$file" <<'PYEOF'
 import io
@@ -830,12 +867,40 @@ coverage_measure_crate() {
 # whether a result is acceptable.
 #
 # Prints one line per crate on stdout, so a caller can show the detail.
+# Print the set of test functions that are EXCLUDED from the coverage
+# measurement, so the exclusion is visible in the report itself and not only
+# in this file.  An exclusion that cannot be seen cannot be audited.
+#
+# The three groups are printed separately because they are excluded for three
+# different reasons (machine-dependence / wall-clock bound / RED by design).
+coverage_print_excluded_tests() {
+    local label file names
+    for label in "environment-dependent" "perf-bound" "red-characterisation"; do
+        case "$label" in
+            environment-dependent) files=("${COVERAGE_EXCLUDED_TEST_FILES[@]+"${COVERAGE_EXCLUDED_TEST_FILES[@]}"}") ;;
+            perf-bound)           files=("${COVERAGE_PERF_BOUND_TEST_FILES[@]+"${COVERAGE_PERF_BOUND_TEST_FILES[@]}"}") ;;
+            red-characterisation) files=("${COVERAGE_RED_CHARACTERISATION_TEST_FILES[@]+"${COVERAGE_RED_CHARACTERISATION_TEST_FILES[@]}"}") ;;
+        esac
+        [ "${#files[@]}" -gt 0 ] || continue
+        printf 'excluded from coverage measurement (%s):\n' "$label"
+        for file in "${files[@]}"; do
+            printf '  file: %s\n' "$file"
+        done
+    done
+    names="$(coverage_excluded_test_names)"
+    if [ -n "$names" ]; then
+        printf 'excluded test functions (%d):\n' "$(printf '%s\n' "$names" | wc -l | tr -d ' ')"
+        printf '  %s\n' "$names" | sed 's/^/  /'
+    fi
+}
+
 coverage_measure_set() {
     COVERAGE_CRATE_PCT=()
     COVERAGE_FAILED_CRATES=()
     COVERAGE_MEASURED_COUNT=0
     COVERAGE_TOTAL_COUNT=0
     local crate pct rc=0
+    coverage_print_excluded_tests
     for crate in ${@+"$@"}; do
         COVERAGE_TOTAL_COUNT=$((COVERAGE_TOTAL_COUNT + 1))
         printf 'Measuring coverage for %s ...\n' "$crate"

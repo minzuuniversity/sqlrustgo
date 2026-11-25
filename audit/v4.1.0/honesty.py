@@ -76,17 +76,22 @@ CATCHES = {
     # substring of its fixture's fixture_id, so the C3 criterion can find it
     # on the evidence.
     #
-    # check_coverage_v312.sh is deliberately NOT here: its fixture exists but
-    # could not be established inside the ledger's 30-minute per-fixture
-    # budget (the gate measures eight crates with `cargo llvm-cov`,
-    # single-threaded and instrumented).  Its ledger row therefore stays
-    # kind=pending-fixture, and claiming a property it cannot yet back would
-    # be exactly the kind of over-claim this file exists to prevent.
+    # check_coverage_v312.sh joined this list on 2026-11-26.  It was
+    # deliberately absent before, and the reason was real: the coverage gate
+    # was ALREADY RED on the intact tree, so no mutation of a coverage table
+    # could be attributed to it and the fixture honestly reported
+    # INCONCLUSIVE.  The baseline red was removed at the MEASUREMENT layer
+    # only (scripts/gate/common.sh's COVERAGE_RED_CHARACTERISATION_TEST_FILES
+    # excludes the RED-by-design `tf_t4_*` characterisation tests from the
+    # measurement — the tests themselves still run and still fail, #5913/#5914).
+    # The control arm is green on the intact tree and the mutation arm's red
+    # is attributable, so the property can now be claimed.
     "scripts/gate/check_alpha_v410.sh": ["entry-doc-missing"],
     "scripts/gate/check_arch_invariants.sh": ["invariant-impl-removed"],
     "scripts/gate/check_arch3_no_bypass.sh": ["dml-guard-dropped"],
     "scripts/gate/check_sql_corpus_gate.sh": ["corpus-truncated"],
     "scripts/gate/check_g1_tpch_baseline.sh": ["hash-tampered"],
+    "scripts/gate/check_coverage_v312.sh": ["crate-coverage-below-threshold"],
 }
 
 NO_CLAIM_YET = ("尚无可证伪夹具（NEG_FIXTURES 里本门禁没有可证伪行），"
