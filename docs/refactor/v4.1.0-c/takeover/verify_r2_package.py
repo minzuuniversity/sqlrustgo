@@ -85,6 +85,21 @@ def sha256_file(p):
 
 
 def main():
+    # N-11: say what to do instead of raising a FileNotFoundError traceback.
+    missing = [p for p in (os.path.join(R2_DIR, "package"),
+                           os.path.join(R2_DIR, "package", "EVIDENCE-INDEX.json"),
+                           os.path.join(R2_DIR, "evidence_index.json"))
+               if not os.path.isfile(p) and not os.path.isdir(p)]
+    if missing:
+        print("FATAL: no R2 package under %s" % R2_DIR, file=sys.stderr)
+        print("       This checker verifies an EXISTING R2 package; it does not build one.", file=sys.stderr)
+        print("       Point it at the package with either:", file=sys.stderr)
+        print("         --r2-dir /path/to/sqlrustgo-v4.1.0-r2", file=sys.stderr)
+        print("         R2_DIR=/path/to/sqlrustgo-v4.1.0-r2  python3 %s" % os.path.basename(__file__), file=sys.stderr)
+        print("       (the R2 package itself lives in the DSH workspace, or in the", file=sys.stderr)
+        print("        distributed ZIP SQLRUSTGO-V410-REVIEW-PACK-R2-DRAFT.zip).", file=sys.stderr)
+        print("       Missing: %s" % ", ".join(missing), file=sys.stderr)
+        return 2
     print("== R2 package under check: %s" % R2_DIR)
     print("== A5 #10: three statistics sets")
     src = json.loads(read(os.path.join(R2_DIR, "evidence_index.json")))
