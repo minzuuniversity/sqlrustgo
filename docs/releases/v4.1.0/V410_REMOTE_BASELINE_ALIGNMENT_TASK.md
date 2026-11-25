@@ -34,9 +34,15 @@
 
 | # | 交付物 | 落点 | 形态 |
 |---|---|---|---|
-| D1 | **基线对齐分析报告** | `docs/releases/v4.1.0/V410_BASELINE_ALIGNMENT_ANALYSIS.md`（新建） | 分析 + 结论 + 出处 |
-| D2 | **重构与 harness 治理实施方案** | `docs/releases/v4.1.0/V410_REFACTOR_HARNESS_PLAN.md`（新建） | 分阶段方案 + 验收判据 + 风险 |
+| D1 | **基线对齐分析报告** | `docs/releases/v4.1.0/evidence/BASELINE_ALIGNMENT_2026-11-25.md`（实际落盘；一、《基线对齐报告》） | 分析 + 结论 + 出处 |
+| D2 | **重构与 harness 治理实施方案** | `docs/releases/v4.1.0/evidence/BASELINE_ALIGNMENT_2026-11-25.md`（实际落盘；二、《重构路线图 v0.1》＋三、《Harness 治理启动包 v0.1》） | 分阶段方案 + 验收判据 + 风险 |
 | D3 | **给属主的裁决清单** | 同 D2 的一节 | 需要属主拍板的每一项，逐条列出选项 |
+
+> **落点订正（2026-11-26）**：D1/D2 原计划各新建一份文件（计划名
+> V410_BASELINE_ALIGNMENT_ANALYSIS.md / V410_REFACTOR_HARNESS_PLAN.md），实际交付时
+> **合并为一份三段式文档** `docs/releases/v4.1.0/evidence/BASELINE_ALIGNMENT_2026-11-25.md`
+> （一、基线对齐报告＝D1；二、重构路线图 v0.1＝D2；三、Harness 治理启动包 v0.1＝D2）。
+> 两个计划文件名**从未入库**，故本表按实际落盘路径订正——文档里不留指向未入库文件的指针。
 
 **两件事必须做到**：
 
@@ -271,7 +277,7 @@ verify_neg_fixtures: tree_sha=<40 hex> dirty_files=<n>
    - 用 `#[should_panic]` 表达「这个缺陷会 panic」；
    - 建立一个**独立的**「RED 套件」执行入口（一个 `cargo test --test red_suite` 或独立 crate），
      让普通 `cargo test` **不**跑它们，但**专门的** RED 门禁**必须**跑它们且**必须**看到它们红；
-   - 用一个**清单文件**（如 `tests/baseline/red_suite.json`）登记每个 RED 测试的
+   - 用一个**清单文件**（如 tests/baseline/red_suite.json —— 计划名，未入库）登记每个 RED 测试的
      预期失败信号（哪一行、什么消息），门禁比对**实际**失败与**登记**的失败。
 2. **「red-by-design」与「意外红」如何区分？**
    现在两者在 CI 输出里长得一样。方案必须让「预期红」与「意外红」在**同一份输出**里可区分，
@@ -468,7 +474,7 @@ verify_neg_fixtures: tree_sha=<40 hex> dirty_files=<n>
 | 文件 | 是什么 |
 |---|---|
 | `docs/releases/v4.1.0/V410_BASELINE_FROZEN_DECLARATION.md` | 本轮的基线冻结声明（AFP 五字段证据头 + 显式否定清单 + 残余风险） |
-| `docs/releases/v4.1.0/PR-5933_SPEC.md` | 本轮的 SPEC（问题陈述 / 设计 / **门禁行为变更声明** / 风险 R1–R10） |
+| PR-5933_SPEC.md（**计划名，从未入库**） | 本轮的 SPEC（问题陈述 / 设计 / **门禁行为变更声明** / 风险 R1–R10）——实际入库的是下面三份 |
 | `docs/releases/v4.1.0/PR-5933_TEST_DESIGN.md` | 本轮的具体测试方法（四条判别力护栏 G1–G4 等） |
 | `docs/releases/v4.1.0/PR-5933_ACCEPTANCE.md` | 本轮的门禁执行证据（go/no-go 87.72%、泳道 7/7、判据表重出） |
 | `docs/releases/v4.1.0/PR-5933_TEST_REVIEW.md` | 本轮的**自我**审核（**不构成**独立签署，勿当独立复核） |
