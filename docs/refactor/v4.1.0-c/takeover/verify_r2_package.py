@@ -28,14 +28,27 @@ import re
 import sys
 import zipfile
 
-# This file has TWO homes (M-8 of the Task 9 review round 1):
-#   * the authoritative copy in the DSH repo, next to the R2 package it checks:
+# This file has THREE homes, and all three are byte-identical (N-10 closed):
+#   * the copy in the DSH repo, next to the R2 package it checks:
 #       …/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2/verify_r2_package.py
+#   * the copy in the DSH repo's build chain:
+#       …/DSH-EXTERNAL-REVIEW-001/r2-build/verify_r2_package.py
 #   * the reproducibility anchor in the sqlrustgo repo:
 #       docs/refactor/v4.1.0-c/takeover/verify_r2_package.py
 # The sqlrustgo copy does NOT live next to the package, so it needs to be told
 # where the R2 package is.  R2_DIR (env) or --r2-dir wins; otherwise the
-# default DSH location is used.
+# default DSH location is used.  Of the two DSH copies only the one that
+# sits next to the package (…/sqlrustgo-v4.1.0-r2/) resolves to its own
+# directory, because ./package/ is next to it; the r2-build/ copy has no
+# ./package/ of its own and therefore falls through to the same default
+# DSH location.
+# Keep the three in sync: the sqlrustgo copy is the one that gets committed
+# and pushed; the DSH copies are refreshed from it.  The DSH repo has no git
+# remote, so its copies have no off-box backup.
+# No sha256 of this file is recorded in any document on purpose: this header
+# is part of the bytes, so any hash of them goes stale the moment this
+# comment is edited.  R2-RELEASE-PACKAGE.md §9.1 carries a recomputable
+# byte-identity check (diff + shasum over the three paths) instead.
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_R2 = ("/Volumes/workspace/dev/workspaces/dsh-ops/projects/"
               "DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2")

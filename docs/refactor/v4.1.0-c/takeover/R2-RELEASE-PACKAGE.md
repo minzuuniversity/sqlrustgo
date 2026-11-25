@@ -187,7 +187,8 @@ bash …/DSH-EXTERNAL-REVIEW-001/r2-build/build_r2.sh
    （`verify_r2_package.py` 已显式排除并注明）。**`package/` 内是干净的** —— 判据 11 的对象是包。
 5. **DSH 仓库里 R2 与 `r2-build/` 已提交**：`a0314048fff341f832b963a87c194f9cefeef686`
    （发布 R2 + 构建链，2026-11-25 09:46）、`19f999e`（补齐残余的 R1 身份残留，10:03）、
-   与 `08742fc`（把校验器同步成三处同一份，关闭 N-10 漂移，15:41）。
+   `08742fc`（把校验器同步成三处同一份，关闭 N-10 漂移，15:41）、
+   与 `0964dda`（校验器头注释改成「三处同一份」并修正自解析说明，15:52）。
    **未 push —— 该仓库没有配置任何 git remote**（`git remote -v` 为空，只有 `main` 一个分支），
    所以「推给属主」这一步目前**无处可推**；是否给它配 remote 由属主决定（§9.1 亦同）。
 
@@ -225,15 +226,41 @@ bash …/DSH-EXTERNAL-REVIEW-001/r2-build/build_r2.sh
 ### 9.1 `verify_r2_package.py` 的字节漂移（N-10）—— **已收口：三处现在同一份**
 
 **2026-11-25：控制者授权并执行了「同步 `verify_r2_package.py`」** —— 把本仓那份**复制**到 DSH 仓的两处。
-三份现在的 sha256 **完全相同**（前缀 `e8155879faaefd6e`）：
+**三份现在字节完全相同**：
 
-| # | 位置 | sha256 前缀 |
+| # | 位置 | 角色 |
 |---|---|---|
-| 1 | `docs/refactor/v4.1.0-c/takeover/verify_r2_package.py`（本仓，判据 10 / 11 的可复算锚点） | `e8155879faaefd6e` |
-| 2 | `…/DSH-EXTERNAL-REVIEW-001/r2-build/verify_r2_package.py` | `e8155879faaefd6e` |
-| 3 | `…/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2/verify_r2_package.py` | `e8155879faaefd6e` |
+| 1 | `docs/refactor/v4.1.0-c/takeover/verify_r2_package.py`（本仓，判据 10 / 11 的可复算锚点） | **唯一被提交并推送的那一份**（同步的源头） |
+| 2 | `…/DSH-EXTERNAL-REVIEW-001/r2-build/verify_r2_package.py` | DSH 构建链旁的那份（由第 1 份刷新而来） |
+| 3 | `…/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2/verify_r2_package.py` | R2 包旁边的那份（由第 1 份刷新而来） |
+
+> **⚠️ 这里刻意不记 sha256。** 校验器的**头注释就是它字节的一部分** ⇒ 任何写在文档里的
+> 自身哈希都会在**下一次编辑那段注释时当场过期**（这正是控制者在本轮踩到并当场发现的坑）。
+> **「三处字节相同」这个事实不会因文档编辑而变；哈希值会。**
+> ⇒ 下面是**可随时复算的校验入口**，请当场跑，不要相信任何一行会过期的哈希。
+
+**校验入口（推荐入口 A）**：
+
+```bash
+DSH=/Volumes/workspace/dev/workspaces/dsh-ops/projects/DSH-EXTERNAL-REVIEW-001
+A=/Volumes/workspace/dev/wt-v410-base/docs/refactor/v4.1.0-c/takeover/verify_r2_package.py
+B="$DSH/r2-build/verify_r2_package.py"
+C="$DSH/sqlrustgo-v4.1.0-r2/verify_r2_package.py"
+
+# 入口 A：字节同一性（cmp -s 静默、逐字节、POSIX）
+cmp -s "$A" "$B" && cmp -s "$A" "$C" && echo "IDENTICAL: 三处字节相同"
+
+# 入口 B：指纹 —— **三行必须彼此相等**（不与任何写死的值比对）
+shasum -a 256 "$A" "$B" "$C"
+```
+
+> ⚠️ **入口 A 不要写成 `diff "$A" "$B" "$C"`** —— BSD/macOS 的 `diff` **只接受两个文件**，
+> 三个参数会打 usage 并以退出码 2 结束（**不是**「发现差异」）。要么像上面那样两两比，
+> 要么用 `cmp -s`。（GNU `diff` 支持三文件，但本机是 Apple diff。）
+> 两个入口都**不需要任何写死的哈希**：入口 A 直接判字节相等，入口 B 只需三行相等。
 
 - **原先 DSH 那两份是 `75de8cce6773`**（内容等价、字节不同）⇒ 那份漂移**已经不存在**。
+  （这是**历史事实**的记录 —— 指已被取代的那一版，不是当前三份中任何一份的哈希。）
 - **「待属主裁决以哪份为准」这一条已删除** —— 现在**只有一份**，没有「以哪份为准」可裁。
   （原先登记 N-10 时列的两条待裁决项：① 以哪份为准 —— **已消解**；② R2 构建链无异地副本 ——
   **仍然开着**，见 §8 第 5 条与 §9 开头。）
@@ -245,9 +272,13 @@ bash …/DSH-EXTERNAL-REVIEW-001/r2-build/build_r2.sh
   4. 兜底：DSH 的**默认 R2 位置** `…/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2` ——
      本仓那份与 `r2-build/` 那份命中这一段（`r2-build/` 下**没有** `package/`）。
   ⇒ **同一份字节在两个家都自解析到正确的包。**
+  （注：只有第 3 份命中第 3 条；第 2 份命中第 4 条。**落点相同，机制不同** ——
+  校验器的头注释已按这个事实写。）
 - **实测**：同步后两个家都自解析正确、实跑均 **23 PASS / 0 FAIL**
-  （本仓那份用 `--r2-dir` 显式指定；DSH 那份在包旁边直接跑）。
-- **DSH 侧提交**：`08742fc`（`fix(r2): 把校验器同步成三处同一份（关闭 N-10 漂移）`）。
+  （本仓那份用 `--r2-dir` 显式指定；DSH 那份在包旁边直接跑；`r2-build/` 那份在构建链旁直接跑）。
+- **DSH 侧提交**：**最新 = `0964dda681a845f2be2cc6cd6714cd4aa93257ea`**
+  （`fix(r2): 校验器头注释改成「三处同一份」并修正自解析说明`，2026-11-25 15:52）；
+  首次同步那次是 `08742fc`（`fix(r2): 把校验器同步成三处同一份（关闭 N-10 漂移）`，15:41）。
   **未 push —— 该仓没有任何 git remote**（`git remote -v` 为空），所以**没有推送对象**；
   是否给它配 remote 仍由属主决定（§8 第 5 条 / §9 开头）。
 - **R1 与 R2 的包都没被触碰**：校验器**不在** R2 的 `package/` 内、**也不在** R2 的 ZIP 内
