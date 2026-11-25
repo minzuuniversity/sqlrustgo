@@ -227,6 +227,7 @@ source_sha_main=""
 source_sha_release_v400=""
 source_sha_develop_v410=""
 source_sha_develop_v400=""
+source_sha_base_v410_frozen=""
 
 declare -a SOURCE_SHA_VARS=()  # list of variable names to look up later
 
@@ -321,8 +322,9 @@ for branch in "${branches[@]}"; do
         release/v4.0.0)         var="source_sha_release_v400" ;;
         develop/v4.1.0)         var="source_sha_develop_v410" ;;
         develop/v4.0.0)         var="source_sha_develop_v400" ;;
+        base/v4.1.0-frozen)     var="source_sha_base_v410_frozen" ;;
         *)
-            echo "ERROR: branch $branch not in allow-list (main, release/v4.0.0, develop/v4.1.0, develop/v4.0.0)"
+            echo "ERROR: branch $branch not in allow-list (main, release/v4.0.0, develop/v4.1.0, develop/v4.0.0, base/v4.1.0-frozen)"
             exit 4
             ;;
     esac
@@ -346,6 +348,7 @@ for branch in "${branches[@]}"; do
         release/v4.0.0)  sha="$source_sha_release_v400" ;;
         develop/v4.1.0)  sha="$source_sha_develop_v410" ;;
         develop/v4.0.0)  sha="$source_sha_develop_v400" ;;
+        base/v4.1.0-frozen) sha="$source_sha_base_v410_frozen" ;;
     esac
     for r in gitcode gitee github; do
         # 「远端现在是什么」必须**问服务器**（ls-remote），
@@ -531,6 +534,7 @@ for entry in "${GITEA_HOST_LIST[@]}"; do
             release/v4.0.0)  sha="$source_sha_release_v400" ;;
             develop/v4.1.0)  sha="$source_sha_develop_v410" ;;
             develop/v4.0.0)  sha="$source_sha_develop_v400" ;;
+            base/v4.1.0-frozen) sha="$source_sha_base_v410_frozen" ;;
         esac
         tmp_ref="tmp-sync-$$-$branch"
 
@@ -688,6 +692,7 @@ for branch in "${branches[@]}"; do
         release/v4.0.0)  sha="$source_sha_release_v400" ;;
         develop/v4.1.0)  sha="$source_sha_develop_v410" ;;
         develop/v4.0.0)  sha="$source_sha_develop_v400" ;;
+        base/v4.1.0-frozen) sha="$source_sha_base_v410_frozen" ;;
     esac
     echo ""
     echo "[$branch] target = $sha"
