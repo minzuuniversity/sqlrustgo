@@ -47,10 +47,12 @@ manifest、门禁编目、外审包三套统计与 dead 口径都自洽），缺
 > `ea285c5fda77e7790e965ae482e3c1b015fabc10`（**已包含** `base/v4.1.0-frozen`，
 > PR #5928 的 merge commit —— 冻结分支已被并入 develop）；
 > `origin/base/v4.1.0-frozen` = **`ebcf8bc2997649e333067bbb8497c1dbcdf09db3`**
-> （= 本地 HEAD）。develop 里**还没有**冻结分支上的 **7 个**提交
-> （`git log --oneline ea285c5fda..HEAD` 实测 7 条：`d358289919`、`09ba360f6c`、
+> （**远端** tip；本地分支已领先它 —— 本波修复波尚未推送）。develop 里**还没有**冻结分支上的
+> **7 个**提交（在远端 tip `ebcf8bc299` 处实测：`d358289919`、`09ba360f6c`、
 > `e2d98149d2`、`33f1c7ceb9`、`6c345db7cb`、`a2d0e3ecec`、`ebcf8bc299`）。
 > ⚠️ **旧版本这里写的是「最后两个提交」和 tip = `e2d98149d2…` —— 那是过时的快照，已按实测重算。**
+> ⚠️ **本修复波自身还会再加提交** ⇒ 合并前请以
+> `git log --oneline ea285c5fda..base/v4.1.0-frozen` 的**实测输出**为准，不要按固定数字操作。
 > 这两个值会随推送/合并变动；**BASE 不会变**。
 
 ---
@@ -117,9 +119,9 @@ R2 外审包在 `…/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2/`（**兄弟目
 `base/v4.1.0-frozen`（PR #5928，merge commit `ea285c5fda`），所以远端 develop 的 tip 现在是
 BASE 的**后代**而非祖先（设计稿 §A5 #1 的字面检查因此不再成立）；冻结时点的 develop tip
 `8cbde5b6d3` 仍是 BASE 的祖先 ✓。远端 `base/v4.1.0-frozen` 的 tip 现为
-**`ebcf8bc2997649e333067bbb8497c1dbcdf09db3`**（= 本地 HEAD）；develop 里**还没有**冻结分支上的
-**7 个**提交（`d358289919`、`09ba360f6c`、`e2d98149d2`、`33f1c7ceb9`、`6c345db7cb`、
-`a2d0e3ecec`、`ebcf8bc299`）—— ⚠️ 旧版本这里写的是「最后两个提交」，**已按实测重算**。
+**`ebcf8bc2997649e333067bbb8497c1dbcdf09db3`**（**远端** tip；本地分支已领先它 —— 本波修复波尚未推送）；
+develop 里**还没有**冻结分支上的**7 个**提交（在远端 tip `ebcf8bc299` 处实测）——
+⚠️ 旧版本这里写的是「最后两个提交」，**已按实测重算**。
 
 ---
 
