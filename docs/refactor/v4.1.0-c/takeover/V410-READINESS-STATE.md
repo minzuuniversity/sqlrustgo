@@ -203,6 +203,9 @@ develop 里**还没有**冻结分支上的**7 个**提交（在远端 tip `ebcf8
 
 1. `cd /Volumes/workspace/dev/wt-v410-base`，确认分支 `base/v4.1.0-frozen` 与 tip。
 2. 读本文件 + `V410-READINESS-LEDGER.md`；再读 `V410-OWNER-RULING.md`（裁决请求）。
+   **还有 `V410-RESIDUAL-CHECKLIST.md`** —— 整备全程 46 条残余的**可勾选关闭清单**
+   （已关闭 12 · 已不适用 8 · 可作残余 23 · 待属主 3）；属主要逐条勾的就是它。
+   `V410-CONTROLLER-RULINGS.md` 是控制者 47 条裁决的索引，供属主复核我替他们做的决定。
 3. **9 个任务已实施完成**（Task 9 修订第 1 轮已处理 1 Important + 8 Minor；修订第 2 轮已处理 3 Important + 8 Minor；
    **最终整支评审**返回 0 Critical / 9 Important / 11 Minor，**修复波已实施完成**（re-review 判定 11 条 finding
    全部 ADDRESSED），**回归清扫已实施完成**（8 条全部 ADDRESSED），见
