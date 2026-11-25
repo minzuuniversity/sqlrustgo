@@ -125,10 +125,28 @@ OWNER_RULING_REL = "docs/refactor/v4.1.0-c/takeover/V410-OWNER-RULING.md"
 # The previously shipped value (e2d98149d2) was the commit that was created
 # AFTER the lane had already finished -- it was a copy of "the tip at the
 # time the verdict was written", not the tree the lane ran on.
-NEG_RUN_DATE_DEFAULT = "2026-11-25"
-NEG_RUN_TREE_DEFAULT = "09ba360f6cfbf0be2aa4cf7d2064c4b8b50f7958"
-NEG_LOG_DEFAULT = ("/Volumes/workspace/dev/sqlrustgo/.superpowers/sdd/"
-                    "V410-READINESS-IMPLEMENTATION-PLAN/task-9-neg-logs/run.log")
+NEG_RUN_DATE_DEFAULT = "2026-11-26"
+NEG_RUN_TREE_DEFAULT = "5324d2348c78e8fc4b9e8edb4fcece3f0359a6d1"
+# The lane log the verdict quotes by default.
+#
+# It MUST point at a log **inside the repository**: R69 requires the verdict
+# file to be reproducible from the committed tree, and a default that points
+# outside the repo makes the generator's output depend on whatever happens to
+# be on the author's disk.
+#
+# The previous default was an absolute path to a scratch log OUTSIDE the repo
+# (`/Volumes/workspace/dev/sqlrustgo/.superpowers/sdd/.../run.log`) that
+# recorded the 2026-11-25 run -- RED=5/7.  Re-running the generator without
+# `--neg-log` therefore reproduced the OLD verdict (criterion 8 = FAIL) even
+# though the tree carried the 7/7 evidence: a PASS that could not be
+# reproduced is exactly the failure class this repository's discipline exists
+# to prevent.  The default now points at the archived 7/7 run.
+#
+# The fallback tree above is only used when the log carries no `tree_sha=`
+# line; the 2026-11-26 log carries one, so the tree identity is an
+# OBSERVATION, not a reconstruction.
+NEG_LOG_DEFAULT = ("audit/v4.1.0/runs/20261126-criterion8-negfix-001/"
+                    "logs/001-neg-fixtures-two-layer.stdout")
 R2_DIR_DEFAULT = ("/Volumes/workspace/dev/workspaces/dsh-ops/projects/"
                   "DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2")
 
@@ -698,6 +716,12 @@ def main():
     # -- 8 -----------------------------------------------------------------
     cmd8 = "bash audit/v4.1.0/neg/verify_neg_fixtures.sh"
     neg_log = args.neg_log
+    # A relative --neg-log is resolved against the REPOSITORY, not against the
+    # current working directory: the default points at a path inside the repo
+    # (audit/v4.1.0/runs/...), and the caller may well be running from
+    # somewhere else.  An absolute path is used as given.
+    if not os.path.isabs(neg_log):
+        neg_log = os.path.join(repo, neg_log)
     # Two DIFFERENT provenances, and the verdict must not mix them up:
     #   * the lane was run BY THIS SCRIPT  -> the tree is an OBSERVATION
     #     (`git rev-parse HEAD` right before the run);
