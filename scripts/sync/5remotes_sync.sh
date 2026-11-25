@@ -63,8 +63,9 @@
 #                scripts/sync/5remotes_sync.sh main gitea250
 #
 #   scripts/sync/5remotes_sync.sh --all
-#       Sync develop/v4.1.0 + main + release/v4.0.0 (the canonical
-#       post-v4.0.0 trio) using gitea252 as the source of truth.
+#       Sync develop/v4.1.0 + main + release/v4.0.0 + base/v4.1.0-frozen
+#       (the canonical post-v4.0.0 set) using gitea252 as the source of
+#       truth.
 #
 # Exit codes:
 #   0 — all 5 remotes hold the target tip (verified against the servers)
@@ -82,7 +83,17 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT" || exit 1
 
-ALL_BRANCHES=("develop/v4.1.0" "main" "release/v4.0.0")
+ALL_BRANCHES=("develop/v4.1.0" "main" "release/v4.0.0" "base/v4.1.0-frozen")
+
+# `base/v4.1.0-frozen` is the frozen baseline ref the v4.1.0 readiness work
+# is bound to (`docs/refactor/v4.1.0-c/takeover/BASELINE_FREEZE.json` →
+# `source_ref`).  It was NOT in this list until 2026-11-26, so the branch
+# existed on gitea252/gitee but never reached the other mirrors -- the
+# github mirror did not have it at all (measured: 936610b6 on 252/gitee/gitcode
+# /mz/gitea250, absent on github).  The mirror copy is what an auditor
+# compares against, so a missing branch there is a coverage gap, not a
+# harmless difference.  It is an ancestor of develop/v4.1.0, so pushing it
+# is a fast-forward everywhere and cannot diverge.
 
 # ── SSH 通道选项（唯一来源）────────────────────────────────────────────────
 #
