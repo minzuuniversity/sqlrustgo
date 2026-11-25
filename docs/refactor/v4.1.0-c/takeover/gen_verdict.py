@@ -106,6 +106,12 @@ TOOLS = "docs/releases/v4.1.0/refactoring/tools"
 VERDICT_REL = "docs/refactor/v4.1.0-c/takeover/V410-READINESS-VERDICT.json"
 VERIFIER_REL = "docs/refactor/v4.1.0-c/takeover/verify_r2_package.py"
 OWNER_RULING_REL = "docs/refactor/v4.1.0-c/takeover/V410-OWNER-RULING.md"
+# The two CODEOWNERS files that can name an owner for the ruling document.
+# They are read as a UNION: an author is accepted when EITHER file registers
+# the identity for that path.
+CODEOWNERS_RELS = ("CODEOWNERS", ".github/CODEOWNERS")
+# The owner baseline for the ASSERTION_UNREVIEWABLE set (criterion 6).
+UNREVIEWED_BASELINE_REL = "tests/baseline/oracle_unreviewed_registry.json"
 
 # The ALPHA negative-fixture lane: the run whose result the verdict quotes.
 # These three are PROPERTIES OF THAT RUN, not of the repository -- the log does
@@ -282,6 +288,204 @@ def owner_approved_reviewers(repo):
         if name:
             names.append(name)
     return names, None
+
+
+# ---------------------------------------------------------------------------
+# Criterion 6 hardening (owner instruction, 2026-11-26).
+#
+# The reviewer list is a Markdown table inside the owner's ruling document.
+# Without a provenance check, ANY commit that edits that table can put a name
+# into it -- and criterion 6 then accepts that name as a qualified signer.
+# The two checks below make both bypasses machine-visible:
+#
+#   1. the list's provenance  -- who last changed the block, and is that
+#      identity an owner of the document per CODEOWNERS;
+#   2. the UNREVIEWABLE set   -- a case may leave the owner baseline, it may
+#      not enter it silently (that is the "mark 43 UNREVIEWABLE, sign 1" move).
+#
+# Both fail CLOSED: an unreadable input is a FAIL, never a PASS.
+# ---------------------------------------------------------------------------
+
+
+def reviewer_block(text):
+    """The OWNER_APPROVED_REVIEWERS block of a ruling document ("" if absent)."""
+    if not text:
+        return ""
+    if REVIEWER_LIST_BEGIN not in text or REVIEWER_LIST_END not in text:
+        return ""
+    return text.split(REVIEWER_LIST_BEGIN, 1)[1].split(REVIEWER_LIST_END, 1)[0]
+
+
+def _codeowners_pattern_matches(pattern, path):
+    """A deliberately small CODEOWNERS matcher.
+
+    Supported: the default `*`, an exact path, and a directory prefix
+    (`dir/`).  Anything else (globs with `**`, negation `!`) returns None --
+    "this matcher did not understand the pattern" -- so the caller reports
+    it instead of pretending the pattern was understood.
+    """
+    pattern = pattern.strip()
+    if not pattern or pattern.startswith("#"):
+        return None
+    if pattern == "*":
+        return True
+    if pattern.startswith("!"):
+        return None
+    if pattern.endswith("/"):
+        return path.startswith(pattern)
+    if any(ch in pattern for ch in "*?["):
+        return None
+    return path == pattern.lstrip("/") or path == pattern
+
+
+def codeowners_owners_for(repo, path):
+    """Owner handles registered for `path` by the CODEOWNERS files.
+
+    Within one file the LAST matching pattern wins (CODEOWNERS semantics);
+    across the two files the result is the UNION of what each file names.
+
+    Returns (owners, unsupported_patterns).
+    """
+    owners, unsupported = set(), []
+    for rel in CODEOWNERS_RELS:
+        p = os.path.join(repo, rel)
+        if not os.path.isfile(p):
+            continue
+        file_owners = None
+        for line in open(p, encoding="utf-8"):
+            line = line.split("#", 1)[0].strip()
+            if not line:
+                continue
+            parts = line.split()
+            pattern, handles = parts[0], parts[1:]
+            m = _codeowners_pattern_matches(pattern, path)
+            if m is None:
+                unsupported.append("%s: %s" % (rel, pattern))
+                continue
+            if m:
+                file_owners = {h.lstrip("@") for h in handles}
+        if file_owners:
+            owners |= file_owners
+    return owners, unsupported
+
+
+def reviewer_list_provenance(repo):
+    """Provenance of the owner-approved reviewer list.
+
+    The list is trusted only when BOTH hold:
+      * the last commit that changed the block was authored by an identity
+        that CODEOWNERS registers as an owner of the ruling document;
+      * the working tree carries no uncommitted change to the document.
+
+    Returns a dict with:
+      ok, reason, owners, last_change {sha,name,email} | None,
+      dirty, unsupported_patterns
+    """
+    out = {"ok": False, "reason": "", "owners": set(), "last_change": None,
+           "dirty": False, "unsupported_patterns": []}
+    path = os.path.join(repo, OWNER_RULING_REL)
+    if not os.path.isfile(path):
+        out["reason"] = "%s 不存在" % OWNER_RULING_REL
+        return out
+
+    owners, unsupported = codeowners_owners_for(repo, OWNER_RULING_REL)
+    out["owners"] = owners
+    out["unsupported_patterns"] = unsupported
+
+    rc, head_text = run("git show HEAD:%s" % OWNER_RULING_REL, repo)
+    if rc != 0:
+        out["reason"] = "HEAD 上读不到 %s（该文件未提交？）" % OWNER_RULING_REL
+        return out
+    work_text = open(path, encoding="utf-8").read()
+    block_head = reviewer_block(head_text)
+    block_work = reviewer_block(work_text)
+    if not block_head:
+        out["reason"] = ("属主授权名单的标记块不存在（%s … %s）—— 名单为空 ⇒ 判据 6 判 FAIL"
+                         % (REVIEWER_LIST_BEGIN, REVIEWER_LIST_END))
+        return out
+
+    dirty_out = run("git status --porcelain -- %s" % OWNER_RULING_REL, repo)[1].strip()
+    out["dirty"] = bool(dirty_out)
+    if block_work != block_head:
+        out["reason"] = "工作区里的名单块与 HEAD 不一致（有未提交的改动）"
+        return out
+    if dirty_out:
+        out["reason"] = "%s 有未提交的改动（git status 非空）" % OWNER_RULING_REL
+        return out
+
+    # The last commit that changed the BLOCK (not merely the file).
+    last = None
+    for sha in run("git log --format=%%H -- %s" % OWNER_RULING_REL, repo)[1].split():
+        cur = reviewer_block(run("git show %s:%s" % (sha, OWNER_RULING_REL), repo)[1])
+        parents = run("git rev-list --parents -n 1 %s" % sha, repo)[1].split()[1:]
+        prev = ""
+        if parents:
+            prev = reviewer_block(run("git show %s:%s" % (parents[0], OWNER_RULING_REL), repo)[1])
+        if cur != prev:
+            last = sha
+            break
+    if not last:
+        out["reason"] = "在 git 历史里找不到改动过名单块的提交（名单块从未被提交？）"
+        return out
+
+    rc, ident = run("git show -s --format=%%an%%x1f%%ae %s" % last, repo)
+    if rc != 0:
+        out["reason"] = "读不出提交 %s 的作者" % last[:12]
+        return out
+    name, _, email = ident.strip().partition("\x1f")
+    out["last_change"] = {"sha": last, "name": name, "email": email}
+
+    if not owners:
+        out["reason"] = ("CODEOWNERS（%s）没有为 %s 登记属主身份 ⇒ 无法核对名单的来源"
+                         % (" / ".join(CODEOWNERS_RELS), OWNER_RULING_REL))
+        return out
+    lowered = {o.lower() for o in owners}
+    name_l = name.strip().lower()
+    mail_l = email.split("@")[0].strip().lower()
+    if name_l not in lowered and mail_l not in lowered:
+        out["reason"] = ("名单块最后一次改动由 `%s <%s>`（%s）提交，但该身份不在 CODEOWNERS 为该文件"
+                         "登记的属主名单里（%s）—— 名单被非属主改动"
+                         % (name, email, last[:12], ", ".join(sorted(owners))))
+        return out
+    out["ok"] = True
+    return out
+
+
+def unreviewed_baseline_check(repo, l1_cases):
+    """The ASSERTION_UNREVIEWABLE set must stay inside the owner baseline.
+
+    Returns (ok, reason, detail).  Fail-closed: a missing baseline file is a
+    FAIL, never a PASS.
+    """
+    p = os.path.join(repo, UNREVIEWED_BASELINE_REL)
+    if not os.path.isfile(p):
+        return False, ("属主基线 %s 不存在 ⇒ 无法核对「不可判定」集合（fail-closed）"
+                       % UNREVIEWED_BASELINE_REL), {}
+    try:
+        data = json.load(open(p, encoding="utf-8"))
+    except Exception as exc:                      # noqa: BLE001 - reported, not raised
+        return False, "属主基线 %s 读不出来（%s）" % (UNREVIEWED_BASELINE_REL, exc), {}
+    allowed = set(data.get("allowed_case_ids") or [])
+    current, without_reason = set(), []
+    for c in l1_cases:
+        if str(c.get("assertion_review_verdict")) != "ASSERTION_UNREVIEWABLE":
+            continue
+        cid = c.get("case_id")
+        current.add(cid)
+        if not str(c.get("assertion_review_reason") or "").strip():
+            without_reason.append(cid)
+    extra = sorted(x for x in current - allowed if x)
+    detail = {"allowed": len(allowed), "current": len(current),
+              "not_in_baseline": extra,
+              "without_reason": sorted(x for x in without_reason if x),
+              "left_the_baseline": sorted(x for x in allowed - current if x)}
+    if extra:
+        return False, ("有 %d 条用例被标成 ASSERTION_UNREVIEWABLE，但不在属主基线 %s 内：%s"
+                       % (len(extra), UNREVIEWED_BASELINE_REL, ", ".join(extra))), detail
+    if without_reason:
+        return False, ("有 %d 条 ASSERTION_UNREVIEWABLE 用例缺 assertion_review_reason：%s"
+                       % (len(without_reason), ", ".join(sorted(x for x in without_reason if x)))), detail
+    return True, "", detail
 
 
 def lane_relevant_changes(repo, a, b):
@@ -578,6 +782,10 @@ def main():
     signed_now = sum(1 for c in l1
                      if str(c.get("assertion_reviewed_by") or "").strip())
 
+    # -- the two owner-instructed hardening checks (2026-11-26) --------------
+    prov = reviewer_list_provenance(repo)
+    unrev_ok, unrev_reason, unrev_detail = unreviewed_baseline_check(repo, l1)
+
     cond6 = {
         "c6_verify_matrix_exit_0": (rc6 == 0),
         "c6_diff_table_exists_and_header_matches": bool(hdr_ok),
@@ -585,6 +793,10 @@ def main():
         "c6_owner_approved_reviewer_list_present": (approved is not None),
         "c6_at_least_one_case_judged_pass": (len(judged_pass) > 0),
         "c6_every_judged_pass_case_qualified_signer": (len(unqualified) == 0),
+        # -- appended by the owner's instruction of 2026-11-26 (stricter only)
+        "c6_owner_approved_reviewer_list_non_empty": bool(approved),
+        "c6_reviewer_list_provenance_is_owner": bool(prov["ok"]),
+        "c6_unreviewed_set_within_owner_baseline": bool(unrev_ok),
     }
     c6_pass = all(cond6.values())
 
@@ -597,7 +809,24 @@ def main():
 
     unqual_txt = ("；".join("%s：%s" % (cid, "、".join(why)) for cid, why in unqualified)
                   if unqualified else "无")
-    # The gate is `all(cond6.values())` over SIX keys.  ALL SIX are printed
+
+    # The two owner-instructed hardening checks, in one line each.
+    if prov["ok"]:
+        lc = prov["last_change"] or {}
+        prov_txt = ("OK —— 名单块最后一次改动由 `%s <%s>`（%s）提交，该身份在 CODEOWNERS 登记的"
+                    "属主名单（%s）内；工作区无未提交改动"
+                    % (lc.get("name"), lc.get("email"), str(lc.get("sha", ""))[:12],
+                       ", ".join(sorted(prov["owners"]))))
+    else:
+        prov_txt = "**不通过** —— " + (prov["reason"] or "原因未知")
+    if unrev_ok:
+        unrev_txt = ("OK —— 当前 %d 条 ASSERTION_UNREVIEWABLE 全部在属主基线 %s 内，且都带原因码"
+                     % (unrev_detail.get("current", 0), UNREVIEWED_BASELINE_REL))
+    else:
+        unrev_txt = "**不通过** —— " + (unrev_reason or "原因未知")
+    # The gate is `all(cond6.values())` over NINE keys (six from the 2026-11-25
+    # rewrite plus three appended by the owner's instruction of 2026-11-26).
+    # ALL of them are printed
     # here, with their machine key names: printing only four of them would let
     # a reader see "four True" and then a FAIL with no reason, because the
     # two missing keys (`..._reviewer_list_present`, `..._at_least_one_case_
@@ -622,7 +851,9 @@ def main():
             "【本脚本计算】判定为「可独立判定」（即被判 PASS、待副签）的用例 = %d 条；"
             "其中签署人合格的 = %d 条，不合格的 = %d 条\n"
             "【本脚本计算】%s\n"
-            "【本脚本计算】判据 6 的机器门槛 = `all(cond6.values())`，覆盖**六个**键：\n"
+            "【本脚本计算】名单来源核对（2026-11-26 属主指示追加）：%s\n"
+            "【本脚本计算】「不可判定」集合核对（2026-11-26 属主指示追加）：%s\n"
+            "【本脚本计算】判据 6 的机器门槛 = `all(cond6.values())`，覆盖**九个**键：\n"
             "%s\n"
             "为假的键：%s\n"
             "签署人不合格的用例：%s\n"
@@ -633,6 +864,7 @@ def main():
                verdicts, by, signed_now,
                len(judged_pass), len(qualified), len(unqualified),
                list_state,
+               prov_txt, unrev_txt,
                c6_lines,
                c6_fail_txt,
                unqual_txt,
@@ -647,8 +879,14 @@ def main():
             "**机器门槛比那四条多两个防空判的检查**：`c6_owner_approved_reviewer_list_present`"
             "（名单必须存在且可读）与 `c6_at_least_one_case_judged_pass`"
             "（至少有一条被判 PASS 的用例）—— 没有它们，条件 (4) 在「零条被判 PASS」时会**空判为真**，"
-            "判据 6 会被错误地判成 PASS。**因此 `observed` 里逐条打印全部六个键**"
-            "（编号 (1)…(6) 即 `cond6` 的插入序），FAIL 时能直接读出是哪一条不成立。\n"
+            "判据 6 会被错误地判成 PASS。**因此 `observed` 里逐条打印全部九个键**"
+            "（编号 (1)…(6) 是 2026-11-25 重写的六条；**追加的三条**见下），FAIL 时能直接读出是哪一条不成立。\n"
+            "**追加的三条（属主 2026-11-26 指示，只加严、不放宽）**："
+            "(7) `c6_owner_approved_reviewer_list_non_empty` —— 名单非空（兑现 §3.1.1「名单为空 ⇒ 一律判 FAIL」）；"
+            "(8) `c6_reviewer_list_provenance_is_owner` —— 名单块**最后一次改动**必须由 CODEOWNERS 为该文件登记的"
+            "属主身份提交，且工作区无未提交改动（否则任何人改一下表格就能把自己写进名单）；"
+            "(9) `c6_unreviewed_set_within_owner_baseline` —— `ASSERTION_UNREVIEWABLE` 的集合不得超过属主基线 "
+            "`%s`（用例可以**离开**基线，不能**悄悄进入**；否则「43 条标不可判定 + 1 条签名」即可绕过）。\n"
             "名单从 `%s` 的 `%s … %s` 标记块读取（第一列是序号的行才算数）。\n"
             "**名单为空 ⇒ 一律判 FAIL**；已判 PASS 但签署人不合格 ⇒ **判 FAIL**。\n"
             "旧逻辑只数「`assertion_review_verdict` 非空」这一个字段、**从不看是谁签的**，"
@@ -657,8 +895,13 @@ def main():
             "**事实来源**：`docs/refactor/v4.1.0-c/takeover/V410-READINESS-LEDGER.md`（R-ORACLE、"
             "R40–R42、Task 7 评审第 1 轮）、`%s` 的 §3.1 属主授权 Reviewer 名单、"
             "`docs/refactor/v4.1.0-c/takeover/ORACLE-REVIEW-LOG-T1.md` §0。"
-            % (OWNER_RULING_REL, REVIEWER_LIST_BEGIN, REVIEWER_LIST_END, OWNER_RULING_REL)),
+            % (UNREVIEWED_BASELINE_REL, OWNER_RULING_REL, REVIEWER_LIST_BEGIN,
+               REVIEWER_LIST_END, OWNER_RULING_REL)),
         "verdict": "PASS" if c6_pass else "FAIL",
+        # The nine machine keys, structured -- the `observed` text is for
+        # humans, this field is for the negative fixtures (and for anything
+        # else that must read the criterion's state without parsing prose).
+        "conditions": cond6,
     })
 
     # -- 7 -----------------------------------------------------------------

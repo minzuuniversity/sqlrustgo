@@ -310,6 +310,42 @@ PASS 需**同时**满足以下**六条** —— 机器门槛是 `all(cond6.value
 后果是：**属主指认 Reviewer 这个动作本身，会仅凭一个字段值把 #6 翻成 PASS。**
 这正是 Task 7 评审第 1 轮点名留给 Task 9 的义务（台账 `:174`）。
 
+#### 3.1.1.1 补记（属主指示，2026-11-26）：名单的**来源**要能核对，判据 4/6 要有负向夹具
+
+> 依据：远端只读分析（GitHub issue #1926，T-H「判据 #4/#6 没有任何负向夹具」）与
+> `docs/releases/v4.1.0/evidence/BASELINE_FOLLOWUP_1926_2026-11-25.md`。
+> **性质**：只**加严**，不放宽；不改前六条的措辞与编号，追加三条。
+
+**追加的三条机器条件**（编号 (7)…(9)，键名即生成器原文；`observed` 现在逐条打印**九个**键）：
+
+| # | 键 | 规则 | 为什么 |
+|---|---|---|---|
+| (7) | `c6_owner_approved_reviewer_list_non_empty` | 名单非空 | 兑现本节上方已写明但**代码未兑现**的一条：「名单为空 ⇒ 一律判 FAIL」（原实现只判 `approved is not None`，空名单能过这一键） |
+| (8) | `c6_reviewer_list_provenance_is_owner` | 名单块**最后一次改动**必须由 CODEOWNERS 为该文件登记的属主身份提交，且工作区无未提交改动 | 名单是仓内的一张 Markdown 表：**任何人都能改表格把自己写进去**，然后矩阵里的 `assertion_reviewed_by` 就能指向一个「名单内」的假签署人。身份来源锚在 `CODEOWNERS` / `.github/CODEOWNERS` 新增的一行：`/docs/refactor/v4.1.0-c/takeover/V410-OWNER-RULING.md @yinglichina8848` |
+| (9) | `c6_unreviewed_set_within_owner_baseline` | `ASSERTION_UNREVIEWABLE` 的集合必须落在属主基线 `tests/baseline/oracle_unreviewed_registry.json` 内，且每条都带 `assertion_review_reason` | `judged_pass` 排除 `ASSERTION_UNREVIEWABLE` ⇒ **缩小这个集合就不用拿出合格签名**。原绕过路径：「43 条标不可判定 + 1 条签名」⇒ 六个键全真。用例可以**离开**基线（拿到独立判定），不能**悄悄进入** |
+
+**属主怎么改名单**：用 CODEOWNERS 登记的身份提交（git author name 或 email local-part 与
+`@yinglichina8848` 匹配）—— 生成器按「名单块最后一次改动的提交作者」核对。
+工作区里有未提交的改动也会判 FAIL（防止本地改表 + 本地跑生成器）。
+
+**负向夹具**（三条，都在 `audit/v4.1.0/neg/`，用 `bash fxNN-*.sh <scratch-tree>` 跑）：
+
+| 夹具 | `expect` | 证明什么 |
+|---|---|---|
+| `fx23-criterion6-reviewer-list-edited-by-non-owner.sh` | red | 名单由**非属主**身份改动 ⇒ (8) 由 True 翻成 False（控制臂用属主身份改 ⇒ True） |
+| `fx24-criterion6-unreviewed-mass-marked.sh` | red | 把 L1 切片「除一条外全标 UNREVIEWABLE + 那一条签名」⇒ (9) 翻成 False，并列出多出来的 case_id |
+| `fx25-criterion4-pending-rule-not-isolatable.sh` | green-characterization | **已知洞**：判据 4 的 pending 规则**无法用改树来隔离**——handoff manifest 绑死了任务 DAG 的 sha256，任何改动都先触发 `verify_handoff.py:552` 的哈希断言，校验器提前退出、根本不打印 pending 列表 ⇒ 判据 4 只能因退出码而 FAIL。补这个洞需要一个「喂合成 DAG」的 harness（属主决定） |
+
+**R55 的偏离（须属主知悉）**：R55 要求「新夹具**必须**在台账登记」。但
+`docs/releases/v4.1.0/NEG_FIXTURES_v4.1.0.jsonl` 的每一行必须落在
+`GATE_CATALOG.jsonl` 的 168 道**门禁**里（`probe_neg_fixtures.py` 对台账外的行报
+`ROW-OUTSIDE-CATALOG`），而 `gen_verdict.py` / `verify_handoff.py` **不是门禁**，
+把它们登记进台账会让 `probe_neg_fixtures.py check` 变红、并撞上
+`gen_neg_ledger.py` 的 `len(rows) == len(scope) + 2` 断言。
+⇒ 本轮三条夹具**未**进门禁台账，登记落在此处（属主可见、可复算）。后续两条路（属主选）：
+(a) 新开一份「非门禁夹具台账」文件 + 对应校验器；(b) 把判据 #4/#6 的校验器升级为门禁
+（**改 168 分母**，属主专属）。
+
 #### 3.1.2 R19 覆盖损失的披露（Task 1 裁决 R19 要求的补记）
 
 > **R19 的原文**（台账 `:80`）：「接受『B3 不再对 179 个导入路径做内容比对』这一覆盖损失 ——

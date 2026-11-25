@@ -39,3 +39,8 @@
 
 # 发布
 /docs/releases/ @yinglichina8848
+
+# 属主裁决文件 —— 判据 6 的机器输入（owner-approved Reviewer 名单）。
+# 只有属主身份能改那张名单：判据 6 的 `c6_reviewer_list_provenance_is_owner`
+# 按本行核对「名单块最后一次改动的提交作者」，改名单必须用属主身份提交。
+/docs/refactor/v4.1.0-c/takeover/V410-OWNER-RULING.md @yinglichina8848
