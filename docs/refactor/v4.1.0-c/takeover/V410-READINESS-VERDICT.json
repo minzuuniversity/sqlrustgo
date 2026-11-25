@@ -1,11 +1,13 @@
 {
   "format": "v410-readiness-verdict/v1",
-  "generated_by": "Task 9 实施者（V410-READINESS-IMPLEMENTATION-PLAN / Task 9 Step 1）",
-  "generated_at": "2026-11-25T12:18:26+0800",
+  "generated_by": "docs/refactor/v4.1.0-c/takeover/gen_verdict.py（Task 9 实施者；控制者裁定 R69：生成器入仓，裁决文件可从已提交的树复现）",
+  "generated_at": "2026-11-25T12:28:38+0800",
+  "generated_at_note": "本 JSON 的**生成**时刻。它**不是**判据 8 的实测时刻（那条泳道耗时 1–2 小时，本轮未重跑；它的实测日期与树见 criteria[7].observed）。",
   "repo": "/Volumes/workspace/dev/wt-v410-base",
   "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-  "develop_tip": "8cbde5b6d33c876fa1197474c46d50142a9823bd",
-  "note": "每条判据的 command 都由 gen_verdict.py 真的执行；observed 是该次执行的退出码与真实输出摘要。判据 6 与判据 8 为 FAIL（见各自的归因）。计划正文验收段写的「11 条 PASS + 1 条 WAIVED」是 Task 7/10 之前的乐观预期；差额来自判据 6 与判据 8 两条，以实测为准（R63）。",
+  "develop_tip_frozen_at_baseline": "8cbde5b6d33c876fa1197474c46d50142a9823bd",
+  "develop_tip_note": "**冻结时点**的 develop tip（= BASE 的 parent，记于 BASELINE_FREEZE.json）。live develop tip 会前移，实测值见 criteria[0].observed。",
+  "note": "每条判据的 command 都由本文件（gen_verdict.py，已入仓）真的执行；observed 是该次执行的退出码与真实输出摘要。计划正文验收段写的「11 条 PASS + 1 条 WAIVED」是 Task 7/10 之前的乐观预期，以实测为准（R63）；本次实测的 FAIL 是判据 #4、#6、#8 共 3 条（判据 4（映射层：A2.2 R1 未满足）、判据 6（签署层：Oracle 副签 0 条）、判据 8（证据层：夹具泳道未达 7/7））。",
   "summary": {
     "total": 12,
     "pass": 8,
@@ -22,11 +24,11 @@
       "id": 1,
       "criterion": "BASE（内容基线）唯一、develop tip 是其祖先、含 BASE 的分支已推送",
       "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_baseline.py --strict\ngit ls-remote origin refs/heads/base/v4.1.0-frozen\ngit merge-base --is-ancestor fd849ae20541901d5e59f45cd3ba2c51093f5d5e e2d98149d264b9cdbc7270229f3cd498b61e6072\ngit ls-remote origin refs/heads/develop/v4.1.0\ngit merge-base --is-ancestor ea285c5fda77e7790e965ae482e3c1b015fabc10 fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "observed": "exit=0\n[B1] PASS  develop tip 8cbde5b6d3 is an ancestor of HEAD\n[B2] PASS  base_sha fd849ae205, tree_sha 72d378e8e5, source_ref base/v4.1.0-frozen and frozen_at all match the repository\n[B3] PASS  123 material file(s) + 56 runtime-contract file(s) imported over develop, all still present in HEAD\n[B4] PASS  ledger complete (applied 1 / path-import 1 / already-present 3); the frozen path-import directory holds 56 file(s)\n4/4 PASS -- COMPLETE: every assertion ran\ngit ls-remote origin refs/heads/base/v4.1.0-frozen -> e2d98149d264b9cdbc7270229f3cd498b61e6072 (exit=0)\ngit merge-base --is-ancestor fd849ae20541901d5e59f45cd3ba2c51093f5d5e e2d98149d264b9cdbc7270229f3cd498b61e6072 -> exit=0 (是)\ngit ls-remote origin refs/heads/develop/v4.1.0 -> ea285c5fda77e7790e965ae482e3c1b015fabc10 (exit=0)\ngit merge-base --is-ancestor ea285c5fda77e7790e965ae482e3c1b015fabc10 fd849ae20541901d5e59f45cd3ba2c51093f5d5e -> exit=1 (否)\n本地分支 tip = e2d98149d264b9cdbc7270229f3cd498b61e6072；远端 base/v4.1.0-frozen tip 是 BASE 的后代 = 是",
+      "observed": "exit=0\n[B1] PASS  develop tip 8cbde5b6d3 is an ancestor of HEAD\n[B2] PASS  base_sha fd849ae205, tree_sha 72d378e8e5, source_ref base/v4.1.0-frozen and frozen_at all match the repository\n[B3] PASS  123 material file(s) + 56 runtime-contract file(s) imported over develop, all still present in HEAD\n[B4] PASS  ledger complete (applied 1 / path-import 1 / already-present 3); the frozen path-import directory holds 56 file(s)\n4/4 PASS -- COMPLETE: every assertion ran\ngit ls-remote origin refs/heads/base/v4.1.0-frozen -> e2d98149d264b9cdbc7270229f3cd498b61e6072 (exit=0)\ngit merge-base --is-ancestor fd849ae20541901d5e59f45cd3ba2c51093f5d5e e2d98149d264b9cdbc7270229f3cd498b61e6072 -> exit=0 (是)\ngit ls-remote origin refs/heads/develop/v4.1.0 -> ea285c5fda77e7790e965ae482e3c1b015fabc10 (exit=0)\ngit merge-base --is-ancestor ea285c5fda77e7790e965ae482e3c1b015fabc10 fd849ae20541901d5e59f45cd3ba2c51093f5d5e -> exit=1 (否)\n本地分支 tip = 6c345db7cb3b66b3cf917c89e6352d9ae5104d01；远端 base/v4.1.0-frozen tip 是 BASE 的后代 = 是",
       "verdict": "PASS",
       "caveats": [
         "判据按**计划正文 Step 1 的命令**判：verify_baseline.py --strict（4/4）+ `git ls-remote origin refs/heads/base/v4.1.0-frozen` 的 tip 须是 BASE 的后代（成立）。",
-        "**设计稿 §A5 #1 的另一条可核方式**（`git merge-base --is-ancestor origin/develop/v4.1.0 BASE`）在本次实测中**不成立**：远端 develop/v4.1.0 的 tip 已是 ea285c5fda77e7790e965ae482e3c1b015fabc10 —— 它是 BASE 的**后代**而非祖先。原因是本任务运行期间（10:00 与 12:05 之间）develop/v4.1.0 被合并了 `base/v4.1.0-frozen`（PR #5928，merge commit ea285c5fda）。这不是 BASE 的缺陷，而是**冻结分支已被并入 develop**（= O11 事实上已被行动回答）。判据 1 的三项实质条件仍全部成立：BASE 唯一 ✓；**冻结时点的 develop tip** 8cbde5b6d3 是 BASE 的祖先 ✓（BASELINE_FREEZE.json 记录，verify_baseline 的 B1 用的就是它）；含 BASE 的分支已推送 ✓（远端 `base/v4.1.0-frozen` 的 tip 现为 e2d98149d264b9cdbc7270229f3cd498b61e6072）。"
+        "**设计稿 §A5 #1 的另一条可核方式**（`git merge-base --is-ancestor origin/develop/v4.1.0 BASE`）在本次实测中**不成立**：远端 develop/v4.1.0 的 tip 已是 ea285c5fda77e7790e965ae482e3c1b015fabc10 —— 它是 BASE 的**后代**而非祖先。原因是 develop/v4.1.0 被合并了 `base/v4.1.0-frozen`（PR #5928，merge commit ea285c5fda）—— 冻结分支已被并入 develop（= O11 事实上已被行动回答）。这不是 BASE 的缺陷。判据 1 的三项实质条件仍全部成立：BASE 唯一 ✓；**冻结时点的 develop tip** 8cbde5b6d33c 是 BASE 的祖先 ✓（BASELINE_FREEZE.json 记录，verify_baseline 的 B1 用的就是它）；含 BASE 的分支已推送 ✓（远端 `base/v4.1.0-frozen` 的 tip 现为 e2d98149d264b9cdbc7270229f3cd498b61e6072）。"
       ]
     },
     {
@@ -47,14 +49,14 @@
       "id": 4,
       "criterion": "ADR 机器字段非空、档位正确、映射满足 A2.2 五条规则",
       "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_handoff.py --check",
-      "observed": "exit=0（校验器全绿）\n\"adr_approval\": \"CONDITIONALLY_APPROVED\"\n\"adr_approval_state\": \"PENDING\"\n\"tasks_with_empty_approved_adr_refs\": 1\n\"mutation_rejections\"（11 条变异臂全部被拒）：cycle, missing, unapproved_dispatch, unapproved_adr, human_gate_removed, cloud_policy, later_stage_task, native_extra_field, tier_overreach, unapproved_adr_still_proposed\n\"notes\": \"1 of 18 task(s) still carry an empty approved_adr_refs -- the owner's ADR decision is PENDING, not verified\"\n\n**判据不满足的原因**（三条互相独立的事实）：\n(1) 计划正文 Step 4 的口径：「O1（`ADAPTER-MAPPING-PENDING.md` 中的 task 列表，**若非空则 A5 #4 不能判 PASS**）」——该清单**非空**：`docs/refactor/v4.1.0-c/takeover/ADAPTER-MAPPING-PENDING.md` 有 `| C01-15 | … |` 一行，并写明其 `approved_adr_refs` 保持 `[]`。\n(2) 判据自身的措辞「**映射满足 A2.2 五条规则**」：A2.2 **R1** = 「每个 task 的 `approved_adr_refs` 至少 1 项」——C01-15 违反 R1（该清单明写「R1 与 R2 冲突时以 R2 为准：该包保持 `[]`」，即**明知违反 R1 而保留**）。\n(3) 校验器**不担保 R1**：`verify_handoff.py:383-384` 在 `refs` 为空时**直接 return**；且它自己的输出是反面证据 —— `\"adr_approval_state\": \"PENDING\"` 与 note 「the owner's ADR decision is PENDING, not verified」。\n⇒ `--check` 退出 0 只说明「可核方式里的那几条断言成立」，**不等于**判据 4 成立。按 R63「不得为了让总数好看而改判、拆分或重定义判据」，判据 4 = **FAIL**（缺口在**映射层**：需属主裁决补 ADR 引用 vs 豁免）。",
+      "observed": "exit=0（校验器全绿）\n\"adr_approval\": \"CONDITIONALLY_APPROVED\"\n\"adr_approval_state\": \"PENDING\"\n\"tasks_with_empty_approved_adr_refs\": 1\n\"mutation_rejections\"（**10 条**变异臂全部被拒）：cycle, missing, unapproved_dispatch, unapproved_adr, human_gate_removed, cloud_policy, later_stage_task, native_extra_field, tier_overreach, unapproved_adr_still_proposed\n\"notes\": \"1 of 18 task(s) still carry an empty approved_adr_refs -- the owner's ADR decision is PENDING, not verified\"\n\n**判据不满足的原因**（三条互相独立的事实）：\n(1) 计划正文 Step 4 的口径：「O1（`ADAPTER-MAPPING-PENDING.md` 中的 task 列表，**若非空则 A5 #4 不能判 PASS**）」——该清单**非空**：`docs/refactor/v4.1.0-c/takeover/ADAPTER-MAPPING-PENDING.md` 有 `| C01-15 | … |` 一行，并写明其 `approved_adr_refs` 保持 `[]`。\n(2) 判据自身的措辞「**映射满足 A2.2 五条规则**」：A2.2 **R1** = 「每个 task 的 `approved_adr_refs` 至少 1 项」——C01-15 违反 R1（该清单明写「R1 与 R2 冲突时以 R2 为准：该包保持 `[]`」，即**明知违反 R1 而保留**）。\n(3) 校验器**不担保 R1**：`verify_handoff.py:383-384` 在 `refs` 为空时**直接 return**；且它自己的输出是反面证据 —— `\"adr_approval_state\": \"PENDING\"` 与 note 「the owner's ADR decision is PENDING, not verified」。\n⇒ `--check` 退出 0 只说明「可核方式里的那几条断言成立」，**不等于**判据 4 成立。按 R63「不得为了让总数好看而改判、拆分或重定义判据」，判据 4 = **FAIL**（缺口在**映射层**：需属主裁决补 ADR 引用 vs 豁免）。",
       "verdict": "FAIL"
     },
     {
       "id": 5,
       "criterion": "manifest 零漂移",
-      "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_handoff.py --check（含 manifest 全文件哈希复算）",
-      "observed": "exit=0\n\"hara_hashed_files\": 55\n\"local_links\": 42\n\"task_dag\": \"ACYCLIC_NO_MISSING_DEPENDENCIES\"\nmanifest 绑定文件数 = 314；manifest 自身 sha256 = 8b12989eeeebb96ab14190fd85f5d2cb54af7becda5fc29693e471a1ba6f6a66",
+      "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_handoff.py --check（含 manifest 全文件哈希复算；与判据 4 同一条命令、同一次运行）",
+      "observed": "exit=0\n\"hara_hashed_files\": 55\n\"local_links\": 42\n\"task_dag\": \"ACYCLIC_NO_MISSING_DEPENDENCIES\"\nmanifest 绑定文件数 = 314；manifest 自身 sha256 = 8b12989eeeebb96ab14190fd85f5d2cb54af7becda5fc29693e471a1ba6f6a66\n\"mutation_rejections\"（**10 条**变异臂全部被拒）：cycle, missing, unapproved_dispatch, unapproved_adr, human_gate_removed, cloud_policy, later_stage_task, native_extra_field, tier_overreach, unapproved_adr_still_proposed\n（判据 5 与判据 4 跑的是**同一条** `verify_handoff.py --check`，证据同源。）",
       "verdict": "PASS"
     },
     {
@@ -75,7 +77,7 @@
       "id": 8,
       "criterion": "ALPHA 7 道负向夹具两层 RED",
       "command": "bash audit/v4.1.0/neg/verify_neg_fixtures.sh",
-      "observed": "本次实跑（同一棵树、同一命令），完整日志 /Volumes/workspace/dev/sqlrustgo/.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/task-9-neg-logs/run.log，逐夹具日志 /Volumes/workspace/dev/sqlrustgo/.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/task-9-neg-logs/fixtures//\n退出码=3\nverify_neg_fixtures: RED=5/7  INCONCLUSIVE=2/7\n逐门禁：\n  scripts/gate/check_anti_ignore_gate.sh gate=RED stage=RED\n  scripts/gate/check_arch_invariants.sh gate=RED stage=RED\n  scripts/gate/check_arch3_no_bypass.sh gate=RED stage=RED\n  scripts/gate/check_sql_corpus_gate.sh gate=RED stage=RED\n  scripts/gate/check_g1_tpch_baseline.sh gate=RED stage=RED\n  scripts/gate/check_alpha_v410.sh gate=INCONCLUSIVE stage=INCONCLUSIVE\n  scripts/gate/check_coverage_v312.sh gate=INCONCLUSIVE stage=INCONCLUSIVE",
+      "observed": "**沿用 2026-11-25 的实测值**（同一条命令 `bash audit/v4.1.0/neg/verify_neg_fixtures.sh`、同一棵树 `e2d98149d264b9cdbc7270229f3cd498b61e6072`；完整日志 /Volumes/workspace/dev/sqlrustgo/.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/task-9-neg-logs/run.log，sha256 `bcc3ecb05601ee149b936dea710703166647ebecd0bc705c3c64f5f357191e07`）\n**实测日期：2026-11-25；实测树：`base/v4.1.0-frozen` 的 tip `e2d98149d264b9cdbc7270229f3cd498b61e6072`**\n退出码=3 —— 来自脚本自身的退出码语义（`verify_neg_fixtures.sh`：RED_N==7 → 0，否则 → 3）；**不是**从日志里读的（日志末行的 `NEG_EXIT=` 是空的，不构成证据）。\nverify_neg_fixtures: RED=5/7  INCONCLUSIVE=2/7\n逐门禁：\n  scripts/gate/check_anti_ignore_gate.sh gate=RED stage=RED\n  scripts/gate/check_arch_invariants.sh gate=RED stage=RED\n  scripts/gate/check_arch3_no_bypass.sh gate=RED stage=RED\n  scripts/gate/check_sql_corpus_gate.sh gate=RED stage=RED\n  scripts/gate/check_g1_tpch_baseline.sh gate=RED stage=RED\n  scripts/gate/check_alpha_v410.sh gate=INCONCLUSIVE stage=INCONCLUSIVE\n  scripts/gate/check_coverage_v312.sh gate=INCONCLUSIVE stage=INCONCLUSIVE\n⇒ RED=5/7 ≠ 7/7 ⇒ 判据 8 = FAIL（缺口在**证据层**）。",
       "verdict": "FAIL"
     },
     {
@@ -88,14 +90,14 @@
     {
       "id": 10,
       "criterion": "外审包三套统计一致（71/71/71）",
-      "command": "python3 /Volumes/workspace/dev/workspaces/dsh-ops/projects/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2/verify_r2_package.py（判据 10 的 10 项断言）",
-      "observed": "exit=0\nevidence_index.json (SSOT): total=71 counts={'VERIFIED': 24, 'REPORTED': 41, 'NOT_RUN': 6}\nPASS  #10 EVIDENCE-INDEX.json 条数 == SSOT  -- index=71 ssot=71\nPASS  #10 EVIDENCE-INDEX.json 等级分布 == SSOT  -- index={'VERIFIED': 24, 'REPORTED': 41, 'NOT_RUN': 6} ssot={'VERIFIED': 24, 'REPORTED': 41, 'NOT_RUN': 6}\nPASS  #10 EVIDENCE-INDEX.json 的 total 字段 == 实测条数  -- field=71 measured=71\nPASS  #10 EVIDENCE-COVERAGE.md 表格行数 == SSOT  -- rows=71 ssot=71\nPASS  #10 EVIDENCE-COVERAGE.md 表格等级分布 == SSOT  -- table={'VERIFIED': 24, 'REPORTED': 41, 'NOT_RUN': 6} ssot={'VERIFIED': 24, 'REPORTED': 41, 'NOT_RUN': 6}\nPASS  #10 EVIDENCE-COVERAGE.md 行 id 无重复且有序\nPASS  #10 EVIDENCE-COVERAGE.md §2 声明的统计 == 实测  -- 合计 **71** 条，等级分布 **VERIFIED 24 / REPORTED 41 / NOT_RUN 6**\nPASS  #10 01-EXECUTIVE-SUMMARY.md 声明的总数 == 实测  -- 证据索引合计 71 条\nPASS  #10 01-EXECUTIVE-SUMMARY.md VERIFIED 计数 == 实测  -- | VERIFIED | 24 |\nPASS  #10 01-EXECUTIVE-SUMMARY.md REPORTED 计数 == 实测  -- | REPORTED | 41 |\nPASS  #10 01-EXECUTIVE-SUMMARY.md NOT_RUN 计数 == 实测  -- | NOT_RUN | 6 |\nFAIL #10：无\nR1 的漂移实测：EVIDENCE-COVERAGE.md 68 条 21/41/6、01-EXECUTIVE-SUMMARY.md 64 条 13/45/6；R2 由 evidence_index.json 单向生成后三套均为 71 条 24/41/6",
+      "command": "python3 docs/refactor/v4.1.0-c/takeover/verify_r2_package.py --r2-dir /Volumes/workspace/dev/workspaces/dsh-ops/projects/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2（判据 10 的 10 项断言）",
+      "observed": "exit=0\nevidence_index.json (SSOT): total=71 counts={'VERIFIED': 24, 'REPORTED': 41, 'NOT_RUN': 6}\nPASS  #10 EVIDENCE-INDEX.json 条数 == SSOT  -- index=71 ssot=71\nPASS  #10 EVIDENCE-INDEX.json 等级分布 == SSOT  -- index={'VERIFIED': 24, 'REPORTED': 41, 'NOT_RUN': 6} ssot={'VERIFIED': 24, 'REPORTED': 41, 'NOT_RUN': 6}\nPASS  #10 EVIDENCE-INDEX.json 的 total 字段 == 实测条数  -- field=71 measured=71\nPASS  #10 EVIDENCE-COVERAGE.md 表格行数 == SSOT  -- rows=71 ssot=71\nPASS  #10 EVIDENCE-COVERAGE.md 表格等级分布 == SSOT  -- table={'VERIFIED': 24, 'REPORTED': 41, 'NOT_RUN': 6} ssot={'VERIFIED': 24, 'REPORTED': 41, 'NOT_RUN': 6}\nPASS  #10 EVIDENCE-COVERAGE.md 行 id 无重复且有序\nPASS  #10 EVIDENCE-COVERAGE.md §2 声明的统计 == 实测  -- 合计 **71** 条，等级分布 **VERIFIED 24 / REPORTED 41 / NOT_RUN 6**\nPASS  #10 01-EXECUTIVE-SUMMARY.md 声明的总数 == 实测  -- 证据索引合计 71 条\nPASS  #10 01-EXECUTIVE-SUMMARY.md VERIFIED 计数 == 实测  -- | VERIFIED | 24 |\nPASS  #10 01-EXECUTIVE-SUMMARY.md REPORTED 计数 == 实测  -- | REPORTED | 41 |\nPASS  #10 01-EXECUTIVE-SUMMARY.md NOT_RUN 计数 == 实测  -- | NOT_RUN | 6 |\nFAIL #10：无\nR1 的漂移实测：EVIDENCE-COVERAGE.md 68 条 21/41/6、01-EXECUTIVE-SUMMARY.md 64 条 13/45/6；R2 由 evidence_index.json 单向生成后三套均为 71 条 24/41/6\n校验器 = **本仓副本** `docs/refactor/v4.1.0-c/takeover/verify_r2_package.py`（R69：生成/校验器都进仓，裁决文件可从已提交的树复现）；R2 包本身在 `/Volumes/workspace/dev/workspaces/dsh-ops/projects/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2`。",
       "verdict": "PASS"
     },
     {
       "id": 11,
       "criterion": "dead 门禁口径唯一化",
-      "command": "python3 /Volumes/workspace/dev/workspaces/dsh-ops/projects/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2/verify_r2_package.py（判据 11 的全文检索断言）",
+      "command": "python3 docs/refactor/v4.1.0-c/takeover/verify_r2_package.py --r2-dir /Volumes/workspace/dev/workspaces/dsh-ops/projects/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2（判据 11 的全文检索断言）",
       "observed": "exit=0\nPASS  #11 R2 全文无「61 道…全部有文档引用」  -- 0 命中\nPASS  #11 唯一口径陈述在 04-GATE-GOVERNANCE.md §2（83 = 61 无引用 + 22 有引用）\nFAIL #11：无\n检索式：全部有文档引用 / 全部仍有文档引用 / 全部有正文引用 / 61 道全部有文档引用（排除 4 个构建脚本，它们以旧串为替换锚点）；唯一口径陈述在 04-GATE-GOVERNANCE.md §2",
       "verdict": "PASS"
     },
@@ -103,7 +105,7 @@
       "id": 12,
       "criterion": "SQLRUSTGO_LOCAL_ONLY 路由 fail-closed —— 本次准入**显式豁免**（O9）",
       "command": "（显式豁免，不跑校验；事实记录见设计稿 §A5 #12 与 V410-OWNER-RULING.md 的豁免记录）",
-      "observed": "属主裁决 O9（2026-11-23，已裁决）：跨仓库变更不纳入本次准入，显式豁免。\n事实：`SQLRUSTGO_LOCAL_ONLY` 在 sqlrustgo 仓库零命中，存在于 DSH 仓库；DSH 路由器是**策略级** LOCAL_ONLY（router.py:277/290），不存在 per-task 的数据分类维度，「缺分类即 BLOCKED」在本次准入范围内**未成立**。\n豁免记录（含 waiver_id / reason / scope / compensating_control / expires_at / approved_by）写在 V410-OWNER-RULING.md §2.1。",
+      "observed": "属主裁决 O9（2026-11-23，已裁决）：跨仓库 LOCAL_ONLY 不纳入本次准入，显式豁免。\n事实：`SQLRUSTGO_LOCAL_ONLY` 在 sqlrustgo 仓库零命中，存在于 DSH 仓库；DSH 路由器是**策略级** LOCAL_ONLY（router.py:277/290），不存在 per-task 的数据分类维度，「缺分类即拒绝」在本次准入范围内**未成立**。\n豁免记录（含 waiver_id / reason / scope / compensating_control / expires_at / approved_by）写在 V410-OWNER-RULING.md §2.1。",
       "verdict": "WAIVED"
     }
   ]

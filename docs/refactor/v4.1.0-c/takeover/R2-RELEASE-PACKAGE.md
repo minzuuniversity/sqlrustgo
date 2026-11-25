@@ -200,12 +200,52 @@ bash …/DSH-EXTERNAL-REVIEW-001/r2-build/build_r2.sh
 
 | 位置 | 是什么 | 为什么放在这里 |
 |---|---|---|
-| `docs/refactor/v4.1.0-c/takeover/verify_r2_package.py` | 判据 10 / 11 与包完整性的**校验器**（只读，不生成、不改写任何东西） | 判据 10 / 11 的可复现性锚点：即使 DSH 工作区丢失，**校验**仍可在本仓复跑 |
+| `docs/refactor/v4.1.0-c/takeover/verify_r2_package.py` | 判据 10 / 11 与包完整性的**校验器**（只读，不生成、不改写任何东西） | 判据 10 / 11 的**可复算锚点**：校验器本身在本仓，任何人都能重跑 |
 | `…/DSH-EXTERNAL-REVIEW-001/r2-build/` | **生成**链（`build_r2.sh` 等 6 个脚本，权威归属：DSH 仓） | 生成是写操作，留在 DSH 仓；本仓不复制 |
 
 > `verify_r2_package.py` 落在 `docs/refactor/v4.1.0-c/takeover/` 下，**不在 `MANIFEST_ROOTS` 内**
 > ⇒ 按 R67 **不需要重签 manifest**（`verify_handoff.py --check` 实测仍退出 0，`handoff_manifest_sha256`
 > 保持 `8b12989eeeebb96ab14190fd85f5d2cb54af7becda5fc29693e471a1ba6f6a66`）。
+
+### 9.1 两份 `verify_r2_package.py` 的字节漂移（N-10，**待属主裁决**）
+
+| | DSH 仓那份 | 本仓这份 |
+|---|---|---|
+| 位置 | `…/sqlrustgo-v4.1.0-r2/verify_r2_package.py` | `docs/refactor/v4.1.0-c/takeover/verify_r2_package.py` |
+| 状态 | **未同步**（仍是原版） | 加了 `R2_DIR` 解析（否则复制过来跑不了）+ 找不到包时的人话报错 |
+| 字节 | **两份当前不同** | |
+
+- **以哪一份为准：待属主裁决。** 本轮明令不许再动 R2 生成链，所以**没有**把本仓的改动同步回
+  DSH 那份；也没有把 DSH 那份反向同步到本仓。⇒ **两份现在是漂移的**。
+- **re-review 已独立复核**：本仓这份是**忠实的重新锚定** —— 除了路径解析（`HERE` → `R2_DIR`）
+  和错误提示，**每一项检查与判决都不变**，实跑 **23/23 PASS**。
+- 在属主裁定之前：**本仓这份是判据 10 / 11 实际使用的那一份**
+  （`V410-READINESS-VERDICT.json` 的 `criteria[9].command` / `criteria[10].command` 引用的就是它）。
+
+### 9.2 校验器需要 R2 包本身（N-11，**不是过度承诺**）
+
+校验器**只校验已存在的 R2 包，不生成它**。所以：
+
+- 「**校验**可在本仓复跑」成立的前提是**手上有 R2 包** —— 它在 DSH 工作区
+  （`…/sqlrustgo-v4.1.0-r2/`）里，或者在已分发出去的 ZIP
+  （`SQLRUSTGO-V410-REVIEW-PACK-R2-DRAFT.zip`）里；
+- **DSH 工作区若丢失**，本仓这份校验器**仍在**，但它**需要一个从别处取回的 R2 包**才能跑出结论。
+  换句话说：本仓保住的是**校验逻辑**，不是**被校验对象**；
+- 找不到包时，校验器现在**打印人话并以退出码 2 结束**（而不是抛栈回溯）：
+
+```
+$ python3 docs/refactor/v4.1.0-c/takeover/verify_r2_package.py --r2-dir /nonexistent
+FATAL: no R2 package under /nonexistent
+       This checker verifies an EXISTING R2 package; it does not build one.
+       Point it at the package with either:
+         --r2-dir /path/to/sqlrustgo-v4.1.0-r2
+         R2_DIR=/path/to/sqlrustgo-v4.1.0-r2  python3 verify_r2_package.py
+       (the R2 package itself lives in the DSH workspace, or in the
+        distributed ZIP SQLRUSTGO-V410-REVIEW-PACK-R2-DRAFT.zip).
+       Missing: /nonexistent/package, ...
+$ echo $?
+2
+```
 
 ## 10. 复算入口
 

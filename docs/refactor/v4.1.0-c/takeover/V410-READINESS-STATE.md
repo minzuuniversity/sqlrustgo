@@ -67,22 +67,38 @@ manifest、门禁编目、外审包三套统计与 dead 口径都自洽），缺
 
 ## 3. Task 9 的结论（2026-11-25）
 
-Task 9 产出三件东西（均在 `docs/refactor/v4.1.0-c/takeover/`）：
+Task 9 产出**四件**东西（均在 `docs/refactor/v4.1.0-c/takeover/`；另有第五件是**生成器**，见下）：
 
 1. `V410-READINESS-VERDICT.json` —— 12 条判据逐条的 `id` / `criterion` / `command` /
    `observed` / `verdict`（每条 `command` 都**真的跑过**，`observed` 是真实输出摘要）；
 2. `R2-RELEASE-PACKAGE.md` —— R2 外审包的生成说明 + R1 逐字节未变的快照与复核；
 3. `V410-OWNER-RULING.md` —— **裁决请求**（不是已签的裁决）：判据引用、已裁决的豁免（只有判据 12）、
-   判据 6 / 8 的**预留豁免槽位（留空）**、残余未裁决项、**留空的属主裁决位**、以及标明
-   「这是建议，不是裁决」的控制者建议。
+   判据 **4 / 6 / 8** 的**预留豁免槽位（留空，A / B / C）**、残余未裁决项、**留空的属主裁决位**、以及标明
+   「这是建议，不是裁决」的控制者建议；
+4. `verify_r2_package.py` —— 判据 10 / 11 的**可复算锚点**（修订第 1 轮按控制者裁定 M-8 追加）；
+   它**只校验、不生成**，需要用 `--r2-dir` / `R2_DIR` 指向 R2 包（找不到包时打印人话并退出码 2）。
+
+第五件（**生成器**，控制者裁定 R69）：`gen_verdict.py` —— 12 条判据的**重跑器**。
+它原来只活在 git-ignored 的 `.superpowers/sdd/` 里，于是它里面的硬编码字符串（旧的
+「差额来自两条判据」、旧的变异臂数）改了树、没改源，下一次重跑又会把陈旧字符串写回裁决文件。
+现在它**已入仓**，裁决 JSON **可从已提交的树复现**：
+
+```bash
+cd /Volumes/workspace/dev/wt-v410-base
+git status --porcelain          # 必须为空（判据 3 的校验器拒绝脏树；生成器也会拒绝）
+python3 docs/refactor/v4.1.0-c/takeover/gen_verdict.py   # 重出 V410-READINESS-VERDICT.json
+```
+
+生成器里的数字**全部从实际输出数出来**：顶部 note 由 `criteria` 派生（不可能再与 `summary` 矛盾）、
+变异臂条数由 `--check` 的输出 `len()` 得出、判据 8 的退出码由脚本的退出码语义推出。
 
 **判定汇总：PASS 8 · FAIL 3 · WAIVED 1。** 三条 FAIL 的分层归因：
 
 | 判据 | 层 | 缺口 |
 |---|---|---|
-| **#4** | **映射层** | A2.2 **R1**（「每个 task 的 `approved_adr_refs` 至少 1 项」）被 **C01-15** 违反 —— `ADAPTER-MAPPING-PENDING.md` 的待决清单**非空**。ADR 的**机器字段**齐了、11 条变异臂全被拒，但 `--check` **不担保 R1**（`verify_handoff.py:383-384` 空列表直接 return），它自己的输出是 `"adr_approval_state": "PENDING"` ⇒ 判据 4 = FAIL。**需属主裁决 O1**（补 ADR 引用 vs 裁定无需绑定） |
+| **#4** | **映射层** | A2.2 **R1**（「每个 task 的 `approved_adr_refs` 至少 1 项」）被 **C01-15** 违反 —— `ADAPTER-MAPPING-PENDING.md` 的待决清单**非空**。ADR 的**机器字段**齐了、**10 条**变异臂全被拒（条数从 `--check` 的实际输出里数出来），但 `--check` **不担保 R1**（`verify_handoff.py:383-384` 空列表直接 return），它自己的输出是 `"adr_approval_state": "PENDING"` ⇒ 判据 4 = FAIL。**需属主裁决 O1**（补 ADR 引用 vs 裁定无需绑定） |
 | **#6** | **签署层** | 44 条有终态 ✓、双向差异表 ✓，但 **Oracle 副签 0 条**（38 条 `ASSERTION_UNREVIEWABLE` + 6 条 `JUDGED_PENDING_COUNTERSIGNATURE`；`assertion_review_performed_by` 是实施者本人）⇒ 需属主指认 1 名独立 Reviewer（R-T7-1） |
-| **#8** | **证据层** | 实跑 **RED=5/7 + INCONCLUSIVE=2/7（退出码 3）**；冻结提交那次是 6/7 + 1/7；两次都不是 7/7。fx15 因 composite release 重建超 7200s 预算（exit 124）⇒ INCONCLUSIVE；fx18 的覆盖率门禁**在完整树上就已红** ⇒ 注入的红不可归因 ⇒ INCONCLUSIVE |
+| **#8** | **证据层** | 实跑（2026-11-25，树 = `base/v4.1.0-frozen` 的 tip `e2d98149d264…`）**RED=5/7 + INCONCLUSIVE=2/7（退出码 3）**；上一次记的是 **6/7 + 1/7**，跑在 commit **`b556199c86`**（**不是**冻结提交 `fd849ae205`，跨 SHA 的证据不可继承，C5）；两次都不是 7/7。fx15 因 composite release 重建超 7200s 预算（exit 124）⇒ INCONCLUSIVE；fx18 的覆盖率门禁**在完整树上就已红** ⇒ 注入的红不可归因 ⇒ INCONCLUSIVE |
 
 R2 外审包在 `…/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2/`（**兄弟目录副本**；R1 的 `package/`
 21 个文件在生成前后**逐字节未变**）；构建链在同目录的 `r2-build/`（`build_r2.sh` 是唯一入口，幂等）。
