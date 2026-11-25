@@ -47,12 +47,11 @@ manifest、门禁编目、外审包三套统计与 dead 口径都自洽），缺
 > **`base_sha` 一律填 BASE，不随提交前移。** 这是 R-BASE，Task 2 之后所有前向绑定都钉死在这里。
 
 > **远端 tip 的当前值（2026-11-25 实测，会变）**：`origin/develop/v4.1.0` =
-> `ea285c5fda77e7790e965ae482e3c1b015fabc10`（**已包含** `base/v4.1.0-frozen`，
-> PR #5928 的 merge commit —— 冻结分支已被并入 develop）；
-> `origin/base/v4.1.0-frozen` = **`ebcf8bc2997649e333067bbb8497c1dbcdf09db3`**
-> （**远端** tip；本地分支已领先它 —— 本波修复波尚未推送）。develop 里**还没有**冻结分支上的
-> **7 个**提交（在远端 tip `ebcf8bc299` 处实测：`d358289919`、`09ba360f6c`、
-> `e2d98149d2`、`33f1c7ceb9`、`6c345db7cb`、`a2d0e3ecec`、`ebcf8bc299`）。
+> `9f582882bb15bfa049dd4313fd7e9cf2326a3ce7`（**已两次**包含 `base/v4.1.0-frozen`：
+> PR #5928 的 merge `ea285c5fda` 与 PR #5929 的 merge `9f582882bb` —— 冻结分支**已全部**并入 develop）；
+> `origin/base/v4.1.0-frozen` = **`f768c1c8b9e3bc32a1b7934b943ad13cbccd9c50`**（远端 tip = 本地 HEAD）。
+> `git log --oneline origin/develop/v4.1.0..base/v4.1.0-frozen` 实测 **0 条** ⇒ develop 上**没有**遗漏的整备提交。
+> 后续在 `base/v4.1.0-frozen` 上的新提交需要**另开 PR** 才会进 develop。
 > ⚠️ **旧版本这里写的是「最后两个提交」和 tip = `e2d98149d2…` —— 那是过时的快照，已按实测重算。**
 > ⚠️ **本修复波自身还会再加提交** ⇒ 合并前请以
 > `git log --oneline ea285c5fda..base/v4.1.0-frozen` 的**实测输出**为准，不要按固定数字操作。

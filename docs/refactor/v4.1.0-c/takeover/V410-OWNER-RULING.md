@@ -69,46 +69,30 @@
 > 远端 `base/v4.1.0-frozen` 的 tip 是 BASE 的后代，成立）。
 > 但**设计稿 §A5 #1 的另一条可核方式**
 > （`git merge-base --is-ancestor origin/develop/v4.1.0 BASE`）在本次实测中**不成立**：
-> 远端 `develop/v4.1.0` 的 tip 已是 `ea285c5fda77e7790e965ae482e3c1b015fabc10`，
-> 它是 BASE 的**后代**而非祖先。原因是**本任务运行期间（10:00 与 12:05 之间）**
-> `develop/v4.1.0` 被合并了 `base/v4.1.0-frozen`（PR #5928，merge commit `ea285c5fda`）。
+> 远端 `develop/v4.1.0` 的 tip 已是 `9f582882bb15bfa049dd4313fd7e9cf2326a3ce7`，
+> 它是 BASE 的**后代**而非祖先。原因是 `develop/v4.1.0` **已被两次合并**了 `base/v4.1.0-frozen`：
+> PR **#5928**（merge commit `ea285c5fda`，第一批）与 PR **#5929**（merge commit `9f582882bb`，
+> 整备剩余全部提交）。
 >
 > 这不是 BASE 的缺陷，而是**冻结分支已被并入 develop** —— O11（BASE 是否推进 develop）
 > 事实上已被行动回答。判据 1 的三项实质条件仍全部成立：BASE 唯一 ✓；
 > **冻结时点的 develop tip** `8cbde5b6d3` 是 BASE 的祖先 ✓（`BASELINE_FREEZE.json` 记录，
 > `verify_baseline.py` 的 B1 用的就是它）；含 BASE 的分支已推送 ✓。
 >
-> **但属主需要知道（2026-11-25 实测重算；旧数字已过时）**：
-> (a) **远端** `base/v4.1.0-frozen` 的 tip 现为
-> **`ebcf8bc2997649e333067bbb8497c1dbcdf09db3`**（它仍是 BASE 的后代 ✓）；
-> ⚠️ **这不等于本地 HEAD** —— 本地分支已领先它（本修复波尚未推送）。
-> **本地 HEAD 的实测值请以本节末尾那条 `git log --oneline ea285c5fda..base/v4.1.0-frozen`
-> 的输出为准**（它每次跑都会变，不要按任何固定值抄）。
-> (b) `develop/v4.1.0`（tip `ea285c5fda77e7790e965ae482e3c1b015fabc10`）里**还没有**
-> 冻结分支上的 **7 个**提交（`git log --oneline ea285c5fda..HEAD` 实测 7 条）：
+> **合并状态（2026-11-25 实测；本段旧数字已过时）**：
+> (a) 远端 `base/v4.1.0-frozen` 与本地 HEAD 现**同为** `f768c1c8b9e3bc32a1b7934b943ad13cbccd9c50`
+> （它仍是 BASE 的后代 ✓）。
+> (b) **冻结分支已全部并入 develop** —— `git log --oneline origin/develop/v4.1.0..base/v4.1.0-frozen`
+> 实测 **0 条**（PR #5929 已合并，merge commit `9f582882bb15`）。
+> (c) ⇒ **「缺 N 个提交、需先合并」的旧指引已作废**；裁决文件、台账、生成器与全部修订**已在 develop 上**。
+> 后续若继续在 `base/v4.1.0-frozen` 上提交，需要**新开 PR** 才会进 develop —— 那条路已验证可走。
 >
-> | # | 提交 | 内容 |
-> |---|---|---|
-> | 1 | `d358289919` | fix(gate): 证据 run 的三处记账失真（评审修订 3 · G-1/G-2/G-3/G-4） |
-> | 2 | `09ba360f6c` | chore(gate): 把 G-4 之后的两次重跑作为**被绑定**的产物挂进 run |
-> | 3 | `e2d98149d2` | docs: 准入判据汇总与放行裁决记录（Task 9） |
-> | 4 | `33f1c7ceb9` | docs: 判据 #4 改判 FAIL（Task 9 修订 1） |
-> | 5 | `6c345db7cb` | docs: 判据生成器入仓（Task 9 修订 2 · R69）+ 校验器的友好报错 |
-> | 6 | `a2d0e3ecec` | docs: 裁决文件与文档对齐实测（Task 9 修订 2） |
-> | 7 | `ebcf8bc299` | docs: 同步整备裁决台账到仓内（Task 9 评审与两轮修订） |
->
-> (c) 若属主要把 `base/v4.1.0-frozen` 整个并入 develop，需要**先合并这 7 个提交** ——
-> **不是旧文本写的 2 个**。按旧文本只合 `d358289919` 与 `09ba360f6c` 两个，会把**裁决文件、台账、
-> 生成器与两轮修订**全部丢掉，合进一个没有裁决文件的分支。
->
-> ⚠️ **合并前请以这条命令的实测输出为准，不要按任何固定数字操作**：
+> ⚠️ **仍请以这条命令的实测输出为准，不要按任何固定数字操作**：
 >
 > ```bash
-> git log --oneline ea285c5fda..base/v4.1.0-frozen
+> git log --oneline origin/develop/v4.1.0..base/v4.1.0-frozen
+> git ls-remote origin refs/heads/develop/v4.1.0 refs/heads/base/v4.1.0-frozen
 > ```
->
-> 上表的 **7** 个是**在远端 tip `ebcf8bc299` 处**实测的；**本修复波自身还会再加提交**
-> （修复波主体 + 裁决 JSON 重出），且**远端还没推**（远端 tip 仍是 `ebcf8bc299`）。
 
 ### 1.1 三条 FAIL 的分层归因（R66）
 
