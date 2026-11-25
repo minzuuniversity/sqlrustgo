@@ -511,3 +511,31 @@ duplicates a logic block. 9 rulings recorded above; 7 were applied to the plan t
   - **#35**（`ORACLE-REVIEW-LOG-T1.md` 不在 manifest 哈希范围）—— 扩范围属主专属（牵动 314 个绑定文件）。
 - **清单之外仍有 2 条属主专属**（不在 46 条内，来自裁决记录）：DSH 仓是否配 remote；判据 #6 的 Reviewer 名单
   ——后者**填名单不够**，还要该 Reviewer 对被判 PASS 的 6 条**逐条副签**（判据 #6 的条件 (6)）。
+
+## 合并入 develop 与 R73（不钉死会变的值）
+
+- **合并**：`base/v4.1.0-frozen` 已三次合入 `develop/v4.1.0` —— PR **#5928**（第一批）、
+  PR **#5929**（整备剩余全部提交）、PR **#5930**（合并后同步 develop tip）。**合并提交见 git 历史**
+  （`git log --oneline --merges origin/develop/v4.1.0`）。
+  合并前实测：`check_audit_manifest.sh` 那两条 2026-11-19 的既有失败**在 develop 上本来就有**，
+  且该门禁是 `orphan_referenced`（不在任何 workflow、不在任何阶段清单）⇒ **合并不会让 develop 的 CI 变红**。
+- **R73（控制者裁定 —— 哪些值可以写进文档）**：本分支每被合入 develop 一次，live develop tip 就前移一次
+  ⇒ 文档里钉死的 tip / HEAD / 「缺 N 个提交」**必然**过期（已连修三轮：I-9 → 合并后同步 → 本轮）。
+  **裁定**：**只有不会变的值可以写进文档** —— BASE（`fd849ae205…`）、BASE 的 tree（`72d378e8e5…`）、
+  **冻结时点**的 develop tip（`8cbde5b6d3…`）、已冻结的历史材料提交（`45da6968ae…` / `b681b74ca3…`）。
+  **会变的值**（live develop tip、分支 tip / HEAD、当前提交数、「缺 N 个提交」）**一律不钉死**：
+  要么进 `observed`（那是**捕获值**，定义就是「那次执行的真实输出摘要」），
+  要么改成**可复算的校验入口 + 「以实测输出为准」的措辞**。
+  **R71**（不记录会过期的文件哈希）由此**推广到 git SHA**。
+- **执行**：四处改动（`gen_verdict.py` 的判据 1 caveats + docstring 的 R73 段、`V410-OWNER-RULING.md` §1 注记、
+  `V410-READINESS-STATE.md` §1 与 §3 尾段、`V410-RESIDUAL-CHECKLIST.md` §C 的 I-9 行 + §11 的 R-16），
+  再用改完的生成器**重出**裁决 JSON（两段式：先提交 → 再重出 → 再提交；生成器要求干净工作树）。
+- **实测**：改后 `grep -rn "9f582882bb\|899d182dfb\|f768c1c8b9\|ea285c5fda" takeover/*.md` **只命中 1 条**
+  —— `V410-READINESS-LEDGER.md:366` 的 `ea285c5fda`，那是 **PR #5928 的 merge commit**（已存在于 git 历史、
+  **永不改变**的历史提交，与「已合并的 PR 号」同类），不是任何 live tip ⇒ **保留**（台账在本轮禁改清单内）。
+  改前是 7 条命中。**判定、计数、结论一字未动**（PASS 8 · FAIL 3 · WAIVED 1）。
+- **残余（已知，不在本轮范围）**：
+  ① 「已通过 PR #5928/#5929/#5930 合入 develop」这句**事实陈述**仍会过期（PR 号列表会变长）——
+     R73 消灭的是「钉死的 SHA/计数」，消灭不了「事实陈述要人工同步」；同步粒度已压到「PR 号列表」；
+  ② 裁决 JSON **永远不逐字节可复现**（`generated_at` + `observed` 的捕获值每次重出都变）—— 这是**设计如此**；
+  ③ `.superpowers/sdd/.../gen_verdict.py` 仍是过时副本（R69 已知）—— 仓内那份才是权威。
