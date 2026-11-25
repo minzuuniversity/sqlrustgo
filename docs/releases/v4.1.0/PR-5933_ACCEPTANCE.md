@@ -306,7 +306,9 @@ python3 docs/refactor/v4.1.0-c/takeover/gen_verdict.py \
 
 ```bash
 # 判据表
-python3 docs/refactor/v4.1.0-c/takeover/gen_verdict.py --check
+# 判据表（该生成器**没有 --check**；重跑到仓外再比对 summary）
+python3 docs/refactor/v4.1.0-c/takeover/gen_verdict.py --out /tmp/verdict-check.json
+python3 -c "import json;a=json.load(open('/tmp/verdict-check.json'));b=json.load(open('docs/refactor/v4.1.0-c/takeover/V410-READINESS-VERDICT.json'));print('MATCH:',a['summary']==b['summary'],a['summary'])"
 
 # 门禁编目（分母 168）
 python3 scripts/gate/gate_registry.py check
