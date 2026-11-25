@@ -539,3 +539,9 @@ duplicates a logic block. 9 rulings recorded above; 7 were applied to the plan t
      R73 消灭的是「钉死的 SHA/计数」，消灭不了「事实陈述要人工同步」；同步粒度已压到「PR 号列表」；
   ② 裁决 JSON **永远不逐字节可复现**（`generated_at` + `observed` 的捕获值每次重出都变）—— 这是**设计如此**；
   ③ `.superpowers/sdd/.../gen_verdict.py` 仍是过时副本（R69 已知）—— 仓内那份才是权威。
+
+- **R73 的验证（合并后当场实测）**：R73 合入 develop（PR **#5931**，merge commit `69dca06cce`）⇒ **live develop tip 又前移了一次**，
+  而 `takeover/*.md` 里**零个陈旧值**（`grep` 旧 tip / 分支 tip / 合并 tip ⇒ **无命中**）；
+  唯一残留的 SHA 在 `V410-READINESS-VERDICT.json` 的 `observed` 里 —— 那是**捕获值**，按 R73 的规则本就该在那儿。
+  「以实测输出为准」的措辞在 OWNER-RULING / STATE / 残余清单三处**均在位**（3/3/2 处）。
+  ⇒ **R73 成立**：分支被合进 develop 不再让文档过期。
