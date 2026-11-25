@@ -9,8 +9,36 @@ The generator asserts that every scope gate (stage_required union the
 SOAK/PERF/COMPAT/TPCH/STABILITY/CRASH/UPGRADE/CHAOS/QPS/SYSBENCH names in
 GATE_CATALOG) has exactly one row, so the ledger cannot silently shrink.
 Not a gate: it never runs in ci_gate.sh and never changes the denominator.
+
+Three modes (2026-11-25, M-6).  The tool used to have exactly ONE mode, and it
+was destructive: it overwrote the committed ledger in place, took the evidence
+run id straight from argv[1] without checking it, and printed a summary that
+looked equally healthy either way.  A mistyped argument could therefore
+rewrite a committed ledger without the tool saying so.
+
+    (default)      regenerate the committed ledger IN PLACE.  The behaviour is
+                   unchanged on purpose -- it is how the ledger has always been
+                   produced -- but the summary now states EXPLICITLY which path
+                   was written and which evidence run id the rows cite, so a
+                   mistake cannot pass unnoticed.
+    --check        NON-DESTRUCTIVE.  Regenerate in memory and compare the
+                   result with the committed ledger BYTE FOR BYTE.  Exit 0 when
+                   identical; exit 1 with a diff summary when not.  It NEVER
+                   writes a file.
+    --out <path>   write the regenerated ledger to <path> instead of
+                   overwriting the committed one (for manual comparison).
+
+The evidence run ids are validated BEFORE anything is written: a run id must
+look like <YYYYMMDD>-<lowercase-slug> AND must exist under
+audit/v4.1.0/runs/.  A mistyped argument (e.g. `--help`) is therefore REJECTED
+with a human-readable message and a non-zero exit code, and NO file is
+written.
 """
-import json, pathlib, re, sys
+import hashlib
+import json
+import pathlib
+import re
+import sys
 
 # The repository root, derived from this file's own location: the generator
 # must be able to write into WHICHEVER checkout it is run from, otherwise
@@ -19,6 +47,7 @@ import json, pathlib, re, sys
 REPO = pathlib.Path(__file__).resolve().parents[2]
 CAT = REPO / "docs/releases/v4.1.0/GATE_CATALOG.jsonl"
 OUT = REPO / "docs/releases/v4.1.0/NEG_FIXTURES_v4.1.0.jsonl"
+RUNS = REPO / "audit/v4.1.0/runs"
 # Two evidence runs, because two different batches of fixtures were executed in
 # two different runs:
 #   RUN  -- the historical batch (fx01..fx08, fx14, the self-test ones)
@@ -26,14 +55,23 @@ OUT = REPO / "docs/releases/v4.1.0/NEG_FIXTURES_v4.1.0.jsonl"
 #           and their two characterization companions fx21/fx22)
 # Both are arguments so that a re-run against another tree can name its own
 # runs; the defaults are the ones the committed ledger cites.
-RUN = sys.argv[1] if len(sys.argv) > 1 else "20261105-negfix-003"
-RUN8 = sys.argv[2] if len(sys.argv) > 2 else "20261124-task8-alpha-negfix-001"
+DEFAULT_RUN = "20261105-negfix-003"
+DEFAULT_RUN8 = "20261124-task8-alpha-negfix-001"
 ISSUE = "issue#5598"
 NEG = "audit/v4.1.0/neg/"
-LOG_FX = "audit/v4.1.0/runs/%s/logs/003-neg-fixtures.stdout" % RUN
-LOG_FX8 = "audit/v4.1.0/runs/%s/logs/003-neg-fixtures.stdout" % RUN8
-LOG_ST = "audit/v4.1.0/runs/%s/logs/004-neg-selftests.stdout" % RUN
 NAME = re.compile(r"SOAK|PERF|COMPAT|TPCH|STABILITY|CRASH|UPGRADE|CHAOS|QPS|SYSBENCH", re.I)
+# The shape every evidence run id in audit/v4.1.0/runs/ actually has
+# (140/140 measured).  A run id that does not match it is a typo, not a run.
+RUN_ID_RE = re.compile(r"^[0-9]{8}-[a-z0-9]+(-[a-z0-9]+)*$")
+
+USAGE = """用法：
+  python3 audit/v4.1.0/gen_neg_ledger.py                 就地重出已提交的台账（默认行为）
+  python3 audit/v4.1.0/gen_neg_ledger.py --check         只校验：逐字节比对，绝不写文件
+  python3 audit/v4.1.0/gen_neg_ledger.py --out <path>    生成到 <path>，不覆写已提交的台账
+  python3 audit/v4.1.0/gen_neg_ledger.py <run-id> [<run8-id>]
+
+位置参数是**证据 run id**：形态须为 <YYYYMMDD>-<小写 slug>，且必须存在于
+audit/v4.1.0/runs/ 下。默认值：%s / %s""" % (DEFAULT_RUN, DEFAULT_RUN8)
 
 cat = {}
 for line in CAT.read_text(encoding="utf-8").splitlines():
@@ -151,107 +189,274 @@ NOTEXEC = {
  "orphan_referenced": "该门禁 class=orphan_referenced：被引用但不在阶段清单里执行。先解决执行点归属（#5597），夹具才有意义",
 }
 
-rows = []
-for gate, (fx, cost, note) in sorted(MUT.items()):
-    rows.append({"gate": gate, "stages": cat[gate].get("stages") or [], "class": cat[gate]["class"],
-                 "kind": "mutation-verified", "fixture_id": fx[:-3], "fixture": NEG + fx,
-                 "evidence_run": RUN, "evidence_log": LOG_FX, "cost": cost, "note": note})
 
-for gate, (fx, cost, note, target, hole) in sorted(MUT8.items()):
-    row = {"gate": gate, "stages": cat[gate].get("stages") or [], "class": cat[gate]["class"],
-           "kind": "mutation-verified", "fixture_id": fx[:-3], "fixture": NEG + fx,
-           "evidence_run": RUN8, "evidence_log": LOG_FX8, "cost": cost, "note": note}
-    if target:
-        row["target"] = target
-        row["close_run"] = ISSUE
-    if hole:
-        row["known_hole"] = hole[0]
-        row["known_hole_reason"] = hole[1]
-    rows.append(row)
+def build_rows(run, run8):
+    """Build the ledger rows for the two evidence runs.
 
-for r in rows:
-    if r["gate"] == "scripts/gate/check_int_debt.sh":
-        r["known_hole"] = None
-        r["known_hole_closed"] = NEG + "fx10-int-debt-row-unclassifiable-characterization.sh"
-        r["known_hole_reason"] = ("【已闭合 2026-11-16】原 fail-open：债务行被改名或删除时只进 FAILED_ITEMS，"
-                                  "判定逻辑只看 ACTIVE_COUNT/DEFERRED_WITHOUT_PLAN ⇒ 退出码仍是 0（PASS）；"
-                                  "另有一处：状态列非空但未知时回退到「整行扫关键字」，于是 WIP-DONOTUSE 这类行"
-                                  "会因 Notes 里的 CLOSED 字样被误判成 CLOSED。修复（#5598 / D-03 裁决）："
-                                  "列 4 非空且未知 ⇒ FAIL；列 4 为空才允许整行回退；FAILED_ITEMS 非空 ⇒ FAIL；"
-                                  "台账读不到 ⇒ INCOMPLETE(2)。fx10 的期望随之由 green-characterization 翻转为 red，"
-                                  "现在它是一条**真正的负向夹具**：不可分类行必须让门禁 rc≠0。"
-                                  "治理链：owner 2026-11-16 会话授权 → 双血统征询（qwen flash-next-252 + "
-                                  "gpt chatgpt-web，均 ok=true）→ ADR-014 D-06 裁决 D-03（三态 0/1/2）"
-                                  "→ 本次落地。")
+    The row set is a pure function of (run, run8) and the gate catalogue: no
+    file is touched here.  The "the ledger cannot silently shrink" contract is
+    asserted at the end, exactly as before.
+    """
+    log_fx = "audit/v4.1.0/runs/%s/logs/003-neg-fixtures.stdout" % run
+    log_fx8 = "audit/v4.1.0/runs/%s/logs/003-neg-fixtures.stdout" % run8
+    log_st = "audit/v4.1.0/runs/%s/logs/004-neg-selftests.stdout" % run
 
-rows.append({"gate": "scripts/gate/check_alpha_entry_v4.10.sh",
-             "stages": [], "class": cat["scripts/gate/check_alpha_entry_v4.10.sh"]["class"],
-             "kind": "mutation-verified", "fixture_id": "fx08-alpha-entry-doc-missing",
-             "fixture": NEG + "fx08-alpha-entry-doc-missing.sh",
-             "evidence_run": RUN, "evidence_log": LOG_FX, "cost": "static",
-             "note": "check_alpha_v410.sh 的 entry 分量：删 docs/releases/v4.1.0/STAGE.yaml ⇒ E1 判红、门禁 rc=1。该行是 scope 之外（class=ci_reachable）的加测，不等于 composite 本身已证伪"})
+    rows = []
+    for gate, (fx, cost, note) in sorted(MUT.items()):
+        rows.append({"gate": gate, "stages": cat[gate].get("stages") or [], "class": cat[gate]["class"],
+                     "kind": "mutation-verified", "fixture_id": fx[:-3], "fixture": NEG + fx,
+                     "evidence_run": run, "evidence_log": log_fx, "cost": cost, "note": note})
 
-rows.append({"gate": "scripts/gate/check_stage.sh",
-             "stages": [], "class": cat["scripts/gate/check_stage.sh"]["class"],
-             "kind": "mutation-verified", "fixture_id": "fx14-stage-version-uninferable",
-             "fixture": NEG + "fx14-stage-version-uninferable.sh",
-             "evidence_run": RUN, "evidence_log": LOG_FX, "cost": "static",
-             "note": "阶段驱动的版本解析：(A) 无可推输入必须 rc=2 且不得先评阶段；(B) 分支不含版本时必须解析 "
-                     "v4.1.0（改前实测评到已归档 v3.9.0 并写日志进该目录）；(C) --version 指向不存在的发布线时"
-                     "必须 rc=2 且不得创建 docs/releases/v9.9.9。反向变异：同一夹具打修复前 9f82eeb777 三臂全部 FIXTURE-FAIL"})
+    for gate, (fx, cost, note, target, hole) in sorted(MUT8.items()):
+        row = {"gate": gate, "stages": cat[gate].get("stages") or [], "class": cat[gate]["class"],
+               "kind": "mutation-verified", "fixture_id": fx[:-3], "fixture": NEG + fx,
+               "evidence_run": run8, "evidence_log": log_fx8, "cost": cost, "note": note}
+        if target:
+            row["target"] = target
+            row["close_run"] = ISSUE
+        if hole:
+            row["known_hole"] = hole[0]
+            row["known_hole_reason"] = hole[1]
+        rows.append(row)
 
-SELFSAB = {
- "scripts/gate/check_commit_message.sh": "fx11-commit-message-detector-crippled.sh",
- "scripts/gate/check_coverage_single_implementation.sh": "fx12-coverage-single-impl-detector-crippled.sh",
- "scripts/gate/check_gate_test_integrity.sh": "fx13-gate-test-integrity-detector-crippled.sh",
-}
-
-for gate, (impl, note) in sorted(SELF.items()):
-    rows.append({"gate": gate, "stages": cat[gate].get("stages") or [], "class": cat[gate]["class"],
-                 "kind": "selftest-verified", "selftest_impl": impl,
-                 "selftest_neg_fixture": NEG + SELFSAB[gate],
-                 "evidence_run": RUN, "evidence_log": LOG_ST, "cost": "static", "note": note})
-
-for gate, (attempt, reason) in sorted(UNF.items()):
-    rows.append({"gate": gate, "stages": cat[gate].get("stages") or [], "class": cat[gate]["class"],
-                 "kind": "unfalsifiable", "reason": reason,
-                 "falsification_attempt": NEG + attempt,
-                 "evidence_run": RUN, "evidence_log": LOG_FX, "cost": "static"})
-
-# Pending gates that already HAVE a fixture script trying to close them.  The
-# row still says kind=pending-fixture (the property is not established), but
-# the script is registered so a reader can find it -- and so the lane knows
-# which script to run and what to expect of it.
-PEND_FIXTURE = {
- "scripts/gate/check_coverage_v312.sh": ("fx18-coverage-v312-crate-coverage-below-threshold.sh",
-   "fx18-coverage-v312-crate-coverage-below-threshold"),
-}
-
-for gate, (cost, target) in sorted(PEND.items()):
-    row = {"gate": gate, "stages": cat[gate].get("stages") or [], "class": cat[gate]["class"],
-           "kind": "pending-fixture", "target": target, "close_run": ISSUE, "cost": cost}
-    if gate in PEND_FIXTURE:
-        fx, fid = PEND_FIXTURE[gate]
-        row["fixture"] = NEG + fx
-        row["fixture_id"] = fid
-    rows.append(row)
-
-for gate, (cost, target) in sorted(EXTRA.items()):
-    rows.append({"gate": gate, "stages": [], "class": cat[gate]["class"],
-                 "kind": "pending-fixture", "target": target, "close_run": ISSUE,
-                 "cost": cost, "note": NOTEXEC.get(cat[gate]["class"], "")})
-
-covered = {r["gate"] for r in rows}
-missing = [g for g in scope if g not in covered]
-assert not missing, "missing scope rows: %s" % missing
-# scope rows + the two scope-extra rows (check_alpha_entry_v4.10.sh entry component,
-# check_stage.sh the stage driver). Extra rows are deliberate over-coverage.
-assert len(rows) == len(scope) + 2, (len(rows), len(scope))
-
-with open(OUT, "w", encoding="utf-8") as f:
     for r in rows:
-        f.write(json.dumps(r, ensure_ascii=False, sort_keys=True) + "\n")
-kinds = {}
-for r in rows:
-    kinds[r["kind"]] = kinds.get(r["kind"], 0) + 1
-print("wrote %d rows (scope=%d) kinds=%s" % (len(rows), len(scope), kinds))
+        if r["gate"] == "scripts/gate/check_int_debt.sh":
+            r["known_hole"] = None
+            r["known_hole_closed"] = NEG + "fx10-int-debt-row-unclassifiable-characterization.sh"
+            r["known_hole_reason"] = ("【已闭合 2026-11-16】原 fail-open：债务行被改名或删除时只进 FAILED_ITEMS，"
+                                      "判定逻辑只看 ACTIVE_COUNT/DEFERRED_WITHOUT_PLAN ⇒ 退出码仍是 0（PASS）；"
+                                      "另有一处：状态列非空但未知时回退到「整行扫关键字」，于是 WIP-DONOTUSE 这类行"
+                                      "会因 Notes 里的 CLOSED 字样被误判成 CLOSED。修复（#5598 / D-03 裁决）："
+                                      "列 4 非空且未知 ⇒ FAIL；列 4 为空才允许整行回退；FAILED_ITEMS 非空 ⇒ FAIL；"
+                                      "台账读不到 ⇒ INCOMPLETE(2)。fx10 的期望随之由 green-characterization 翻转为 red，"
+                                      "现在它是一条**真正的负向夹具**：不可分类行必须让门禁 rc≠0。"
+                                      "治理链：owner 2026-11-16 会话授权 → 双血统征询（qwen flash-next-252 + "
+                                      "gpt chatgpt-web，均 ok=true）→ ADR-014 D-06 裁决 D-03（三态 0/1/2）"
+                                      "→ 本次落地。")
+
+    rows.append({"gate": "scripts/gate/check_alpha_entry_v4.10.sh",
+                 "stages": [], "class": cat["scripts/gate/check_alpha_entry_v4.10.sh"]["class"],
+                 "kind": "mutation-verified", "fixture_id": "fx08-alpha-entry-doc-missing",
+                 "fixture": NEG + "fx08-alpha-entry-doc-missing.sh",
+                 "evidence_run": run, "evidence_log": log_fx, "cost": "static",
+                 "note": "check_alpha_v410.sh 的 entry 分量：删 docs/releases/v4.1.0/STAGE.yaml ⇒ E1 判红、门禁 rc=1。该行是 scope 之外（class=ci_reachable）的加测，不等于 composite 本身已证伪"})
+
+    rows.append({"gate": "scripts/gate/check_stage.sh",
+                 "stages": [], "class": cat["scripts/gate/check_stage.sh"]["class"],
+                 "kind": "mutation-verified", "fixture_id": "fx14-stage-version-uninferable",
+                 "fixture": NEG + "fx14-stage-version-uninferable.sh",
+                 "evidence_run": run, "evidence_log": log_fx, "cost": "static",
+                 "note": "阶段驱动的版本解析：(A) 无可推输入必须 rc=2 且不得先评阶段；(B) 分支不含版本时必须解析 "
+                         "v4.1.0（改前实测评到已归档 v3.9.0 并写日志进该目录）；(C) --version 指向不存在的发布线时"
+                         "必须 rc=2 且不得创建 docs/releases/v9.9.9。反向变异：同一夹具打修复前 9f82eeb777 三臂全部 FIXTURE-FAIL"})
+
+    selfsab = {
+        "scripts/gate/check_commit_message.sh": "fx11-commit-message-detector-crippled.sh",
+        "scripts/gate/check_coverage_single_implementation.sh": "fx12-coverage-single-impl-detector-crippled.sh",
+        "scripts/gate/check_gate_test_integrity.sh": "fx13-gate-test-integrity-detector-crippled.sh",
+    }
+
+    for gate, (impl, note) in sorted(SELF.items()):
+        rows.append({"gate": gate, "stages": cat[gate].get("stages") or [], "class": cat[gate]["class"],
+                     "kind": "selftest-verified", "selftest_impl": impl,
+                     "selftest_neg_fixture": NEG + selfsab[gate],
+                     "evidence_run": run, "evidence_log": log_st, "cost": "static", "note": note})
+
+    for gate, (attempt, reason) in sorted(UNF.items()):
+        rows.append({"gate": gate, "stages": cat[gate].get("stages") or [], "class": cat[gate]["class"],
+                     "kind": "unfalsifiable", "reason": reason,
+                     "falsification_attempt": NEG + attempt,
+                     "evidence_run": run, "evidence_log": log_fx, "cost": "static"})
+
+    # Pending gates that already HAVE a fixture script trying to close them.  The
+    # row still says kind=pending-fixture (the property is not established), but
+    # the script is registered so a reader can find it -- and so the lane knows
+    # which script to run and what to expect of it.
+    pend_fixture = {
+        "scripts/gate/check_coverage_v312.sh": ("fx18-coverage-v312-crate-coverage-below-threshold.sh",
+           "fx18-coverage-v312-crate-coverage-below-threshold"),
+    }
+
+    for gate, (cost, target) in sorted(PEND.items()):
+        row = {"gate": gate, "stages": cat[gate].get("stages") or [], "class": cat[gate]["class"],
+               "kind": "pending-fixture", "target": target, "close_run": ISSUE, "cost": cost}
+        if gate in pend_fixture:
+            fx, fid = pend_fixture[gate]
+            row["fixture"] = NEG + fx
+            row["fixture_id"] = fid
+        rows.append(row)
+
+    for gate, (cost, target) in sorted(EXTRA.items()):
+        rows.append({"gate": gate, "stages": [], "class": cat[gate]["class"],
+                     "kind": "pending-fixture", "target": target, "close_run": ISSUE,
+                     "cost": cost, "note": NOTEXEC.get(cat[gate]["class"], "")})
+
+    covered = {r["gate"] for r in rows}
+    missing = [g for g in scope if g not in covered]
+    assert not missing, "missing scope rows: %s" % missing
+    # scope rows + the two scope-extra rows (check_alpha_entry_v4.10.sh entry component,
+    # check_stage.sh the stage driver). Extra rows are deliberate over-coverage.
+    assert len(rows) == len(scope) + 2, (len(rows), len(scope))
+    return rows
+
+
+def render(rows):
+    """The exact bytes the ledger is written with -- one mode, no trailing slack."""
+    return "".join(json.dumps(r, ensure_ascii=False, sort_keys=True) + "\n" for r in rows)
+
+
+def sha256(text):
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def validate_run_id(run_id, label):
+    """Reject a run id that is not a real evidence run.  Returns an error string, or None.
+
+    Two checks, both cheap and both fail-closed:
+      1. shape   -- <YYYYMMDD>-<lowercase slug>, the shape every one of the 140
+                    run directories under audit/v4.1.0/runs/ actually has;
+      2. existence -- the run directory must exist, so the rows cannot cite a
+                    run that never happened.
+    """
+    if not RUN_ID_RE.match(run_id):
+        return ("%s %r 不是合法的证据 run id：形态须为 <YYYYMMDD>-<小写字母/数字/连字符>"
+                "（例如 %s）" % (label, run_id, DEFAULT_RUN))
+    if not (RUNS / run_id).is_dir():
+        return ("%s %r 形态合法，但 audit/v4.1.0/runs/ 下没有这个 run 目录"
+                "（它必须是一次真实发生过的证据 run）" % (label, run_id))
+    return None
+
+
+def parse_args(argv):
+    """Hand-rolled on purpose: argparse would swallow `--help` as a flag.
+
+    The whole point of the run-id validation is that a mistyped argument is
+    REJECTED instead of being taken for an evidence run.  argparse's own
+    `--help` handling would exit 0 and print usage -- fine for a normal tool,
+    but it would quietly turn "the operator wanted help" into "the operator
+    passed an option" instead of "the operator passed a bogus run id".  So the
+    parsing stays explicit and every token that is not a known flag ends up in
+    the run-id slot, where the shape check rejects it.
+    """
+    check = False
+    out = None
+    positional = []
+    i = 0
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--check":
+            check = True
+        elif arg == "--out":
+            if i + 1 >= len(argv):
+                raise ValueError("--out 需要一个路径参数")
+            out = argv[i + 1]
+            i += 1
+        elif arg.startswith("--out="):
+            out = arg[len("--out="):]
+        elif arg == "--":
+            positional.extend(argv[i + 1:])
+            break
+        else:
+            positional.append(arg)
+        i += 1
+    if len(positional) > 2:
+        raise ValueError("多余的位置参数：%s（位置参数最多两个：<run-id> [<run8-id>]）"
+                         % " ".join(repr(p) for p in positional[2:]))
+    if check and out is not None:
+        raise ValueError("--check 与 --out 互斥：--check 绝不写文件")
+    run = positional[0] if len(positional) > 0 else DEFAULT_RUN
+    run8 = positional[1] if len(positional) > 1 else DEFAULT_RUN8
+    return check, out, run, run8
+
+
+def kinds_of(rows):
+    kinds = {}
+    for r in rows:
+        kinds[r["kind"]] = kinds.get(r["kind"], 0) + 1
+    return kinds
+
+
+def do_check(rows, text):
+    """Compare the regenerated ledger with the committed one, byte for byte."""
+    if not OUT.exists():
+        print("MISMATCH  已提交的台账不存在：%s" % OUT)
+        print("          重新生成的版本有 %d 行；用 --out <path> 可以把它落到别处。" % len(rows))
+        return 1
+    committed = OUT.read_text(encoding="utf-8")
+    if committed == text:
+        print("OK  %s" % OUT)
+        print("    已提交的台账与按当前参数重新生成的结果**逐字节一致**（%d 行，sha256=%s）"
+              % (len(rows), sha256(text)))
+        print("    --check 是非破坏模式：**没有写任何文件**。")
+        return 0
+    a = committed.splitlines()
+    b = text.splitlines()
+    diffs = []
+    for idx in range(max(len(a), len(b))):
+        x = a[idx] if idx < len(a) else None
+        y = b[idx] if idx < len(b) else None
+        if x != y:
+            diffs.append((idx + 1, x, y))
+    print("MISMATCH  %s" % OUT)
+    print("    已提交：%d 行，sha256=%s" % (len(a), sha256(committed)))
+    print("    重新生成：%d 行，sha256=%s" % (len(b), sha256(text)))
+    print("    不同的行：%d 处" % len(diffs))
+    for lineno, x, y in diffs[:5]:
+        print("      第 %d 行" % lineno)
+        print("        已提交：%s" % ((x or "<无此行>")[:160]))
+        print("        重新生成：%s" % ((y or "<无此行>")[:160]))
+    if len(diffs) > 5:
+        print("      ...（其余 %d 处未逐条打印）" % (len(diffs) - 5))
+    print("    已提交的台账**未被改动**。用 --out <path> 可以把重新生成的结果落到别处做人工比对。")
+    return 1
+
+
+def main(argv):
+    try:
+        check, out, run, run8 = parse_args(argv)
+    except ValueError as exc:
+        print("拒绝执行：%s" % exc)
+        print("未写入任何文件。")
+        print(USAGE)
+        return 2
+
+    # Validate BEFORE building or writing anything: a bad run id must not leave
+    # a half-written ledger behind.
+    for label, run_id in (("run id（位置参数 1）", run), ("run id（位置参数 2）", run8)):
+        problem = validate_run_id(run_id, label)
+        if problem:
+            print("拒绝执行：%s" % problem)
+            print("未写入任何文件。")
+            print(USAGE)
+            return 2
+
+    rows = build_rows(run, run8)
+    text = render(rows)
+
+    if check:
+        return do_check(rows, text)
+
+    target = pathlib.Path(out) if out else OUT
+    if out and target.resolve() == OUT.resolve():
+        print("注意：--out 指向的正是已提交的台账路径 %s（等同于默认模式）。" % OUT)
+    if target.parent and not target.parent.exists():
+        target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(text, encoding="utf-8")
+
+    kinds = kinds_of(rows)
+    print("wrote %d rows (scope=%d) kinds=%s" % (len(rows), len(scope), kinds))
+    print("  写入路径：%s" % target)
+    try:
+        print("  写入路径（相对仓库根）：%s" % target.resolve().relative_to(REPO))
+    except ValueError:
+        pass
+    print("  本次 run id：%s（%d 行引用）" % (run, sum(1 for r in rows if r.get("evidence_run") == run)))
+    print("  本次 run id：%s（%d 行引用）" % (run8, sum(1 for r in rows if r.get("evidence_run") == run8)))
+    print("  写入内容 sha256：%s" % sha256(text))
+    if out:
+        print("  已提交的台账 %s **未被改动**（--out 模式）。" % OUT)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

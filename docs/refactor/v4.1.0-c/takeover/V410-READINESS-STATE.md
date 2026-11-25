@@ -79,7 +79,8 @@ manifest、门禁编目、外审包三套统计与 dead 口径都自洽），缺
 
 ## 3. Task 9 的结论（2026-11-25）
 
-Task 9 产出**四件**东西（均在 `docs/refactor/v4.1.0-c/takeover/`；另有第五件是**生成器**，见下）：
+Task 9 产出**四件产物**（均在 `docs/refactor/v4.1.0-c/takeover/`），**第五件是生成器**
+`gen_verdict.py`（见下）：
 
 1. `V410-READINESS-VERDICT.json` —— 12 条判据逐条的 `id` / `criterion` / `command` /
    `observed` / `verdict`（每条 `command` 都**真的跑过**，`observed` 是真实输出摘要）；
