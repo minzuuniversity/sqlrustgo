@@ -1,7 +1,7 @@
 {
   "format": "v410-readiness-verdict/v1",
   "generated_by": "docs/refactor/v4.1.0-c/takeover/gen_verdict.py（Task 9 实施者；控制者裁定 R69：生成器入仓，裁决文件可从已提交的树复现）",
-  "generated_at": "2026-11-25T13:30:28+0800",
+  "generated_at": "2026-11-25T13:32:19+0800",
   "generated_at_note": "本 JSON 的**生成**时刻。它**不是**判据 8 的实测时刻（那条泳道耗时 1–2 小时；它的实测日期与树见 criteria[7].note —— 那个树身份是**推定/重构**的，不是从日志里观测到的）。",
   "repo": "/Volumes/workspace/dev/wt-v410-base",
   "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
@@ -24,7 +24,7 @@
       "id": 1,
       "criterion": "BASE（内容基线）唯一、develop tip 是其祖先、含 BASE 的分支已推送",
       "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_baseline.py --strict\ngit ls-remote origin refs/heads/base/v4.1.0-frozen\ngit merge-base --is-ancestor fd849ae20541901d5e59f45cd3ba2c51093f5d5e ebcf8bc2997649e333067bbb8497c1dbcdf09db3\ngit ls-remote origin refs/heads/develop/v4.1.0\ngit merge-base --is-ancestor ea285c5fda77e7790e965ae482e3c1b015fabc10 fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "observed": "exit=0\n[B1] PASS  develop tip 8cbde5b6d3 is an ancestor of HEAD\n[B2] PASS  base_sha fd849ae205, tree_sha 72d378e8e5, source_ref base/v4.1.0-frozen and frozen_at all match the repository\n[B3] PASS  123 material file(s) + 56 runtime-contract file(s) imported over develop, all still present in HEAD\n[B4] PASS  ledger complete (applied 1 / path-import 1 / already-present 3); the frozen path-import directory holds 56 file(s)\n4/4 PASS -- COMPLETE: every assertion ran\ngit ls-remote origin refs/heads/base/v4.1.0-frozen -> ebcf8bc2997649e333067bbb8497c1dbcdf09db3 (exit=0)\ngit merge-base --is-ancestor fd849ae20541901d5e59f45cd3ba2c51093f5d5e ebcf8bc2997649e333067bbb8497c1dbcdf09db3 -> exit=0 (是)\ngit ls-remote origin refs/heads/develop/v4.1.0 -> ea285c5fda77e7790e965ae482e3c1b015fabc10 (exit=0)\ngit merge-base --is-ancestor ea285c5fda77e7790e965ae482e3c1b015fabc10 fd849ae20541901d5e59f45cd3ba2c51093f5d5e -> exit=1 (否)\n本地分支 tip = e65494f04dfcf69d2b44eb624054a32249c95b5a；远端 base/v4.1.0-frozen tip 是 BASE 的后代 = 是",
+      "observed": "exit=0\n[B1] PASS  develop tip 8cbde5b6d3 is an ancestor of HEAD\n[B2] PASS  base_sha fd849ae205, tree_sha 72d378e8e5, source_ref base/v4.1.0-frozen and frozen_at all match the repository\n[B3] PASS  123 material file(s) + 56 runtime-contract file(s) imported over develop, all still present in HEAD\n[B4] PASS  ledger complete (applied 1 / path-import 1 / already-present 3); the frozen path-import directory holds 56 file(s)\n4/4 PASS -- COMPLETE: every assertion ran\ngit ls-remote origin refs/heads/base/v4.1.0-frozen -> ebcf8bc2997649e333067bbb8497c1dbcdf09db3 (exit=0)\ngit merge-base --is-ancestor fd849ae20541901d5e59f45cd3ba2c51093f5d5e ebcf8bc2997649e333067bbb8497c1dbcdf09db3 -> exit=0 (是)\ngit ls-remote origin refs/heads/develop/v4.1.0 -> ea285c5fda77e7790e965ae482e3c1b015fabc10 (exit=0)\ngit merge-base --is-ancestor ea285c5fda77e7790e965ae482e3c1b015fabc10 fd849ae20541901d5e59f45cd3ba2c51093f5d5e -> exit=1 (否)\n本地分支 tip = dabc9f19c812b99d32e45bd80746c7ec17ba5a74；远端 base/v4.1.0-frozen tip 是 BASE 的后代 = 是",
       "verdict": "PASS",
       "caveats": [
         "【作者陈述，非本次命令输出】判据按**计划正文 Step 1 的命令**判：`verify_baseline.py --strict` + `git ls-remote origin refs/heads/base/v4.1.0-frozen` 的 tip 须是 BASE 的后代；这两条的实测结果见 `observed`。",
