@@ -108,17 +108,39 @@ BASELINE_ALIGNMENT_2026-11-25.md`）在 §1.5 把它列为 ALPHA 清单里**唯�
 因此它**不占 `active` 额度**（仍为 81，离 92 还有余量），
 而 `active_max` / `total_allowed_max` **两个上限一个都没动**。
 
-### 2. `tests/baseline/test_count.json` —— ⬜ **本 PR 补上这一处**
+### 2. `tests/baseline/test_count.json` —— ✅ **已由 PR #5943 合入**
 
 **P13 读的是**这**另一份**基线**（不是 `ignore_registry.json`）**：
 
-| 字段 | 前 | 后 | 理由 |
+| 字段 | 前（2026-11-07 采集） | 后（已入库） | 谁抬的 |
 |---|---|---|---|
-| `ignored_tests` | 135 | **136** | P13 的红**只**在这一维 |
-| `cargo_tests` | 483 | **483（未动）** | 实测 497 > 483，本就 PASS；**不动**是保守的 —— 保留更严的「不许删测试」地板 |
-| `active_tests` | 14345 | **14345（未动）** | 同上（实测 14505 > 14345） |
-| `note` | — | 追加本次 135 → 136 的理由与出处 |
-| `timestamp` | 2026-11-07T00:30:00Z | 更新为本次快照 | 与 `ignore_registry.json` 的 `captured_at_*` 同步 |
+| `ignored_tests` | 135 | **136** | **本次（这就是 P13 的红）** |
+| `cargo_tests` | 483 | 497 | **门禁自动抬**（树长了这 14 个） |
+| `active_tests` | 14345 | 14505 | **门禁自动抬**（树长了这 160 个） |
+| `timestamp` | 2026-11-07T00:30:00Z | 本次快照 | 门禁自动写 |
+| `note` | 引用 ADR-015 | 门禁自动写的通用串 | 门禁自动写 |
+
+**`cargo_tests` / `active_tests` 为什么也动了 —— 这是门禁自己的「允许的演进」逻辑，
+不是本次放宽约束。** P13 的写入条件是：
+
+```bash
+if [ "$cargo_tests" -ge "$baseline_cargo" ] && \
+   [ "$active_tests" -ge "$baseline_active" ] && \
+   { [ "$ignored_tests" -le "$baseline_ignored" ] || [ "$METHOD_CHANGED" = true ]; }; then
+    cat > "$BASELINE" <<EOF ... EOF     # ← 门禁自己重写整份文件
+```
+
+即：**三项计数都只增不减时，门禁把基线自动抬到当前值**。树的 `cargo` 487→497、
+`active` 14345→14505 是这期间真实长出来的用例，门禁随之抬地板 ——
+这是它的**设计行为**（仓内先例：`6551c12cc7`「测试计数基线随本批新增的两条生产链臂自抬
+（门禁自动写入，入库以免每次 run 再脏一次工作区）」）。
+
+**真正需要论证的只有 `ignored` 135 → 136 这一维** —— 因为**只有它**是「不许无 ADR 地增长」
+的那一维，也是本次唯一红的那一维。另两维本来就 PASS，门禁抬它们是**跟随树的真实增长**，
+不是放松保护：抬完之后地板仍然等于今天的树，往下删测试照样会红。
+
+> ⚠️ 副作用：门禁每次跑都会重写这份文件（连 `timestamp` 都变），所以工作区会脏。
+> 这是门禁的既有行为，本 PR 不改它 —— 改它属于「改门禁判定逻辑」，需另行授权。
 
 **两份基线的分工**（两条门禁读的不是同一份）：
 
@@ -127,16 +149,16 @@ BASELINE_ALIGNMENT_2026-11-25.md`）在 §1.5 把它列为 ALPHA 清单里**唯�
 | `tests/baseline/ignore_registry.json` | P12 `check_ignore_count.sh`、G19 `check_anti_ignore_gate.sh` | **额度**（`total_allowed`），外层上限 `total_allowed_max` = 150 |
 | `tests/baseline/test_count.json` | P13 `check_test_count_monotonic.sh` | **单调基线**（`ignored` 不得无 ADR 地增长） |
 
-⇒ **只改前者，P13 仍然红** —— 这正是本 PR 存在的原因。
+⇒ **只改前者，P13 仍然红** —— 这正是 PR #5943 存在的原因。
 
-**先例**：ADR-015 做过同型动作（`ignored` 123 → 135），做法就是更新基线并在 `note` 里写明出处。
+**先例**：ADR-015 做过同型动作（`ignored` 123 → 135）。
 
 ### 3. 不做的事
 
 - **不**改 `total_allowed_max`（150）或 `active_max`（92）—— ADR-008 禁止为了过绿而放宽上限；
   本次是**把计数改回它本该是的样子**，不是放宽约束。
-- **不**改 `cargo_tests` / `active_tests` 两维 —— 它们本来就在 PASS，
-  抬高它们只会**放松**「不许删测试」的保护，没有理由。
+- **不**手工改 `cargo_tests` / `active_tests` 两维 —— 它们由门禁按树的真实增长自动抬
+  （见上）。本 PR 不去干预门禁的写入逻辑。
 - **不**给那两条测试加新的 `#[ignore]`，**不**改任何测试源码。
 - **不**改任何门禁脚本的判定逻辑。
 
@@ -158,6 +180,8 @@ BASELINE_ALIGNMENT_2026-11-25.md`）在 §1.5 把它列为 ALPHA 清单里**唯�
 
 ### 负面 / 保留意见
 
+- **`note` 字段不是可靠的溯源载体** —— P13 门禁每次运行都把它重写成通用串
+  （"Updated by check_test_count_monotonic.sh"）。**本 ADR 才是这条调整的耐久记录**。
 - 本 ADR 的 **Status 是 PROPOSED**，**实施者没有代签**。
   如果属主认为「一个普通 PR 引入的测量 harness 不需要单开 ADR」，
   那就把本文件降级成一份工作记录（`docs/governance/DOC_CHECK_CORRECTION_WORK_RECORD.md`），
