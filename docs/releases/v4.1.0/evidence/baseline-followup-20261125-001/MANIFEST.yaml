@@ -1,0 +1,11 @@
+source_agent: claude-code-cli/claude-opus-5-5@ubuntlenovoair
+source_run: baseline-followup-20261125-001
+timestamp: "2026-11-25T19:14:06Z"
+head: e976ca8515738500f03ce7988d3f55caf52c31ba
+base_sha: fd849ae20541901d5e59f45cd3ba2c51093f5d5e
+tree_dirty: false          # 分析在 scratch worktree @ e976ca8 上进行，未改任何文件
+evidence_hash: d9e041d162fab791bd8189848aedd1e102983829403c56df980d4156fbff4a1a
+evidence_hash_rule: "sha256( 按文件名排序的 'path<TAB>sha256' 行，每行以 LF 结尾 )；不含 MANIFEST.yaml 自身"
+conflict_resolution: "文档口径与实测冲突时取实测，并在评论 T-C/T-G 中逐条列出"
+verdict_kind_legend: [MEASURED, ENV_UNKNOWN, "DERIVED(<source_run>)"]
+files_list: FILELIST.txt   # 入仓时由 ../FILELIST.tsv 改名（.tsv 在 evidence 下被 .gitignore:343 忽略），内容不变

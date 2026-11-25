@@ -1,0 +1,74 @@
+##### crates/executor/src/expr/mod.rs lines=5269
+pub items: fn=27 struct=1 enum=1 trait= pub(crate)=1 all_fn=179 cfg_test_mods=1 tests_in_file=118
+18:pub struct UdfDefinition {
+101:pub enum UnifiedExpr {
+41:pub fn register_udf(name: &str, params: Vec<String>, return_type: String, body_expr: String) {
+56:pub fn register_udf_with_body(
+77:pub fn drop_udf(name: &str) -> bool {
+84:pub fn has_udf(name: &str) -> bool {
+91:pub fn udf_snapshot() -> Vec<(String, UdfDefinition)> {
+140:impl UnifiedExpr {
+247:fn collect_cols(expr: &UnifiedExpr, acc: &mut Vec<String>) {
+287:impl From<&sqlrustgo_parser::Expression> for UnifiedExpr {
+365:pub fn resolve_system_variable(name: &str) -> Value {
+383:impl From<&sqlrustgo_planner::Expr> for UnifiedExpr {
+433:pub fn eval_literal_from_str(s: &str) -> Value {
+493:pub fn eval_is_null(value: &Value) -> Value {
+##### crates/executor/src/stored_proc.rs lines=4277
+pub items: fn=43 struct=4 enum= trait= pub(crate)= all_fn=194 cfg_test_mods=3 tests_in_file=119
+20:pub struct StoredProcError {
+35:pub struct ProcedureContext {
+75:pub struct ExceptionHandler {
+408:pub struct StoredProcExecutor {
+25:impl std::fmt::Display for StoredProcError {
+31:impl std::error::Error for StoredProcError {}
+91:impl ProcedureContext {
+413:impl StoredProcExecutor {
+##### crates/executor/src/trigger.rs lines=2627
+pub items: fn=21 struct=1 enum=4 trait=2 pub(crate)=1 all_fn=130 cfg_test_mods=1 tests_in_file=74
+19:pub enum TriggerTiming {
+44:pub enum TriggerEvent {
+72:pub enum TriggerType {
+96:pub struct TriggerExecutor {
+144:pub trait TriggerBodyAuthCheck: Send + Sync {
+166:pub trait TriggerUndoRecorder: Send + Sync {
+1325:pub enum TriggerExecutionResult {
+24:impl From<StorageTriggerTiming> for TriggerTiming {
+33:impl From<TriggerTiming> for StorageTriggerTiming {
+50:impl From<StorageTriggerEvent> for TriggerEvent {
+60:impl From<TriggerEvent> for StorageTriggerEvent {
+81:impl TriggerType {
+200:impl TriggerExecutor {
+231:impl TriggerExecutor {
+1332:impl TriggerExecutionResult {
+##### lib.rs exports
+8:pub mod expr;
+24:pub mod stored_proc;
+27:pub mod trigger;
+28:pub mod trigger_eval;
+##### external callers (outside crates/executor/src)
+[expr::] files: 7
+src/engine_select.rs
+src/engine_utils.rs
+src/expr_utils.rs
+tests/integration/sql/expr_single_engine_test.rs
+tests/integration/sql/int3_substance_delegation_test.rs
+tests/integration/sql/v312_90_where_regexp_test.rs
+crates/executor/tests/expr_direct_v3_12.rs
+[stored_proc] files: 18
+src/execution_engine.rs
+src/engine_ddl.rs
+src/execution_engine_methods.rs
+tests/integration/transaction/stored_proc_catalog_test.rs
+tests/integration/dml/dml_integration_test.rs
+crates/catalog/tests/coverage_v3_12.rs
+tests/integration/sql/regression_test.rs
+crates/catalog/src/lib.rs
+[trigger::|TriggerExecutor] files: 7
+src/engine_helpers.rs
+src/execution_engine.rs
+src/engine_dml.rs
+crates/storage/tests/binary_storage_ddl_honesty_5601.rs
+crates/types/src/error.rs
+crates/executor/tests/v312_55d_trigger_rollback_test.rs
+crates/executor/tests/stored_proc_test.rs
