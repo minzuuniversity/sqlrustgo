@@ -26,7 +26,7 @@
 | 优先级 | 项数（2026-10-01 原始） | 仍未销账（2026-10-24） | 主要类别 |
 |---|---|---|---|
 | **P0** 阻断任何 release | **8** | **1** | v4.0.0 GA 撤销（`REVOKED`，是状态不是缺陷） |
-| **P1** 阻断 ALPHA 推进 | **7** | **6** | 覆盖率 60.58%、Q20 oracle 缺产物、WP-A RE-OPENED + 20 条 backlog、crate 状态描述错误、G13 门禁红 |
+| **P1** 阻断 ALPHA 推进 | **7** | **6** | 覆盖率 60.58%、Q20 oracle 缺产物、legacy backlog 20 条（WP-A 4 条已于 2026-11-26 复验 FIXED 并移出待办）、crate 状态描述错误、G13 门禁红 |
 | **P2** 不阻断但需记录 | **7** | **7** | 门禁假阳性、Q20 decorrelate 零调用点、大文件无门禁、v3.12 失联、未核实遗留、运营债 |
 | **合计** | **22** | **14** | |
 
@@ -398,13 +398,20 @@ drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-main`
     缺失**直接矛盾** —— AFP Type B
 - **修复方向**: 生成 `sqlrustgo/q20.tsv` 真实产物，重新 hash + 改写 GA5 报告
 
-### P1-03 WP-A 4 条 RE-OPENED + backlog 24 条
+### P1-03 WP-A 4 条 + backlog 20 条
 
-- **verdict**: `OPEN` (24 issues)
+- **verdict**: `OPEN` (20 issues) — 其中 WP-A 4 条已于 2026-11-26 销账
+- **销账依据（WP-A 4 条，2026-11-26）**: 4 条 issue 在 parser 层与 E2E 层实跑复验全绿，
+  Gitea 上保持 closed（2026-09-03），**不做 reopen**；其中 #4708 补上永久 E2E 见证
+  `tests/integration/sql/chinese_identifier_e2e_test.rs`（3/3 绿）。
+  证据：`docs/releases/v4.1.0/evidence/wp-a-reverify-2026-11-26/wp_a_reverify.txt`
+  (sha256 `101682c020bd01027fd6003dc235d13a3e292288749708f1a12abe7ea33b9ee1`)；
+  同步修订 `STAGE.yaml`、`ISSUES_PLAN.md §4/§4.7`、`FEATURE_MATRIX.md`、
+  `EVALUATION_REPORT.md`、`VERSION_PLAN.md §1`、`COMPREHENSIVE_ASSESSMENT_REPORT.md`
 - **位置**: `docs/releases/v4.1.0/ISSUES_PLAN.md §4`
-- **构成**: WP-A 4 (2026-09-30 re-open) + WP-C 6 + WP-D 4 + WP-F 1 + WP-G 1 +
-  WP-B 6 + WP-E 1 + WP-H 1 = **24 条**
-- **WP-A 现状**: 详见 P0-02；#4708 硬 FAIL，其余 3 PARTIAL
+- **构成**: WP-C 6 + WP-D 4 + WP-F 1 + WP-G 1 +
+  WP-B 6 + WP-E 1 + WP-H 1 = **20 条**（WP-A 4 条已复验 FIXED 并移出待办）
+- **WP-A 现状**: 详见 P0-02 —— **FIXED**（块注释 2026-10-08 修复 + 2026-11-26 双层复验）
 - **其余 WP 现状**: 全部 NOT STARTED
 - **修复方向**: 逐条按 `ISSUES_PLAN.md §4` 顺序关闭；预估 6-10 周（per §4.7）
 
@@ -532,6 +539,7 @@ drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-main`
 | v4.1.0 stage 回退 DRAFT | ✅ 完成 (2026-09-30) | `v4.1.0-alpha1` tag 保留为审计轨迹 |
 | 跨版本遗留台账 | ✅ 完成 (2026-09-30) | `LEGACY_LEDGER_v3.6_to_v4.1.md` 355 行 + §9 实跑核实 |
 | WP-A 4 条加回 backlog 20→24 | ✅ 完成 (2026-09-30) | `ISSUES_PLAN.md §4.0` |
+| WP-A 4 条复验 FIXED、移出 backlog 24→20 | ✅ 完成 (2026-11-26) | `ISSUES_PLAN.md §4.0` + `evidence/wp-a-reverify-2026-11-26/` |
 
 ---
 
@@ -540,6 +548,7 @@ drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-main`
 所有 verdict 的依据命令与原始输出均归档于：
 
 - `docs/releases/v4.1.0/evidence/wp-a-reverify-2026-09-30/wp_a_reverify.txt` (sha256 `e5f2820f…`)
+- `docs/releases/v4.1.0/evidence/wp-a-reverify-2026-11-26/wp_a_reverify.txt` (sha256 `101682c0…`) — WP-A 4 条 parser + E2E 双层复验（2026-11-26）
 - `docs/releases/v4.1.0/evidence/anti-ignore-gate-hollow-2026-09-30/anti_ignore_gate_hollow.txt` (sha256 `fedcb27f2a…`)
 - `docs/releases/v4.1.0/evidence/legacy-item-reverify-2026-09-30/doc_contradiction_reverify.txt` (sha256 `db3e26bd8…`)
 - `docs/releases/v4.1.0/evidence/gate-runs-2026-09-30/` (5 份)

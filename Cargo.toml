@@ -315,6 +315,11 @@ path = "tests/integration/sql/parser_token_test.rs"
 [[test]]
 name = "parser_e2e_test"
 path = "tests/integration/sql/parser_e2e_test.rs"
+
+[[test]]
+name = "chinese_identifier_e2e_test"
+path = "tests/integration/sql/chinese_identifier_e2e_test.rs"
+
 [[test]]
 name = "v312_62_issue_batch_test"
 path = "tests/integration/sql/v312_62_issue_batch_test.rs"

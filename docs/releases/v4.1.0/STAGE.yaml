@@ -111,8 +111,8 @@ legacy_chain_audit_2026_09_30:
       - "crates/parser/tests/wp_a_legacy.rs:68 — '#[ignore] // TODO: 多行注释解析需要修复' (belongs to #4708)"
       - "tests/baseline/ignore_registry.json — no wp_a entry (the ignore is unregistered)"
       - "#4710 / #4720: 0 test files in tests/ reference them"
-    action_required: "re-add to v4.1.0 backlog; backlog 20 -> 24"
-    status: "DONE_REOPENED_2026-09-30"
+    action_required: "re-add to v4.1.0 backlog; backlog 20 -> 24 (SUPERSEDED 2026-11-26 — the re-add was based on a defect that no longer exists; see reverification_2026_11_26)"
+    status: "REVERIFIED_FIXED_2026-11-26"
     reverification_2026_09_30:
       evidence: "docs/releases/v4.1.0/evidence/wp-a-reverify-2026-09-30/wp_a_reverify.txt"
       evidence_sha256: "e5f2820f22adaf24ef20a8e06dd5f86c7c607c5d1498752580c95e68cb1f0d4f"
@@ -131,6 +131,25 @@ legacy_chain_audit_2026_09_30:
       cargo_test: "cargo test -p sqlrustgo-parser --test wp_a_legacy -> ok. 27 passed; 0 failed; 1 ignored"
       test_strength_caveat: "all 27 tests assert only parse(sql).is_ok() — AST acceptance, no binder/executor/storage; original reports were E2E via sqlrustgo-cli sqlite --batch"
       additional_finding: "CLAIM_DOWNGRADE_MANIFEST.md:28 claims 'WP-A | DONE | Covered by 280 v400 parser tests'. Measured: v400_* files hold 336 tests, none exercise block comments, and token.rs has no block-comment token. Both the count and the DONE claim are unsupported."
+    # --- 2026-11-26 re-verification: the 2026-09-30 verdicts were correct ON THAT DATE,
+    #     but #4708's residual defect was fixed on 2026-10-08 and these records were never re-synced. ---
+    reverification_2026_11_26:
+      evidence: "docs/releases/v4.1.0/evidence/wp-a-reverify-2026-11-26/wp_a_reverify.txt"
+      evidence_sha256: "101682c020bd01027fd6003dc235d13a3e292288749708f1a12abe7ea33b9ee1"
+      method: "Gitea API (gitea252) + cargo test (parser crate, parser_e2e_test, v312_63_parser_issues_test, mysql_server_e2e_test, null_handling_test, chinese_identifier_e2e_test) + source/registry inspection + check_test_count_monotonic.sh"
+      base_commit: "dc9c0356917891d283bfff11004b7b6e987ec0bc (develop/v4.1.0)"
+      staleness_root_cause: "#4708's residual block-comment defect was fixed 2026-10-08 (Lexer::skip_whitespace '/*' branch; the #[ignore] was removed and the test kept as the regression witness). Evidence: tests/baseline/ignore_registry.json :: resolved_removed_ignores -> crates/parser/tests/wp_a_legacy.rs (resolved 2026-10-08). The 2026-09-30 audit blocks above predate that fix and were never refreshed."
+      contradicts_2026_09_30: "the block-comment probes above now pass, the wp_a_legacy suite has 0 ignored tests (was 1), and every one of the four issues has E2E coverage"
+      verdicts:
+        "#4708": "FIXED — parser layer green (wp_a_legacy 35/35, incl. the formerly-ignored block-comment test and 7 boundary tests) AND engine layer green via the permanent E2E witness added with this change: tests/integration/sql/chinese_identifier_e2e_test.rs (Chinese table/column names, MySQL backticks, block + Chinese line comments; 3/3 green)"
+        "#4696": "FIXED — parser green + E2E green: tests/anomaly/null_handling_test.rs::green_v313_08_update_affected_rows_count executes 'UPDATE t SET a=99' (no WHERE) through the engine and asserts 3 affected rows (file 53/53 green)"
+        "#4710": "FIXED — parser green (9 unit tests over YEAR..MICROSECOND) + E2E green: tests/integration/sql/v312_63_parser_issues_test.rs TIMESTAMPDIFF delta tests (year/minute/hour)"
+        "#4720": "FIXED — parser green (6 tests) + E2E green: tests/integration/mysql_server_e2e_test.rs:43 executes 'SET @x = 1' over the MySQL wire protocol (file 90/90 green)"
+      cargo_test: "cargo test -p sqlrustgo-parser -> every suite green (35/21/24/10/114/32/22/197/7 passed; 0 failed; 0 ignored); cargo test --test parser_e2e_test -> 249 passed; --test v312_63_parser_issues_test -> 12 passed; --test mysql_server_e2e_test -> 90 passed; --test null_handling_test -> 53 passed; --test chinese_identifier_e2e_test -> 3 passed"
+      gitea_state: "all four issues are closed (2026-09-03) and stay closed — the defect claimed on 2026-09-30 no longer exists; no reopen performed"
+      backlog_effect: "WP-A drops out of the v4.1.0 backlog; ISSUES_PLAN.md §4.7 Total 24 -> 20"
+      residual_debt: "none for these four issues — the single gap found by this re-verification (no permanent E2E test covering Chinese identifiers) is closed by the new test added in this change; the Chinese-identifier OR-downgrade recorded in PR #4746's closure description no longer applies to the engine path"
+      gate_debt_UNREG_IGNORE_WP_A: "RESOLVED — the #[ignore] that the 2026-09-30 audit flagged no longer exists (0 #[ignore] attributes in crates/parser/tests/wp_a_legacy.rs); the registry carries it under resolved_removed_ignores since 2026-10-08"
   # --- P0 NEW 2026-09-30: the gate that should have caught the above is hollow ---
   hollow_gate_anti_ignore:
     gate: "scripts/gate/check_anti_ignore_gate.sh"
