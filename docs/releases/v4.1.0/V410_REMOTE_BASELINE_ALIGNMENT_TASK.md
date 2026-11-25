@@ -119,7 +119,7 @@ BASE 经 PR #5928–#5932 合入 `develop/v4.1.0`。
 
 **PASS 9 / FAIL 2 / WAIVED 1**（判据 8 在本轮由 FAIL 转 PASS）。
 判据表：`docs/refactor/v4.1.0-c/takeover/V410-READINESS-VERDICT.json`
-（由 `gen_verdict.py` 生成，可复算：`python3 docs/refactor/v4.1.0-c/takeover/gen_verdict.py --check`）。
+（由 `gen_verdict.py` 生成，可复算：`python3 docs/refactor/v4.1.0-c/takeover/gen_verdict.py --out /tmp/verdict-check.json` 然后比对 `summary` —— **该生成器没有 `--check` 子命令**，详见 §5）。
 
 **属主裁决位仍然是空的**：`docs/refactor/v4.1.0-c/takeover/V410-OWNER-RULING.md` §4
 （放行/不放行、签署人、日期、放行批次、附加条件）与 §4.1（O9 顺带确认）
@@ -312,7 +312,7 @@ verify_neg_fixtures: tree_sha=<40 hex> dirty_files=<n>
 | D8 | 排除范围被门禁测试**钉死** | `cargo test --test alpha_gate_blocker_test --all-features` ⇒ `8 passed`（**不是 9** —— 本轮**扩展已有**断言而**不新增** `#[test]`，以免改动 `tests/baseline/gate_test_baseline.json` 的计数） |
 | D9 | **没有**新增 `#[ignore]` | `grep -rn "#\[ignore" crates/storage/tests/tf_t4_*.rs` ⇒ 应无输出 |
 | D10 | **没有**改产品代码 | `git diff <BASE> HEAD --stat -- crates/ src/` ⇒ 应为空（`crates/storage/tests/tf_t4_*.rs` 本轮也未改） |
-| D11 | 判据表自洽 | `python3 docs/refactor/v4.1.0-c/takeover/gen_verdict.py --check` ⇒ 与已提交的 JSON 一致，`fail_criteria` 应为 `[4,6]` |
+| D11 | 判据表自洽 | **没有 `--check`** —— 用 `python3 docs/refactor/v4.1.0-c/takeover/gen_verdict.py --out /tmp/verdict-check.json` 重跑并比对 `summary`（命令见 §5）⇒ 应 `MATCH: True`，`fail_criteria` 应为 `[4,6]` |
 
 **如果你发现本轮的修复有漏洞，请直接指出来** —— 你的报告里要有独立的判断，不要复述本轮的
 自我审核（`docs/releases/v4.1.0/PR-5933_TEST_REVIEW.md` 那是实施者自己的审核，
@@ -335,6 +335,7 @@ verify_neg_fixtures: tree_sha=<40 hex> dirty_files=<n>
 | 9 | 外部咨询通道：`chatGPT-web` 可用；**deepseek-web 2026-11-26 实测 HTTP 401** ⇒ **双血统不可得**，单血统**不得**当双血一致 | 看板 §3 Q17 |
 | 10 | 远端**无法访问内网 Gitea** —— 所有事实必须来自本仓库 | — |
 | 11 | **`verify_handoff.py --check` 需要 `jsonschema==4.23.0`**（`python3 -m venv` + `pip install 'jsonschema==4.23.0'`）；`gen_verdict.py` 在缺它时会拒绝运行并提示建 venv | `docs/releases/v4.1.0/refactoring/tools/verify_handoff.py` |
+| 12 | **`gen_verdict.py` 没有 `--check`**（远端实测：退出码 2，`unrecognized arguments: --check`）—— 用「重跑到仓外 + 比对 `summary`」代替；且**必须**带 `--out` 指到仓外，否则它会**就地覆盖**已提交的判据表 | `docs/refactor/v4.1.0-c/takeover/gen_verdict.py` |
 
 ---
 
@@ -348,12 +349,30 @@ verify_neg_fixtures: tree_sha=<40 hex> dirty_files=<n>
    python3 audit/v4.1.0/honesty.py check
    python3 audit/v4.1.0/probe_neg_fixtures.py check
    python3 audit/v4.1.0/gen_neg_ledger.py --check
-   python3 docs/refactor/v4.1.0-c/takeover/gen_verdict.py --check
    python3 scripts/gate/kanban_render.py check docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.md
    python3 scripts/gate/kanban_merge_policy.py docs/releases/v4.1.0/KANBAN_v4.1.0_ALPHA.jsonl
    cargo test --test alpha_gate_blocker_test --all-features
    bash -c 'source scripts/gate/common.sh; coverage_measurement_selftest'
    ```
+
+   **判据表的可复现性复核**（⚠️ **没有 `--check` 子命令** —— 远端评审实测确认，
+   `gen_verdict.py --check` 退出码 2：`unrecognized arguments: --check`。
+   正确的复核方式是**重跑生成器并比对 `summary`**）：
+
+   ```bash
+   # 生成器**不带参数**即指向仓内的 7/7 归档（2026-11-26 修订后），
+   # 输出到仓外，仓内保持干净：
+   python3 docs/refactor/v4.1.0-c/takeover/gen_verdict.py --out /tmp/verdict-check.json
+   python3 - <<'EOF'
+   import json
+   a = json.load(open('/tmp/verdict-check.json'))
+   b = json.load(open('docs/refactor/v4.1.0-c/takeover/V410-READINESS-VERDICT.json'))
+   print('regenerated:', a['summary']); print('committed  :', b['summary'])
+   print('MATCH:', a['summary'] == b['summary'])
+   EOF
+   ```
+
+   期望：`MATCH: True`，且 `summary` = `{"total":12,"pass":9,"fail":2,"waived":1,"fail_criteria":[4,6]}`。
 
    > ⚠️ **注意**：`SQLRUSTGO_COVERAGE_STAGE=ga bash scripts/gate/check_coverage_v312.sh`
    > 在**冷 target** 上要跑**很久**（8 个 crate 逐个 `cargo llvm-cov`，单线程带插桩）。
