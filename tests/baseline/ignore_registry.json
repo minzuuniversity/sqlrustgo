@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "purpose": "SSOT for every #[ignore] attribute in the live test tree; read by scripts/gate/check_anti_ignore_gate.sh (G19).",
-  "captured_at_commit": "1ce91dd9e8e98473779b7d915b7b82cc87040b85",
-  "captured_at_date": "2026-10-23",
-  "total_allowed": 135,
+  "captured_at_commit": "9935d21b2d79692045992747885a94ae3cce256a",
+  "captured_at_date": "2026-11-26",
+  "total_allowed": 136,
   "limits": {
     "total_allowed_max": 150,
     "active_max": 92,
@@ -1147,6 +1147,15 @@
       "test": "measure_recovery_wal_replay_p0_08",
       "line_at_capture": 239,
       "reason": "wall-clock measurement harness — run manually, results go in the evidence doc",
+      "status": "PARKED",
+      "category": "EXTERNAL_PREREQ",
+      "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
+    },
+    {
+      "file": "crates/storage/tests/measure_row_at_a_time_5507.rs",
+      "test": "measure_row_at_a_time_commit_cost_5507",
+      "line_at_capture": 59,
+      "reason": "measurement, not a gate — run with --ignored --nocapture",
       "status": "PARKED",
       "category": "EXTERNAL_PREREQ",
       "status_rationale": "reason names an external prerequisite (live server / --release / large memory / platform permission / dedicated script)"
