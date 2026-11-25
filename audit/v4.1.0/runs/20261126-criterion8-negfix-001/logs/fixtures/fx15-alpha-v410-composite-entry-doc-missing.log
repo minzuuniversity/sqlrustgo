@@ -1,0 +1,28 @@
+----- fx15 arm A (control: entry component on the intact tree) -----
+control entry rc=0 (want 0)
+=== v4.1.0 Alpha Entry Summary ===
+PASS: 19 / 19
+BLOCKERS: 0
+STATUS: ALPHA ENTRY PASS
+FX-GATE-LAYER: gate=scripts/gate/check_alpha_v410.sh state=FAIL exit_code=1
+FX-STAGE-LAYER: verdict=FAIL counts={"PASS": 0, "FAIL": 1, "INCOMPLETE": 0}
+----- fx15 gate output (tail 16) -----
+  [Q5_SQL_CORPUS] PASS (log=docs/releases/v4.1.0/logs/alpha_quality_Q5_SQL_CORPUS_fa785ec2a7_20261126_010733.log sha256=245051ea7dea1eb1cf64cf73b5484009e81eacf0c61c5778bc21a53d3948a60d)
+
+--- Q6: Test Suite Compile ---
+  [Q6_TEST_LIB] PASS (log=docs/releases/v4.1.0/logs/alpha_quality_Q6_TEST_LIB_fa785ec2a7_20261126_010734.log sha256=260699dee49f81a2e4a11912a476d77e254dcc6b7d76035be676304d60950bde)
+
+--- (Q7 Coverage deferred to alpha_to_beta per STAGE.yaml) ---
+=== v4.1.0 Alpha Quality Summary ===
+PASS: 6 / 9
+SKIPPED: 0
+BLOCKERS: 3
+STATUS: ALPHA QUALITY BLOCKED
+
+=== v4.1.0 Alpha Gate Composite Summary ===
+ENTRY_STATUS: 1
+QUALITY_STATUS: 1
+STATUS: ALPHA GATE BLOCKED
+----- end -----
+fx15-alpha-v410-composite-entry-doc-missing: composite ENTRY_STATUS=1 blocked_marker=1
+fx15-alpha-v410-composite-entry-doc-missing: gate rc=1 (FAIL, not a timeout) + stage verdict=FAIL, ENTRY_STATUS=1 -> FIXTURE-PASS (the composite propagates the entry component's red)

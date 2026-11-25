@@ -1,0 +1,23 @@
+----- fx16 arm A (control: intact tree) -----
+control rc=0 (want 0)
+PASSED: 5
+FAILED: 0
+
+Result: ALL PASS
+FX-GATE-LAYER: gate=scripts/gate/check_arch_invariants.sh state=FAIL exit_code=1
+FX-STAGE-LAYER: verdict=FAIL counts={"PASS": 0, "FAIL": 1, "INCOMPLETE": 0}
+----- fx16 gate output (tail 12) -----
+      Failing closed per P16: a missing target must never be reported as PASS.
+
+[C-ARCH-05-NOTE] Uncovered large sources (informational, does NOT affect PASS/FAIL):
+  WARN: crates/executor/src/expr/mod.rs = 5269 lines (> 1600) — not gated by C-ARCH-05
+  WARN: crates/executor/src/stored_proc.rs = 4277 lines (> 1600) — not gated by C-ARCH-05
+  WARN: crates/executor/src/trigger.rs = 2627 lines (> 1600) — not gated by C-ARCH-05
+
+=== Summary ===
+PASSED: 4
+FAILED: 1
+
+Result: FAIL
+----- end -----
+fx16-arch-invariants-invariant-impl-removed: gate rc=1 (FAIL, not a timeout) + stage verdict=FAIL -> FIXTURE-PASS (the gate detects the removed invariant)

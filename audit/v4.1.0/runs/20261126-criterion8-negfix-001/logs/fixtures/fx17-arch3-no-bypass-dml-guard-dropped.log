@@ -1,0 +1,13 @@
+----- fx17 arm A (control: intact tree) -----
+control rc=0 (want 0)
+  [4/4] ✅ PASS: VtuGuard::assert_path_for_dml is public
+
+=== G4 Gate: PASS ===
+ARCH-3 (#3169) Blocker-3 verified: VtuGuard main path enforced
+FX-GATE-LAYER: gate=scripts/gate/check_arch3_no_bypass.sh state=FAIL exit_code=1
+FX-STAGE-LAYER: verdict=FAIL counts={"PASS": 0, "FAIL": 1, "INCOMPLETE": 0}
+----- fx17 gate output (tail 12) -----
+=== G4 Gate: ARCH-3 (#3169) VtuGuard main-path enforcement ===
+  ❌ FAIL: src/execution_engine.rs + src/execution_engine_methods.rs only have 2 VtuGuard marker calls (expected >= 3)
+----- end -----
+fx17-arch3-no-bypass-dml-guard-dropped: gate rc=1 (FAIL, not a timeout) + stage verdict=FAIL -> FIXTURE-PASS (the gate detects the unguarded DML call)
