@@ -285,10 +285,58 @@ Exit codes:
 Credentials: `GITEA_URL` / `GITEA_USER` / `GITEA_PASS` / `GITEA_REPO`
 environment overrides (defaults match the sibling scripts).
 
+### `claude_mirror_intake.sh` — 收口「远端只读分析」分支（镜像 → 252 → 全远端）
+
+```bash
+scripts/sync/claude_mirror_intake.sh --list                       # 镜像上有、252 上还没有的候选分支
+scripts/sync/claude_mirror_intake.sh --branch <name> --dry-run    # 只探测，不写任何远端
+scripts/sync/claude_mirror_intake.sh --branch <name> --land-only  # 只落到 252（不开 PR）
+scripts/sync/claude_mirror_intake.sh --branch <name> --merge --sync   # 落地 → PR → 合并 → 回灌 → 校验
+scripts/sync/claude_mirror_intake.sh --selftest                   # 离线自检（本地 bare 仓库，不触网）
+```
+
+闭环的形状：远端 agent 够不到 252，做完只读分析后把结果发布到 GitHub
+镜像的一个文档分支；本脚本把该分支**读**下来落到 252，在 252 上开 PR，
+合并后由 `5remotes_sync.sh` 回灌全部远端，最后由 `5remotes_drift_check.sh`
+证明零漂移。评审与合并始终发生在真源侧，不在镜像侧。
+
+刻意的边界：
+
+- **不 force-push 任何远端。** 252 是受保护分支；镜像上 force 推送会抹掉别的
+  远端独有的提交 —— 2026-11-26 就发生过：github 仓 `develop/v4.0.0` 上的 3 个
+  dependabot 提交被 `5remotes_sync.sh` 的 `--force-with-lease` 覆盖掉（事后靠
+  `recovered/develop-v4.0.0-pre-sync-20261126` 找回）。目标分支在 252 上已存在
+  且 tip 不同时，本脚本**拒绝**并退出，由人工先对齐两个 tip。
+- **不在镜像上开 PR、不改镜像内容**（镜像只读，`AGENTS.md` §3.2 / §8 #11）。
+- **凭据不进 argv、不进 URL**：git 侧走 `git -c include.path=<0600 文件>`，
+  curl 侧走 `curl -K <0600 文件>`，与 `5remotes_sync.sh` 同一份实现
+  （`gitea_credential_common.sh`）。
+- **合并后回读校验**：base ref 必须等于 `merge_commit_sha`（`PASS-EXACT`），
+  或至少包含它（`PASS-LANDED`），否则 `FAIL-DRIFT` 并以非零码退出
+  —— 复用 `verify_merge_ref.sh` 的 AC4 判据。
+
+`--selftest` 是离线的：用两个本地 bare 仓库断言 ①`--dry-run` 不写目标远端、
+②`--land-only` 落地的 tip 与镜像一致、③目标端 tip 分叉时**拒绝**且不覆盖、
+④分支不存在时失败、⑤非法分支名退出码为 4。
+
+Exit codes:
+- 0: 成功（每个被要求的阶段都完成了）
+- 1: 某一步失败（分支不存在 / 分叉 / 合并未落地 / 漂移未清零）
+- 2: network / API / credential error
+- 4: argument error
+
+Credentials: `GITEA_URL` / `GITEA_REPO` environment overrides,
+`GITEA_USER` / `GITEA_TOKEN`（也可由本机 git credential store 提供；
+取不到时**明确失败**，不回落到写死的值 —— #5381）。
+
 ## When to use
 
 - After a PR merge on the "publishing" remote (gitea252) — run
   `5remotes_sync.sh --all` to push to the other 4 remotes.
+- When an agent that cannot reach gitea252 has published an analysis
+  branch on the GitHub mirror — run `claude_mirror_intake.sh --list`,
+  then `--branch <name> --merge --sync` to land it on 252 and bring all
+  remotes back to one tip.
 - As a periodic cron health check — run `5remotes_drift_check.sh` and
   alert on non-zero exit.
 
