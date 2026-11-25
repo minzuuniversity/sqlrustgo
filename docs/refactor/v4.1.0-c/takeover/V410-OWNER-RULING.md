@@ -69,21 +69,23 @@
 > 远端 `base/v4.1.0-frozen` 的 tip 是 BASE 的后代，成立）。
 > 但**设计稿 §A5 #1 的另一条可核方式**
 > （`git merge-base --is-ancestor origin/develop/v4.1.0 BASE`）在本次实测中**不成立**：
-> 远端 `develop/v4.1.0` 的 tip 已是 `9f582882bb15bfa049dd4313fd7e9cf2326a3ce7`，
-> 它是 BASE 的**后代**而非祖先。原因是 `develop/v4.1.0` **已被两次合并**了 `base/v4.1.0-frozen`：
-> PR **#5928**（merge commit `ea285c5fda`，第一批）与 PR **#5929**（merge commit `9f582882bb`，
-> 整备剩余全部提交）。
+> 远端 `develop/v4.1.0` 的 tip 见 `V410-READINESS-VERDICT.json` 的 `criteria[0].observed`
+> （**判据评估时的实测快照**）—— 它是 BASE 的**后代**而非祖先。
+> 原因是 `develop/v4.1.0` **已被合并**了 `base/v4.1.0-frozen`：
+> PR **#5928**（第一批）、PR **#5929**（整备剩余全部提交）、PR **#5930**；
+> **合并提交见 git 历史**（`git log --oneline --merges origin/develop/v4.1.0`）。
 >
 > 这不是 BASE 的缺陷，而是**冻结分支已被并入 develop** —— O11（BASE 是否推进 develop）
 > 事实上已被行动回答。判据 1 的三项实质条件仍全部成立：BASE 唯一 ✓；
 > **冻结时点的 develop tip** `8cbde5b6d3` 是 BASE 的祖先 ✓（`BASELINE_FREEZE.json` 记录，
 > `verify_baseline.py` 的 B1 用的就是它）；含 BASE 的分支已推送 ✓。
 >
-> **合并状态（2026-11-25 实测；本段旧数字已过时）**：
-> (a) 远端 `base/v4.1.0-frozen` 与本地 HEAD 现**同为** `f768c1c8b9e3bc32a1b7934b943ad13cbccd9c50`
-> （它仍是 BASE 的后代 ✓）。
-> (b) **冻结分支已全部并入 develop** —— `git log --oneline origin/develop/v4.1.0..base/v4.1.0-frozen`
-> 实测 **0 条**（PR #5929 已合并，merge commit `9f582882bb15`）。
+> **合并状态（只陈述事实，不钉死任何会变的值 —— R73）**：
+> (a) 本分支已通过 PR **#5928 / #5929 / #5930** 合入 develop（**合并提交见 git 历史**）；
+> 远端 `base/v4.1.0-frozen` 与本地 HEAD 是否同一、以及它的 tip 取值，**以本节末尾那条命令的
+> 实测输出为准**（「它是 BASE 的后代 ✓」这条性质由 `verify_baseline.py --strict` 担保）。
+> (b) 当前 develop 里还缺本分支的哪些提交，**以本节末尾那条命令的实测输出为准**
+> （**不要按任何固定数字操作**）。
 > (c) ⇒ **「缺 N 个提交、需先合并」的旧指引已作废**；裁决文件、台账、生成器与全部修订**已在 develop 上**。
 > 后续若继续在 `base/v4.1.0-frozen` 上提交，需要**新开 PR** 才会进 develop —— 那条路已验证可走。
 >

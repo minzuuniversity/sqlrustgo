@@ -38,6 +38,23 @@ criterion 7's exit-code-propagation statement, criterion 8's tree identity
 (`verify_r2_package.py` never looks at the R1 directory), and criterion 12's
 facts (the criterion is waived; no command is run).
 
+R73 (controller ruling) — WHICH VALUES MAY BE WRITTEN DOWN AT ALL
+=================================================================
+Only values that CANNOT change may be written into a document as a fact:
+BASE, BASE's tree, the develop tip AT FREEZE TIME, and the frozen historical
+material commits.  Values that DO change — the live develop tip, this
+branch's tip / HEAD, the current commit count, "N commits are still missing"
+— must NEVER be hard-coded; they belong either in `observed` (a CAPTURED
+value: the snapshot taken when the criterion was evaluated) or in an
+authored paragraph that names a RE-COMPUTABLE ENTRY POINT and says "the
+measured output is authoritative -- do not act on any fixed value".
+
+Consequently criterion 1's `caveats` do NOT restate the live develop tip or
+the remote frozen-branch tip.  Both appear only in `observed`, where they are
+the captured snapshot; the `caveats` point at `observed` and at the command
+instead.  (R71 already said this about file hashes; R73 extends it to git
+SHAs -- the values that moved every time this branch was merged into develop.)
+
 Criterion 8 (the ALPHA negative-fixture lane) needs 1-2 hours, so by default
 the script reads the log of a run that was executed separately with the SAME
 command on the SAME tree; `--run-neg` makes it run the lane itself.  The date
@@ -344,14 +361,17 @@ def main():
             "的 tip 须是 BASE 的后代；这两条的实测结果见 `observed`。",
             "【作者陈述，非本次命令输出】**设计稿 §A5 #1 的另一条可核方式**"
             "（`git merge-base --is-ancestor origin/develop/v4.1.0 BASE`）"
-            "在本次实测中**不成立**：远端 develop/v4.1.0 的 tip 已是 %s —— 它是 BASE 的**后代**而非祖先。"
-            "原因是 develop/v4.1.0 **已被两次合并**了 `base/v4.1.0-frozen`"
-            "（PR #5928，merge commit ea285c5fda；PR #5929，merge commit 9f582882bb）"
+            "在本次实测中**不成立**：远端 develop/v4.1.0 的 tip 见 `observed`"
+            "（**判据评估时的实测快照**；该值会随本分支被合入 develop 而前移 —— "
+            "**不要按任何固定值操作**）—— 它是 BASE 的**后代**而非祖先。"
+            "原因是 develop/v4.1.0 **已被合并**了 `base/v4.1.0-frozen`"
+            "（PR #5928 / #5929 / #5930；**合并提交见 git 历史**）"
             "—— 冻结分支已被并入 develop（= O11 事实上已被行动回答）。这不是 BASE 的缺陷。"
             "判据 1 的三项实质条件仍全部成立：BASE 唯一 ✓；**冻结时点的 develop tip** %s "
             "是 BASE 的祖先 ✓（BASELINE_FREEZE.json 记录，verify_baseline 的 B1 用的就是它）；"
-            "含 BASE 的分支已推送 ✓（远端 `base/v4.1.0-frozen` 的 tip 现为 %s）。"
-            % (dev_live, dev_tip_frozen[:12], remote),
+            "含 BASE 的分支已推送 ✓（远端 `base/v4.1.0-frozen` 的 tip 见 `observed` —— "
+            "**同样是会变的值**，本分支每次提交/合并都会前移，不要按任何固定值操作）。"
+            % (dev_tip_frozen[:12],),
         ],
     })
     m = re.search(r"\[B3\] PASS\s+(.*)", out1)

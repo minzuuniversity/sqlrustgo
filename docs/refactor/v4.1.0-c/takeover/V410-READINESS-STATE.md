@@ -46,16 +46,22 @@ manifest、门禁编目、外审包三套统计与 dead 口径都自洽），缺
 
 > **`base_sha` 一律填 BASE，不随提交前移。** 这是 R-BASE，Task 2 之后所有前向绑定都钉死在这里。
 
-> **远端 tip 的当前值（2026-11-25 实测，会变）**：`origin/develop/v4.1.0` =
-> `9f582882bb15bfa049dd4313fd7e9cf2326a3ce7`（**已两次**包含 `base/v4.1.0-frozen`：
-> PR #5928 的 merge `ea285c5fda` 与 PR #5929 的 merge `9f582882bb` —— 冻结分支**已全部**并入 develop）；
-> `origin/base/v4.1.0-frozen` = **`f768c1c8b9e3bc32a1b7934b943ad13cbccd9c50`**（远端 tip = 本地 HEAD）。
-> `git log --oneline origin/develop/v4.1.0..base/v4.1.0-frozen` 实测 **0 条** ⇒ develop 上**没有**遗漏的整备提交。
+> **远端 tip 与合并状态（会变的值 —— 只给校验入口，不钉死数字；R73）**：
+> `origin/develop/v4.1.0` 的 tip、`origin/base/v4.1.0-frozen` 的 tip（= 本地 HEAD 是否同一）、
+> 以及「develop 里还缺本分支的哪些提交」，**一律以本段末尾命令的实测输出为准**。
+> 事实陈述：本分支已通过 PR **#5928 / #5929 / #5930** 合入 develop（**合并提交见 git 历史**）；
 > 后续在 `base/v4.1.0-frozen` 上的新提交需要**另开 PR** 才会进 develop。
-> ⚠️ **旧版本这里写的是「最后两个提交」和 tip = `e2d98149d2…` —— 那是过时的快照，已按实测重算。**
-> ⚠️ **本修复波自身还会再加提交** ⇒ 合并前请以
-> `git log --oneline ea285c5fda..base/v4.1.0-frozen` 的**实测输出**为准，不要按固定数字操作。
-> 这两个值会随推送/合并变动；**BASE 不会变**。
+> ⚠️ **旧版本这里写的是「最后两个提交」与具体的 tip SHA —— 那是过时的快照，
+> 已按 R73 全部改为校验入口（此处也不再复述那些 SHA）。**
+> ⚠️ **本分支自身还会再加提交** ⇒ 合并前请以
+> `git log --oneline origin/develop/v4.1.0..base/v4.1.0-frozen` 的**实测输出**为准，
+> **不要按任何固定数字或固定 SHA 操作**。
+> 这几个值会随推送/合并变动；**BASE 不会变**。
+>
+> ```bash
+> git log --oneline origin/develop/v4.1.0..base/v4.1.0-frozen
+> git ls-remote origin refs/heads/develop/v4.1.0 refs/heads/base/v4.1.0-frozen
+> ```
 
 ---
 
@@ -123,13 +129,13 @@ R2 外审包在 `…/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2/`（**兄弟目
 21 个文件在生成前后**逐字节未变**）；构建链在同目录的 `r2-build/`（`build_r2.sh` 是唯一入口，幂等）。
 `owner/approvals/` **空** —— 签署是属主的行为。
 
-**⚠️ 判据 1 的一条观察（不改变判定）**：本任务运行期间 `develop/v4.1.0` 被合并了
-`base/v4.1.0-frozen`（PR #5928，merge commit `ea285c5fda`），所以远端 develop 的 tip 现在是
+**⚠️ 判据 1 的一条观察（不改变判定）**：本任务运行期间 `develop/v4.1.0` 已被合并了
+`base/v4.1.0-frozen`（PR #5928 / #5929 / #5930；**合并提交见 git 历史**），所以远端 develop 的 tip 现在是
 BASE 的**后代**而非祖先（设计稿 §A5 #1 的字面检查因此不再成立）；冻结时点的 develop tip
-`8cbde5b6d3` 仍是 BASE 的祖先 ✓。远端 `base/v4.1.0-frozen` 的 tip 现为
-**`ebcf8bc2997649e333067bbb8497c1dbcdf09db3`**（**远端** tip；本地分支已领先它 —— 本波修复波尚未推送）；
-develop 里**还没有**冻结分支上的**7 个**提交（在远端 tip `ebcf8bc299` 处实测）——
-⚠️ 旧版本这里写的是「最后两个提交」，**已按实测重算**。
+`8cbde5b6d3` 仍是 BASE 的祖先 ✓。远端 `base/v4.1.0-frozen` 的 tip、远端 develop 的 tip、
+以及「develop 里还缺冻结分支上的哪些提交」，**都是会变的值** ⇒
+**以 §1 末尾那条命令的实测输出为准**，不要按任何固定数字或固定 SHA 操作。
+⚠️ 旧版本这里写的是「最后两个提交」与具体 tip SHA，**已按 R73 改为校验入口**。
 
 ---
 
