@@ -871,7 +871,9 @@ def main():
                              "（那条泳道耗时 1–2 小时；它的实测日期与树见 criteria[7].note —— "
                              "那个树身份是%s）。"
                              % ("**观测值**（本次由本脚本实跑）" if neg_observed
-                                else "**推定/重构**的，不是从日志里观测到的"),
+                                else ("**显式指定的参数**（`--neg-run-tree`）"
+                                      if neg_tree != NEG_RUN_TREE_DEFAULT
+                                      else "**推定/重构**的，不是从日志里观测到的")),
         "repo": repo,
         "base_sha": BASE,
         "develop_tip_frozen_at_baseline": dev_tip_frozen,
