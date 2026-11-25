@@ -185,17 +185,36 @@ bash …/DSH-EXTERNAL-REVIEW-001/r2-build/build_r2.sh
 4. **R2 目录里带 6 个构建脚本**（`gen_r2_package.py` 等）。它们的 docstring/锚点里保留了被删除的
    旧断言字符串（作为替换锚点），因此「R2 全文检索」的口径必须排除这 4 个脚本
    （`verify_r2_package.py` 已显式排除并注明）。**`package/` 内是干净的** —— 判据 11 的对象是包。
-5. **DSH 仓库里 R2 与 `r2-build/` 尚未提交**（`git status` 显示为 untracked）。提交与否由控制者决定；
-   本次未 push。
+5. **DSH 仓库里 R2 与 `r2-build/` 已提交**：`a0314048fff341f832b963a87c194f9cefeef686`
+   （发布 R2 + 构建链，2026-11-25 09:46）与 `19f999e`（补齐残余的 R1 身份残留，10:03）。
+   **未 push —— 该仓库没有配置任何 git remote**（`git remote -v` 为空，只有 `main` 一个分支），
+   所以「推给属主」这一步目前**无处可推**；是否给它配 remote 由属主决定。
 
-## 9. 复算入口
+## 9. 构建链的归属与复算入口（M-8）
+
+**权威归属**：R2 的**构建链在 DSH 仓** —— `…/DSH-EXTERNAL-REVIEW-001/r2-build/`（`build_r2.sh`
+是唯一入口，幂等；R1 只读）。**该仓当前没有 git remote**（`git remote -v` 为空，只有 `main`
+一个分支），所以构建链**没有异地副本**；是否给它配 remote、是否把它推到与本仓同源的远端，
+**由属主决定**。本仓（sqlrustgo）**不复制构建链**（那会变成第二套可写的构建入口，违反 C2 的精神），
+只保存**校验器这一份可复算的锚点**：
+
+| 位置 | 是什么 | 为什么放在这里 |
+|---|---|---|
+| `docs/refactor/v4.1.0-c/takeover/verify_r2_package.py` | 判据 10 / 11 与包完整性的**校验器**（只读，不生成、不改写任何东西） | 判据 10 / 11 的可复现性锚点：即使 DSH 工作区丢失，**校验**仍可在本仓复跑 |
+| `…/DSH-EXTERNAL-REVIEW-001/r2-build/` | **生成**链（`build_r2.sh` 等 6 个脚本，权威归属：DSH 仓） | 生成是写操作，留在 DSH 仓；本仓不复制 |
+
+> `verify_r2_package.py` 落在 `docs/refactor/v4.1.0-c/takeover/` 下，**不在 `MANIFEST_ROOTS` 内**
+> ⇒ 按 R67 **不需要重签 manifest**（`verify_handoff.py --check` 实测仍退出 0，`handoff_manifest_sha256`
+> 保持 `8b12989eeeebb96ab14190fd85f5d2cb54af7becda5fc29693e471a1ba6f6a66`）。
+
+## 10. 复算入口
 
 ```bash
-# 1) 重建 R2（幂等：R1 只读，重跑得到同样的 R2 内容）
+# 1) 重建 R2（幂等：R1 只读，重跑得到同样的 R2 内容）—— 权威归属在 DSH 仓
 bash …/DSH-EXTERNAL-REVIEW-001/r2-build/build_r2.sh
 
-# 2) 单独复核判据 10 / 11 与包完整性
-python3 …/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2/verify_r2_package.py
+# 2) 单独复核判据 10 / 11 与包完整性 —— **本仓的副本**（可复算锚点）
+python3 docs/refactor/v4.1.0-c/takeover/verify_r2_package.py
 
 # 3) 复核 R1 未被触碰
 shasum -a 256 …/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0/package/FREEZE.json

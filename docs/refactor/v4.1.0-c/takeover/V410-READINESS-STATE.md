@@ -11,8 +11,9 @@
 
 ## 0. 一句话状态
 
-**9 个计划任务已全部完成**（Task 1–8 + Task 10 通过独立评审；Task 9「放行判据汇总 + R2 外审包 +
-属主放行裁决」已完成）。**12 条准入判据的实测判定：PASS 9 · FAIL 2（#6、#8）· WAIVED 1（#12）**。
+**9 个计划任务已实施完成**（Task 1–8 + Task 10 通过独立评审；Task 9「放行判据汇总 + R2 外审包 +
+属主放行裁决」**已实施完成，评审中** —— 修订第 1 轮已处理 1 Important + 8 Minor）。
+**12 条准入判据的实测判定：PASS 8 · FAIL 3（#4、#6、#8）· WAIVED 1（#12）**。
 
 当前**不能**宣布放行，也**不能**宣布「整备失败」：**材料层全绿**（基线、SHA 绑定、ADR 机器字段、
 manifest、门禁编目、外审包三套统计与 dead 口径都自洽），缺的是**证据层**（#8：夹具泳道未达 7/7）
@@ -40,8 +41,9 @@ manifest、门禁编目、外审包三套统计与 dead 口径都自洽），缺
 > **远端 tip 的当前值（2026-11-25 实测，会变）**：`origin/develop/v4.1.0` =
 > `ea285c5fda77e7790e965ae482e3c1b015fabc10`（**已包含** `base/v4.1.0-frozen`，
 > PR #5928 的 merge commit —— 冻结分支已被并入 develop）；
-> `origin/base/v4.1.0-frozen` = `e007fe711403e767b64a958772965fa397579fc1`
-> （**比本地 tip `09ba360f6c` 落后 2 个提交**：`d358289919`、`09ba360f6c`）。
+> `origin/base/v4.1.0-frozen` = `e2d98149d264b9cdbc7270229f3cd498b61e6072`
+> （= Task 9 的提交，**控制者已推送**）。develop 里**还没有**冻结分支上最后两个提交
+> （`d358289919`、`09ba360f6c`，在合并点 `e007fe7114` 之后）。
 > 这两个值会随推送/合并变动；**BASE 不会变**。
 
 ---
@@ -59,7 +61,7 @@ manifest、门禁编目、外审包三套统计与 dead 口径都自洽），缺
 | **Task 7** | Oracle 逐条判定（**判定完成，签署 BLOCKED**） | `takeover/ORACLE-REVIEW-LOG-T1.md` | ✅ 实质交付通过 |
 | **Task 8** | ALPHA 阶段执行点 + 7 道负向夹具 | `.gitea/workflows/ci-alpha-stage.yml`、`audit/v4.1.0/neg/fx*.sh` | ✅ 修订 2 后通过 |
 | **Task 10** | 逐用例重做 invariant 映射 + 修复 38 条不可判定断言 | `TRANSACTION_INVARIANTS.md:30`、`ORACLE-REVIEW-LOG-T1.md:505-511` | ✅ 评审通过 |
-| **Task 9** | 12 条判据汇总 + R2 外审包 + 属主放行裁决（**裁决请求**，属主未签） | `takeover/V410-READINESS-VERDICT.json`、`takeover/R2-RELEASE-PACKAGE.md`、`takeover/V410-OWNER-RULING.md`；R2 包 `…/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2/`（zip sha256 `ea3611eee5da3ab0…`） | ✅ 实测完成（PASS 9 / FAIL 2 / WAIVED 1） |
+| **Task 9** | 12 条判据汇总 + R2 外审包 + 属主放行裁决（**裁决请求**，属主未签） | `takeover/V410-READINESS-VERDICT.json`、`takeover/R2-RELEASE-PACKAGE.md`、`takeover/V410-OWNER-RULING.md`、`takeover/verify_r2_package.py`（判据 10/11 的可复算锚点）；R2 包 `…/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2/`（zip sha256 `ea3611eee5da3ab0…`） | 🔄 已实施完成，**评审中**（修订第 1 轮已处理 1 Important + 8 Minor）；判定 **PASS 8 / FAIL 3 / WAIVED 1** |
 
 ---
 
@@ -74,10 +76,11 @@ Task 9 产出三件东西（均在 `docs/refactor/v4.1.0-c/takeover/`）：
    判据 6 / 8 的**预留豁免槽位（留空）**、残余未裁决项、**留空的属主裁决位**、以及标明
    「这是建议，不是裁决」的控制者建议。
 
-**判定汇总：PASS 9 · FAIL 2 · WAIVED 1。** 两条 FAIL 的分层归因：
+**判定汇总：PASS 8 · FAIL 3 · WAIVED 1。** 三条 FAIL 的分层归因：
 
 | 判据 | 层 | 缺口 |
 |---|---|---|
+| **#4** | **映射层** | A2.2 **R1**（「每个 task 的 `approved_adr_refs` 至少 1 项」）被 **C01-15** 违反 —— `ADAPTER-MAPPING-PENDING.md` 的待决清单**非空**。ADR 的**机器字段**齐了、11 条变异臂全被拒，但 `--check` **不担保 R1**（`verify_handoff.py:383-384` 空列表直接 return），它自己的输出是 `"adr_approval_state": "PENDING"` ⇒ 判据 4 = FAIL。**需属主裁决 O1**（补 ADR 引用 vs 裁定无需绑定） |
 | **#6** | **签署层** | 44 条有终态 ✓、双向差异表 ✓，但 **Oracle 副签 0 条**（38 条 `ASSERTION_UNREVIEWABLE` + 6 条 `JUDGED_PENDING_COUNTERSIGNATURE`；`assertion_review_performed_by` 是实施者本人）⇒ 需属主指认 1 名独立 Reviewer（R-T7-1） |
 | **#8** | **证据层** | 实跑 **RED=5/7 + INCONCLUSIVE=2/7（退出码 3）**；冻结提交那次是 6/7 + 1/7；两次都不是 7/7。fx15 因 composite release 重建超 7200s 预算（exit 124）⇒ INCONCLUSIVE；fx18 的覆盖率门禁**在完整树上就已红** ⇒ 注入的红不可归因 ⇒ INCONCLUSIVE |
 
@@ -88,8 +91,9 @@ R2 外审包在 `…/DSH-EXTERNAL-REVIEW-001/sqlrustgo-v4.1.0-r2/`（**兄弟目
 **⚠️ 判据 1 的一条观察（不改变判定）**：本任务运行期间 `develop/v4.1.0` 被合并了
 `base/v4.1.0-frozen`（PR #5928，merge commit `ea285c5fda`），所以远端 develop 的 tip 现在是
 BASE 的**后代**而非祖先（设计稿 §A5 #1 的字面检查因此不再成立）；冻结时点的 develop tip
-`8cbde5b6d3` 仍是 BASE 的祖先 ✓。远端 `base/v4.1.0-frozen` 的 tip `e007fe7114` **比本地 tip
-`09ba360f6c` 落后 2 个提交**（`d358289919`、`09ba360f6c`），develop 里也还没有它们 —— 推送是控制者的动作。
+`8cbde5b6d3` 仍是 BASE 的祖先 ✓。远端 `base/v4.1.0-frozen` 的 tip 现为 `e2d98149d264b9cdbc7270229f3cd498b61e6072`
+（**控制者已把 Task 9 的提交推送上去**）；develop 里**还没有**冻结分支上最后两个提交
+（`d358289919`、`09ba360f6c`）。
 
 ---
 
@@ -134,7 +138,8 @@ BASE 的**后代**而非祖先（设计稿 §A5 #1 的字面检查因此不再�
 
 | # | 事项 | 阻塞什么 |
 |---|---|---|
-| O1/O3/O4/O5/O10/O11/O12/O14/O15/O17 | spec §6.2 的待裁决项 | 各自对应判据（**是否影响放行**已在 `V410-OWNER-RULING.md` §3.1 逐条标注） |
+| **O1** | ADR 档位「仅批准方向/实施另审」是否足够支撑 `approved_adr_refs` 填充；`ADAPTER-MAPPING-PENDING.md` 的待决清单**非空**（C01-15） | **判据 4 = FAIL 的直接原因**（映射层）；属主二选一：补 ADR 引用 or 裁定无需绑定 |
+| O3/O4/O5/O10/O11/O12/O14/O15/O17 | spec §6.2 的其余待裁决项 | 各自对应判据（**是否影响放行**已在 `V410-OWNER-RULING.md` §3.1 逐条标注） |
 | **O2** | 75 场景的 `required_for_certification` 未标定（实测 75/75 为 `false`） | 阶段出口口径（不决定 #6 —— #6 已因 Oracle 副签缺位而 FAIL） |
 | **O16** | 「测试已消失」的分类（7 类契约无此类） | 场景数未定 |
 | **N1** | 在基线里注册 `[[test]] tf_t1_undo_invariants`，vs 把 `PILOT-T1-101/102` 记为不可认证 | L1 切片能否作验收凭据 |
@@ -161,10 +166,11 @@ BASE 的**后代**而非祖先（设计稿 §A5 #1 的字面检查因此不再�
 
 1. `cd /Volumes/workspace/dev/wt-v410-base`，确认分支 `base/v4.1.0-frozen` 与 tip。
 2. 读本文件 + `V410-READINESS-LEDGER.md`；再读 `V410-OWNER-RULING.md`（裁决请求）。
-3. **9 个任务已全部完成**。剩下的不是实施，而是**属主裁决**：
-   在 `V410-OWNER-RULING.md` §4 的裁决位填「放行 C-ALPHA-02 / 不放行」（若豁免 #6 / #8，
-   在 §2.2 的槽位填 waiver 字段）。
-4. Task 9 的产物要**过一遍独立评审**（与前 8 个任务同一标准）。
+3. **9 个任务已实施完成**（Task 9 修订第 1 轮已处理 1 Important + 8 Minor，**评审仍在进行**）。
+   实施侧的剩余动作是**属主裁决**：在 `V410-OWNER-RULING.md` §4 的裁决位填
+   「放行 C-ALPHA-02 / 不放行」（若豁免 #4 / #6 / #8，在 §2.2 的槽位 A / B / C 填 waiver 字段）。
+4. Task 9 的产物要**过完独立评审**（与前 8 个任务同一标准）；修订记录在
+   `.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/task-9-report.md` 的「修订 1」小节。
 5. 若属主要求补齐 #6 / #8 后复评：复跑
    `bash audit/v4.1.0/neg/verify_neg_fixtures.sh`（判据 8）与
    `python3 .superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/gen_verdict.py`（12 条判据，
@@ -184,6 +190,10 @@ BASE 的**后代**而非祖先（设计稿 §A5 #1 的字面检查因此不再�
 | `.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/gen_verdict.py` | **Task 9 的判据重跑器**（一条命令重出 12 条判据的实测与判定） |
 | `.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/task-9-neg-logs/` | Task 9 的负向夹具泳道实测日志（run.log + 逐夹具日志） |
 | `.superpowers/sdd/V410-READINESS-IMPLEMENTATION-PLAN/review-*.diff` | 评审包（**可删**，可由 git 重新生成） |
+
+R2 的**构建链**不在本仓，而在 `…/DSH-EXTERNAL-REVIEW-001/r2-build/`（权威归属：DSH 仓，**当前无 remote**）；
+本仓只保存**校验器** `docs/refactor/v4.1.0-c/takeover/verify_r2_package.py`（判据 10 / 11 的可复算锚点，
+可用 `R2_DIR=` 或 `--r2-dir` 指向 R2 包）。
 
 `.superpowers/sdd/` 是 git-ignored 的临时区，**不是记忆**；记忆在仓库里（本文件 + 台账副本）。
 R2 的构建链不在这里，而在 **`…/DSH-EXTERNAL-REVIEW-001/r2-build/`**（`build_r2.sh` 是唯一入口，幂等）。

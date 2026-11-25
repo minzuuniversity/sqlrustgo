@@ -1,17 +1,18 @@
 {
   "format": "v410-readiness-verdict/v1",
   "generated_by": "Task 9 实施者（V410-READINESS-IMPLEMENTATION-PLAN / Task 9 Step 1）",
-  "generated_at": "2026-11-25T12:07:52+0800",
+  "generated_at": "2026-11-25T12:18:26+0800",
   "repo": "/Volumes/workspace/dev/wt-v410-base",
   "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
   "develop_tip": "8cbde5b6d33c876fa1197474c46d50142a9823bd",
   "note": "每条判据的 command 都由 gen_verdict.py 真的执行；observed 是该次执行的退出码与真实输出摘要。判据 6 与判据 8 为 FAIL（见各自的归因）。计划正文验收段写的「11 条 PASS + 1 条 WAIVED」是 Task 7/10 之前的乐观预期；差额来自判据 6 与判据 8 两条，以实测为准（R63）。",
   "summary": {
     "total": 12,
-    "pass": 9,
-    "fail": 2,
+    "pass": 8,
+    "fail": 3,
     "waived": 1,
     "fail_criteria": [
+      4,
       6,
       8
     ]
@@ -20,12 +21,12 @@
     {
       "id": 1,
       "criterion": "BASE（内容基线）唯一、develop tip 是其祖先、含 BASE 的分支已推送",
-      "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_baseline.py --strict  &&  git ls-remote origin refs/heads/base/v4.1.0-frozen  &&  git merge-base --is-ancestor fd849ae20541901d5e59f45cd3ba2c51093f5d5e <remote-tip>  &&  git ls-remote origin refs/heads/develop/v4.1.0  &&  git merge-base --is-ancestor <develop-tip> fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
-      "observed": "exit=0\n[B1] PASS  develop tip 8cbde5b6d3 is an ancestor of HEAD\n[B2] PASS  base_sha fd849ae205, tree_sha 72d378e8e5, source_ref base/v4.1.0-frozen and frozen_at all match the repository\n[B3] PASS  123 material file(s) + 56 runtime-contract file(s) imported over develop, all still present in HEAD\n[B4] PASS  ledger complete (applied 1 / path-import 1 / already-present 3); the frozen path-import directory holds 56 file(s)\n4/4 PASS -- COMPLETE: every assertion ran\ngit ls-remote origin refs/heads/base/v4.1.0-frozen -> e007fe711403e767b64a958772965fa397579fc1 (exit=0)\ngit merge-base --is-ancestor fd849ae20541901d5e59f45cd3ba2c51093f5d5e e007fe711403e767b64a958772965fa397579fc1 -> exit=0 (是)\ngit ls-remote origin refs/heads/develop/v4.1.0 -> ea285c5fda77e7790e965ae482e3c1b015fabc10 (exit=0)\ngit merge-base --is-ancestor ea285c5fda77e7790e965ae482e3c1b015fabc10 fd849ae20541901d5e59f45cd3ba2c51093f5d5e -> exit=1 (否)\n本地分支 tip = 09ba360f6cfbf0be2aa4cf7d2064c4b8b50f7958；远端 base/v4.1.0-frozen tip 是 BASE 的后代 = 是",
+      "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_baseline.py --strict\ngit ls-remote origin refs/heads/base/v4.1.0-frozen\ngit merge-base --is-ancestor fd849ae20541901d5e59f45cd3ba2c51093f5d5e e2d98149d264b9cdbc7270229f3cd498b61e6072\ngit ls-remote origin refs/heads/develop/v4.1.0\ngit merge-base --is-ancestor ea285c5fda77e7790e965ae482e3c1b015fabc10 fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
+      "observed": "exit=0\n[B1] PASS  develop tip 8cbde5b6d3 is an ancestor of HEAD\n[B2] PASS  base_sha fd849ae205, tree_sha 72d378e8e5, source_ref base/v4.1.0-frozen and frozen_at all match the repository\n[B3] PASS  123 material file(s) + 56 runtime-contract file(s) imported over develop, all still present in HEAD\n[B4] PASS  ledger complete (applied 1 / path-import 1 / already-present 3); the frozen path-import directory holds 56 file(s)\n4/4 PASS -- COMPLETE: every assertion ran\ngit ls-remote origin refs/heads/base/v4.1.0-frozen -> e2d98149d264b9cdbc7270229f3cd498b61e6072 (exit=0)\ngit merge-base --is-ancestor fd849ae20541901d5e59f45cd3ba2c51093f5d5e e2d98149d264b9cdbc7270229f3cd498b61e6072 -> exit=0 (是)\ngit ls-remote origin refs/heads/develop/v4.1.0 -> ea285c5fda77e7790e965ae482e3c1b015fabc10 (exit=0)\ngit merge-base --is-ancestor ea285c5fda77e7790e965ae482e3c1b015fabc10 fd849ae20541901d5e59f45cd3ba2c51093f5d5e -> exit=1 (否)\n本地分支 tip = e2d98149d264b9cdbc7270229f3cd498b61e6072；远端 base/v4.1.0-frozen tip 是 BASE 的后代 = 是",
       "verdict": "PASS",
       "caveats": [
         "判据按**计划正文 Step 1 的命令**判：verify_baseline.py --strict（4/4）+ `git ls-remote origin refs/heads/base/v4.1.0-frozen` 的 tip 须是 BASE 的后代（成立）。",
-        "**设计稿 §A5 #1 的另一条可核方式**（`git merge-base --is-ancestor origin/develop/v4.1.0 BASE`）在本次实测中**不成立**：远端 develop/v4.1.0 的 tip 已是 ea285c5fda77e7790e965ae482e3c1b015fabc10 —— 它是 BASE 的**后代**而非祖先。原因是本任务运行期间（10:00 与 12:05 之间）develop/v4.1.0 被合并了 `base/v4.1.0-frozen`（PR #5928，merge commit ea285c5fda）。这不是 BASE 的缺陷，而是**冻结分支已被并入 develop**（= O11 事实上已被行动回答）。判据 1 的三项实质条件仍全部成立：BASE 唯一 ✓；**冻结时点的 develop tip** 8cbde5b6d3 是 BASE 的祖先 ✓（BASELINE_FREEZE.json 记录，verify_baseline 的 B1 用的就是它）；含 BASE 的分支已推送 ✓。"
+        "**设计稿 §A5 #1 的另一条可核方式**（`git merge-base --is-ancestor origin/develop/v4.1.0 BASE`）在本次实测中**不成立**：远端 develop/v4.1.0 的 tip 已是 ea285c5fda77e7790e965ae482e3c1b015fabc10 —— 它是 BASE 的**后代**而非祖先。原因是本任务运行期间（10:00 与 12:05 之间）develop/v4.1.0 被合并了 `base/v4.1.0-frozen`（PR #5928，merge commit ea285c5fda）。这不是 BASE 的缺陷，而是**冻结分支已被并入 develop**（= O11 事实上已被行动回答）。判据 1 的三项实质条件仍全部成立：BASE 唯一 ✓；**冻结时点的 develop tip** 8cbde5b6d3 是 BASE 的祖先 ✓（BASELINE_FREEZE.json 记录，verify_baseline 的 B1 用的就是它）；含 BASE 的分支已推送 ✓（远端 `base/v4.1.0-frozen` 的 tip 现为 e2d98149d264b9cdbc7270229f3cd498b61e6072）。"
       ]
     },
     {
@@ -46,8 +47,8 @@
       "id": 4,
       "criterion": "ADR 机器字段非空、档位正确、映射满足 A2.2 五条规则",
       "command": "/tmp/v410-task9-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_handoff.py --check",
-      "observed": "exit=0\n{\n  \"kind\": \"OFFLINE_DELIVERY_VALIDATION_NOT_EXECUTION_CERTIFICATION\",\n  \"source_run\": \"C-ALPHA-01-HANDOFF-20261120\",\n  \"timestamp\": \"2026-11-25T04:07:51.328294+00:00\",\n\"adr_approval\": \"CONDITIONALLY_APPROVED\"\n\"adr_approval_state\": \"PENDING\"\n未映射清单：docs/refactor/v4.1.0-c/takeover/ADAPTER-MAPPING-PENDING.md —— **非空**（C01-15）；按计划正文 Step 4 的口径「若非空则 A5 #4 不能判 PASS」，属主可据此把本条改判 FAIL。本条按其可核方式（--check 退出码 + 变异臂）判 PASS，该冲突已提交属主裁决（见 V410-OWNER-RULING.md 的顾虑段）。",
-      "verdict": "PASS"
+      "observed": "exit=0（校验器全绿）\n\"adr_approval\": \"CONDITIONALLY_APPROVED\"\n\"adr_approval_state\": \"PENDING\"\n\"tasks_with_empty_approved_adr_refs\": 1\n\"mutation_rejections\"（11 条变异臂全部被拒）：cycle, missing, unapproved_dispatch, unapproved_adr, human_gate_removed, cloud_policy, later_stage_task, native_extra_field, tier_overreach, unapproved_adr_still_proposed\n\"notes\": \"1 of 18 task(s) still carry an empty approved_adr_refs -- the owner's ADR decision is PENDING, not verified\"\n\n**判据不满足的原因**（三条互相独立的事实）：\n(1) 计划正文 Step 4 的口径：「O1（`ADAPTER-MAPPING-PENDING.md` 中的 task 列表，**若非空则 A5 #4 不能判 PASS**）」——该清单**非空**：`docs/refactor/v4.1.0-c/takeover/ADAPTER-MAPPING-PENDING.md` 有 `| C01-15 | … |` 一行，并写明其 `approved_adr_refs` 保持 `[]`。\n(2) 判据自身的措辞「**映射满足 A2.2 五条规则**」：A2.2 **R1** = 「每个 task 的 `approved_adr_refs` 至少 1 项」——C01-15 违反 R1（该清单明写「R1 与 R2 冲突时以 R2 为准：该包保持 `[]`」，即**明知违反 R1 而保留**）。\n(3) 校验器**不担保 R1**：`verify_handoff.py:383-384` 在 `refs` 为空时**直接 return**；且它自己的输出是反面证据 —— `\"adr_approval_state\": \"PENDING\"` 与 note 「the owner's ADR decision is PENDING, not verified」。\n⇒ `--check` 退出 0 只说明「可核方式里的那几条断言成立」，**不等于**判据 4 成立。按 R63「不得为了让总数好看而改判、拆分或重定义判据」，判据 4 = **FAIL**（缺口在**映射层**：需属主裁决补 ADR 引用 vs 豁免）。",
+      "verdict": "FAIL"
     },
     {
       "id": 5,
