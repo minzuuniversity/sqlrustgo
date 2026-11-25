@@ -1,0 +1,233 @@
+{
+ "suite": "MATRIX-sqlrustgo-storage-lib",
+ "base_sha": "7fb973b1f87e89720a8d37b0fa217eb9694ae380",
+ "generated_at": "20261123T232756",
+ "rustc": "rustc 1.99.0 (b940084d7 2026-09-28)",
+ "cargo": "cargo 1.99.0 (5f94df478 2026-08-27)",
+ "result": {
+  "tests": [
+   {
+    "name": "buffer_pool::tests::buffer_pool_stats_exposes_five_new_fields_with_zero_init",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "append_only_storage::tests::transaction_lifecycle",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "append_only_storage::tests::flush_clears_dirty",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "buffer_pool::tests::test_buffer_pool_basic",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "buffer_pool::tests::buffer_pool_bumps_disk_reads_on_loader_invocation",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "buffer_pool::tests::buffer_pool_bumps_disk_writes_on_insert",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "bplus_tree::tests::duplicate_keys_keep_every_row_id",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "engine::tests::test_nested_transaction_returns_error",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "buffer_pool::tests::buffer_pool_bumps_pages_visited_on_get_or_load",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "engine::tests::test_storage_engine_set_current_tx_id",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "engine::tests::test_storage_engine_transaction",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "adaptive_hash_index::tests::test_invalidate_page_removes_entries",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "engine::tests::test_storage_engine_begin_rollback",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc::tests::test_empty_table_snapshot",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc::tests::test_find_visible_at_snapshot_before_all",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc::tests::test_gc_drops_old_versions",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "mvcc::tests::test_get_visible_pk_lookup",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "parallel_wal_storage::tests::transaction_lifecycle_via_wal",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_in_transaction",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_set_current_tx_id",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "engine::tests::test_rollback_removes_inserted_rows",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "engine::tests::rollback_actually_undoes_an_insert_4948",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "semisync::tests::test_semi_sync_master_record_transactions",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "engine::tests::rollback_of_update_restores_only_the_changed_row_5072",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "engine::tests::test_rollback_restores_deleted_rows",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "table_level_storage::tests::transaction_lifecycle_passthrough",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_3129_memory_storage_in_transaction_reflects_tx_id",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_3129_vtu_guard_passes_in_tx_with_memory_storage",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "vtu_guard::tests::test_vtu_guard_tx_state_via_set_current_tx_id",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "pitr::tests::open_transaction_at_target_is_not_applied",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "read_write_split::tests::test_classify_sql_transaction",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "binary_storage::tests::test_bin_flush",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_storage::tests::test_wal_set_current_tx_id",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_storage::tests::test_wal_active_tx_ids_empty",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_storage::tests::test_active_txs_lifecycle_begin_rollback",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_storage::tests::test_wal_storage_multiple_transactions",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_storage::tests::test_wal_storage_rollback",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "engine::memory_storage_rollback_after_bufferpool_insert_does_not_change_pages_visited",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "file_storage::tests::test_save_trigger_load_trigger_duplicate",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_legacy::tests::test_wal_manager_log_rollback",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_legacy::tests::test_wal_multiple_transactions",
+    "class": "PASS",
+    "raw_status": "ok"
+   },
+   {
+    "name": "wal_legacy::tests::test_wal_5_transactions",
+    "class": "PASS",
+    "raw_status": "ok"
+   }
+  ],
+  "summary": {
+   "passed": 42,
+   "failed": 0,
+   "ignored": 0,
+   "cargo_status": "ok"
+  },
+  "exit_code": 0,
+  "class": "PASS",
+  "duration_s": 0.61,
+  "cmd": "cargo test -p sqlrustgo-storage --lib -- append_only_storage::tests::transaction_lifecycle engine::memory_storage_rollback_after_bufferpool_insert_does_not_change_pages_visited engine::tests::rollback_actually_undoes_an_insert_4948 engine::tests::rollback_of_update_restores_only_the_changed_row_5072 engine::tests::test_nested_transaction_returns_error engine::tests::test_rollback_removes_inserted_rows engine::tests::test_rollback_restores_deleted_rows engine::tests::test_storage_engine_begin_rollback engine::tests::test_storage_engine_set_current_tx_id engine::tests::test_storage_engine_transaction file_storage::tests::test_in_transaction file_storage::tests::test_set_current_tx_id parallel_wal_storage::tests::transaction_lifecycle_via_wal pitr::tests::open_transaction_at_target_is_not_applied read_write_split::tests::test_classify_sql_transaction semisync::tests::test_semi_sync_master_record_transactions table_level_storage::tests::transaction_lifecycle_passthrough vtu_guard::tests::test_3129_memory_storage_in_transaction_reflects_tx_id vtu_guard::tests::test_3129_vtu_guard_passes_in_tx_with_memory_storage vtu_guard::tests::test_vtu_guard_tx_state_via_set_current_tx_id wal_legacy::tests::test_wal_5_transactions wal_legacy::tests::test_wal_manager_log_rollback wal_legacy::tests::test_wal_multiple_transactions wal_storage::tests::test_active_txs_lifecycle_begin_rollback wal_storage::tests::test_wal_active_tx_ids_empty wal_storage::tests::test_wal_set_current_tx_id wal_storage::tests::test_wal_storage_multiple_transactions wal_storage::tests::test_wal_storage_rollback bplus_tree::tests::duplicate_keys_keep_every_row_id file_storage::tests::test_save_trigger_load_trigger_duplicate mvcc::tests::test_empty_table_snapshot mvcc::tests::test_find_visible_at_snapshot_before_all mvcc::tests::test_gc_drops_old_versions mvcc::tests::test_get_visible_pk_lookup adaptive_hash_index::tests::test_invalidate_page_removes_entries append_only_storage::tests::flush_clears_dirty binary_storage::tests::test_bin_flush buffer_pool::tests::buffer_pool_bumps_disk_reads_on_loader_invocation buffer_pool::tests::buffer_pool_bumps_disk_writes_on_insert buffer_pool::tests::buffer_pool_bumps_pages_visited_on_get_or_load buffer_pool::tests::buffer_pool_stats_exposes_five_new_fields_with_zero_init buffer_pool::tests::test_buffer_pool_basic"
+ },
+ "raw_log": "docs/releases/v4.1.0/refactoring/evidence/MATRIX-sqlrustgo-storage-lib-20261123T232756.log",
+ "artifact_digest": "278f559ef1f95164"
+}

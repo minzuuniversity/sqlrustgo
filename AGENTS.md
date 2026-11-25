@@ -179,4 +179,25 @@ AOCI (`aoci.code.txt`, 1.4MB, v2 protocol, FRAS-2) 提供仓库级语义索引, 
 - AOCI 指南: [`docs/agent-harness/AOCI_GUIDE.md`](docs/agent-harness/AOCI_GUIDE.md)
 - 文档索引: [`docs/agent-harness/DOCUMENTATION_INDEX.md`](docs/agent-harness/DOCUMENTATION_INDEX.md)
 - 实现真实性: [`docs/agent-harness/IMPLEMENTATION_TRUTH.md`](docs/agent-harness/IMPLEMENTATION_TRUTH.md)
+
+---
+
+## 12. v4.1.0 重构就绪整备 —— 接手前必读
+
+**2026-11-25 起，v4.1.0 的整备（计划 Task 1–10）已完成 8.5 个任务，只剩 Task 9
+（12 条判据汇总 + R2 外审包 + 属主放行裁决）。**
+
+任何 agent 接手 v4.1.0 的重构就绪问题，**先读**：
+
+- [`docs/refactor/v4.1.0-c/takeover/V410-READINESS-STATE.md`](docs/refactor/v4.1.0-c/takeover/V410-READINESS-STATE.md)
+  —— 状态、事实锚点、**已定且不可推翻的结论**、待属主裁决清单、续跑指令。
+- [`docs/refactor/v4.1.0-c/takeover/V410-READINESS-LEDGER.md`](docs/refactor/v4.1.0-c/takeover/V410-READINESS-LEDGER.md)
+  —— 逐条裁决台账（R1–R61）。
+
+工作目录是隔离 worktree `/Volumes/workspace/dev/wt-v410-base`，分支 `base/v4.1.0-frozen`；
+**BASE（内容基线提交）= `fd849ae20541901d5e59f45cd3ba2c51093f5d5e`**，
+所有 `base_sha` 一律填 BASE，不随提交前移。
+
+⚠️ **不要**在没读 STATE 之前重新论证「ALPHA 执行点该放哪」「`neg_fixture` 是什么意思」
+「Oracle 签署算不算数」—— 这些都已有裁决、有评审、有可复算证据。
 - 旧 AGENTS.md (26KB, 已含 governance 清单 + GitNexus + AOCI 详细章节): 根 `AGENTS.md` (本文件替代其主入口, 但完整 AOCI 协议章节与 governance 链接仍保留在 v3 候选 AGENTS_legacy.md)

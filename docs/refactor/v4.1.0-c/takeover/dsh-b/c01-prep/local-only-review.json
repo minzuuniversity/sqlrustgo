@@ -1,0 +1,53 @@
+{
+ "source_agent": "DSH-B (opencode-go/glm-5.3-flash)",
+ "source_run": "c01-03-staged-prep",
+ "timestamp": "2026-11-20T17:51:32+0800",
+ "observations": [
+  {
+   "observation": "O1",
+   "facts": {
+    "active_strategy": "LOCAL_FIRST",
+    "active_local_only": false,
+    "sqlrustgo_readiness_gap": true,
+    "router_sha256": "842533c036581d2e"
+   },
+   "input_sha256": {
+    "routing.json": "07eb382dc755420f9f300f0e9a2fe6dc2f079a6dc7f3f6fb44e85aab8324cf21",
+    "domains.py": "f68c9670dec59afa2aaf2ac541fc8db052ded658bbeb08e9647fdd7f9edbb5bd",
+    "ledger": "6cd2a8b086d29997efe5a9bba1508f804433d3a8661192ec93db74d9bbdb4b6a"
+   }
+  },
+  {
+   "observation": "O2",
+   "facts": {
+    "local_endpoints": [
+     "http://192.168.0.252:8001",
+     "http://192.168.0.250:8011",
+     "http://192.168.0.250:8021"
+    ],
+    "cloud_rejection": "verified (pre-network, deterministic)"
+   },
+   "input_sha256": {
+    "routing.json": "07eb382dc755420f9f300f0e9a2fe6dc2f079a6dc7f3f6fb44e85aab8324cf21",
+    "domains.py": "f68c9670dec59afa2aaf2ac541fc8db052ded658bbeb08e9647fdd7f9edbb5bd",
+    "ledger": "6cd2a8b086d29997efe5a9bba1508f804433d3a8661192ec93db74d9bbdb4b6a"
+   }
+  },
+  {
+   "observation": "O3",
+   "facts": {
+    "entries_checked": 17,
+    "local_eps": [
+     "http://192.168.0.250:8011",
+     "http://192.168.0.250:8021",
+     "http://192.168.0.252:8001"
+    ]
+   },
+   "input_sha256": {
+    "routing.json": "07eb382dc755420f9f300f0e9a2fe6dc2f079a6dc7f3f6fb44e85aab8324cf21",
+    "domains.py": "f68c9670dec59afa2aaf2ac541fc8db052ded658bbeb08e9647fdd7f9edbb5bd",
+    "ledger": "6cd2a8b086d29997efe5a9bba1508f804433d3a8661192ec93db74d9bbdb4b6a"
+   }
+  }
+ ]
+}

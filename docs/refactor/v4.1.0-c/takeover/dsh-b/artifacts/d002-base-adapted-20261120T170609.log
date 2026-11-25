@@ -1,0 +1,24 @@
+   Compiling sqlrustgo v4.1.0 (/private/tmp/srg-d002-base)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.65s
+     Running tests/p2c0_undo_proto.rs (target/debug/deps/p2c0_undo_proto-beaa126a69fc8b5f)
+
+running 1 test
+test p2c1id_odku_rollback_restores_the_old_value ... FAILED
+
+failures:
+
+---- p2c1id_odku_rollback_restores_the_old_value stdout ----
+
+thread 'p2c1id_odku_rollback_restores_the_old_value' (36713424) panicked at tests/p2c0_undo_proto.rs:497:5:
+assertion `left == right` failed: ON DUPLICATE KEY UPDATE was not undone
+  left: []
+ right: [["Integer(2)", "Integer(20)"]]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    p2c1id_odku_rollback_restores_the_old_value
+
+test result: FAILED. 0 passed; 1 failed; 0 ignored; 0 measured; 17 filtered out; finished in 0.02s
+
+error: test failed, to rerun pass `-p sqlrustgo --test p2c0_undo_proto`

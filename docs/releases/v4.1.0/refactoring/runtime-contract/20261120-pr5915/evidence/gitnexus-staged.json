@@ -1,0 +1,22 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "RUNTIME-5915-20261120",
+  "conflict_resolution": "Source-bound recommendation; Owner approval pending; no core changes or workers",
+  "started_at": "2026-11-20T14:49:03.341366+00:00",
+  "timestamp": "2026-11-20T14:49:04.208004+00:00",
+  "cwd": ".",
+  "argv": [
+    "env",
+    "GIT_DIR=/Volumes/workspace/dev/sqlrustgo/.git/worktrees/codex-runtime-5915-20261120",
+    "GIT_WORK_TREE=/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-runtime-5915-20261120",
+    "gitnexus",
+    "detect-changes",
+    "--scope",
+    "staged",
+    "-r",
+    "sqlrustgo"
+  ],
+  "exit_code": 0,
+  "raw_log": "gitnexus-staged.log",
+  "evidence_hash": "sha256:42e221f5f557234a4b3b024bcb69ff85385ebec9c266c1ddfa2649d15c0b2aa0"
+}

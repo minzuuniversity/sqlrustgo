@@ -1,0 +1,833 @@
+{
+  "timestamp": "2026-11-19T21:24:44.456001+00:00",
+  "responses": [
+    {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "capabilities": {
+          "logging": {},
+          "tools": {
+            "listChanged": true
+          }
+        },
+        "protocolVersion": "2025-11-25",
+        "serverInfo": {
+          "name": "aoci-code",
+          "version": "dev"
+        }
+      }
+    },
+    {
+      "jsonrpc": "2.0",
+      "id": 2,
+      "result": {
+        "tools": [
+          {
+            "description": "Read specified Entries. Legacy and Code use repository paths or a directory; Volumes v1 also accepts volume_id and canonical object_refs, including database:// table identities, and returns volume identity with each result. Legacy live drift behavior is unchanged. Use only for local uncertainty, an incomplete Overview, or an explicit Entry request; do not substitute a few Entries for complete Overview. This does not modify formal cognition or Baseline, but may append a local audit record.",
+            "inputSchema": {
+              "additionalProperties": false,
+              "properties": {
+                "dir": {
+                  "description": "Repository-relative directory whose full Entry section should be read (mutually exclusive with paths)",
+                  "type": "string"
+                },
+                "object_refs": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ],
+                  "description": "Canonical Volumes v1 object references; database tables use database://source/namespace/table identity"
+                },
+                "paths": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "items": {
+                        "type": "string"
+                      },
+                      "type": "array"
+                    }
+                  ],
+                  "description": "Repository-relative paths of Entries to read (mutually exclusive with dir)"
+                },
+                "volume_id": {
+                  "description": "Volumes v1 object Volume: code or database; omitted Legacy paths remain compatible",
+                  "enum": [
+                    "code",
+                    "database"
+                  ],
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "name": "aoci_get_entries"
+          },
+          {
+            "description": "Read the shared object rules, tag dictionaries, and calibration examples. Legacy returns its Header; Volumes v1 returns Meta with Root identity and never presents Root project overview as the dictionary. Call only when these rules are not already reliable or need a separate check. This does not modify formal cognition or Baseline, but may append a local audit record.",
+            "inputSchema": {
+              "type": "object"
+            },
+            "name": "aoci_header"
+          },
+          {
+            "description": "After managed content reaches its final stable state, obtain the next complete machine-issued authoring batch. Legacy behavior remains compatible: provable format-only drift may advance the Baseline, and local Ledger audit records may be appended. Resolve repair_required or stopped completely. Do not call again for a purely read-only task, an unstable intermediate state, or an already aligned repository. When refresh is pending, Verify, Check, and Guide must prove aligned first. A new repository or incomplete index must use the current Guide; this tool cannot replace that workflow. In Volumes v1, omit scope on the ordinary path: shared governance facts determine aligned, authoring_required, evidence_required, or blocked. For a large logical plan, Maintain deterministically returns at most max_entries candidates, cut by the team transport budget maintain_transport_budget_bytes (default 24 KiB) under the team cap code_cognition_batch_entries (default 50, ceiling 200), with logical_plan, batch_identity, total_targets, included, remaining, continuation_required, Composite/Scope identity, per-target source or Evidence bindings, and the exact Guide action. For Code, copy code_plan.batch_id to aoci_update_entry.code_batch_id; it equals every returned Code candidate.batch_id. authoring_batch.batch_identity identifies the cross-domain authoring envelope and is not a Code or Database write batch id. This is the complete candidate set for the current batch, not an arbitrary prefix the Host may change and not a Whole-Index limit. Apply it atomically; if remaining is nonzero, call Maintain again against the new preimage. Whole-Index aligned is allowed only when remaining, missing, stale, unbaselined, orphan, Scope debt, and Recovery are all clear. Maintain may write only machine candidate receipts and local Ledger audit records; it never authors tag or F/R/A/S, connects to a database, changes Scope, or reduces Index coverage for transport limits. Orphans remain explicit remove candidates, Root and Meta remain guards, and explicit scope=database only reads saved Canonical Evidence, contains no program-generated tag or FRAS field, returns database_volume_absent when the Database Volume is absent, and creates no Root, Meta, or Database Volume. An explicit Cognition Optimization request is the sole aligned-Entry exception: only for Volumes v1 Code, set intent=cognition_optimization and optionally object_refs to obtain bound review candidates. For every candidate, the Host reviews the current complete Entry, source, and necessary relations, then submits either a complete replacement Entry or the unchanged complete Entry through the existing aoci_update_entry batch; field patches are forbidden. AOCI selects and binds candidates only: it never generates semantics or S, compresses Entry text, or lowers C. This mode never applies to Legacy or Database cognition.",
+            "inputSchema": {
+              "additionalProperties": false,
+              "properties": {
+                "intent": {
+                  "description": "Optional explicit mode. cognition_optimization is supported only for aligned Volumes v1 Code Entries; when omitted, ordinary Maintain behavior is unchanged. AOCI only selects and binds review candidates and never generates semantics, compresses Entry text, creates S, or lowers C",
+                  "enum": [
+                    "cognition_optimization"
+                  ],
+                  "type": "string"
+                },
+                "object_refs": {
+                  "description": "Optional canonical Code object references in code:<repository-relative-path> form that limit cognition_optimization candidate discovery; valid only with intent=cognition_optimization and never interpreted as field patches",
+                  "items": {
+                    "pattern": "^code:.+",
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "scope": {
+                  "description": "Optional advanced diagnostic scope. Omit it for ordinary Volumes v1 maintenance so AOCI automatically selects Code, Database, both, aligned, evidence_required, or blocked; explicit code, database, and all remain compatible",
+                  "enum": [
+                    "code",
+                    "database",
+                    "all"
+                  ],
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "name": "aoci_maintain"
+          },
+          {
+            "_meta": {
+              "anthropic/maxResultSizeChars": 200000
+            },
+            "description": "Deliver the complete formal Whole-Index, optionally scoped to all, project, meta, code, or database in a Volumes v1 repository. An ordinary call returns the exact formal body inline when it fits overview_delivery.chunk_tokens, otherwise it immediately returns Chunk 1 using overview-chunk-receipt/v1. When continuation_required=true, submit the exact next_cursor automatically until completed=true; do not ask the user, start the business task, state a partial conclusion, or replace missing Chunks with scope, aoci_search, or aoci_get_entries. Stop the cognition chain on Host truncation, a missing, duplicate, or reordered Chunk, cursor failure, or Index/configuration change. The formal Entry ordinal is the 1-based position in one canonical sequence: Header, comments, blank lines, Section/Overview/Chunk Marker, Receipt, and Metadata are excluded, and Chunk Receipts and Challenge answers consume that same sequence. After the complete chain, submit host_delivery_confirmation and the existing model-cognition-attestation/v1 once; the Attestation must echo the final Challenge's exact current index_sha256, entry_sequence_sha256, and entry_count, and a prior identity is invalid. One same-response schema-only correction is allowed, but semantic mismatch means fail/uncertain with no Memory, source, Spec, aoci.txt, Search, Get Entries, Scope, or historical-session repair. A failed or partial Attestation disables an unqualified complete-system claim; it does not prohibit honest answers or source-bound investigation and engineering. An ordinal, object identity, Tag, or core F mismatch is strict proof failure, not by itself proof that the model did not understand the system. A Host may set cognition_state_version=cognition-state/v2 to receive an additive read-only projection that separates delivery_verified, model_cognition_usable, strict_attestation_verified, governance_aligned, and current_system_cognition_reliable; omitting it preserves the exact legacy response shape. A complete, host-confirmed, governance-aligned context-compaction refresh consumes its generation even when Attestation is partial or failed, so the Host continues the existing source-bound task without another automatic Overview. Initial failure additionally blocks unbound Root/Meta, Migration, layout-wide, and other system decisions. system_mastery_percent self-assesses the system framework—architecture, responsibilities, strong relationships, stable external contracts, and high-entropy safety and maintenance constraints—not complete source or runtime knowledge. Normally expose only one concise user sentence separating actual Index coverage from framework mastery. check_only=true returns only compact checkpoint facts and never starts a Chunk chain. Dirty or Stale cognition is delivered but unreliable; aoci_maintain remains the governance path, while pending Recovery or an incoherent snapshot fails closed. The body is start marker, exact aoci.txt bytes, and end marker with no generated directory inventory. Legacy no-argument and Volumes scope behavior remain compatible. This does not modify formal cognition or Baseline, but may append a local audit record.",
+            "inputSchema": {
+              "additionalProperties": false,
+              "properties": {
+                "check_only": {
+                  "description": "Return only the compact checkpoint assessment; when false or absent, deliver the complete requested scope if a coherent snapshot is available",
+                  "type": "boolean"
+                },
+                "cognition_receipt": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "cognition_scope": {
+                          "type": "string"
+                        },
+                        "cognition_state": {
+                          "type": "string"
+                        },
+                        "index_sha256": {
+                          "type": "string"
+                        },
+                        "last_refresh_event_id": {
+                          "type": "string"
+                        },
+                        "mcp_service_version": {
+                          "type": "string"
+                        },
+                        "model_full_cognition_reliable": {
+                          "type": "boolean"
+                        },
+                        "pending_refresh_reasons": {
+                          "items": {
+                            "enum": [
+                              "context_compaction",
+                              "semantic_threshold",
+                              "phase_transition"
+                            ],
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "refresh_generation": {
+                          "type": "integer"
+                        },
+                        "runtime_repository_root": {
+                          "type": "string"
+                        },
+                        "state_owner": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "version",
+                        "runtime_repository_root",
+                        "index_sha256",
+                        "mcp_service_version",
+                        "cognition_scope",
+                        "cognition_state",
+                        "state_owner",
+                        "model_full_cognition_reliable"
+                      ],
+                      "type": "object"
+                    },
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "asset_state": {
+                          "enum": [
+                            "absent",
+                            "present",
+                            "invalid"
+                          ],
+                          "type": "string"
+                        },
+                        "cognition_scope": {
+                          "type": "string"
+                        },
+                        "cognition_state": {
+                          "type": "string"
+                        },
+                        "composite_identity": {
+                          "type": "string"
+                        },
+                        "delivered_volumes": {
+                          "items": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "asset_state": {
+                                "type": "string"
+                              },
+                              "id": {
+                                "type": "string"
+                              },
+                              "kind": {
+                                "type": "string"
+                              },
+                              "object_count": {
+                                "type": "integer"
+                              },
+                              "path": {
+                                "type": "string"
+                              },
+                              "sha256": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "id",
+                              "kind",
+                              "path",
+                              "asset_state",
+                              "object_count"
+                            ],
+                            "type": "object"
+                          },
+                          "type": "array"
+                        },
+                        "effective_scope": {
+                          "type": "string"
+                        },
+                        "last_refresh_event_id": {
+                          "type": "string"
+                        },
+                        "layout_mode": {
+                          "type": "string"
+                        },
+                        "mcp_service_version": {
+                          "type": "string"
+                        },
+                        "meta_sha256": {
+                          "type": "string"
+                        },
+                        "model_full_cognition_reliable": {
+                          "type": "boolean"
+                        },
+                        "model_scope_cognition_reliable": {
+                          "type": "boolean"
+                        },
+                        "pending_refresh_reasons": {
+                          "items": {
+                            "enum": [
+                              "context_compaction",
+                              "semantic_threshold",
+                              "phase_transition"
+                            ],
+                            "type": "string"
+                          },
+                          "type": "array"
+                        },
+                        "refresh_generation": {
+                          "type": "integer"
+                        },
+                        "requested_scope": {
+                          "type": "string"
+                        },
+                        "root_sha256": {
+                          "type": "string"
+                        },
+                        "runtime_repository_root": {
+                          "type": "string"
+                        },
+                        "scope_available": {
+                          "type": "boolean"
+                        },
+                        "scope_identity": {
+                          "type": "string"
+                        },
+                        "scope_object_count": {
+                          "type": "integer"
+                        },
+                        "state_owner": {
+                          "type": "string"
+                        },
+                        "version": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "version",
+                        "runtime_repository_root",
+                        "mcp_service_version",
+                        "cognition_scope",
+                        "cognition_state",
+                        "state_owner",
+                        "layout_mode",
+                        "requested_scope",
+                        "effective_scope",
+                        "scope_available",
+                        "asset_state",
+                        "root_sha256",
+                        "meta_sha256",
+                        "delivered_volumes",
+                        "scope_object_count",
+                        "scope_identity",
+                        "composite_identity",
+                        "model_scope_cognition_reliable",
+                        "model_full_cognition_reliable",
+                        "refresh_generation",
+                        "pending_refresh_reasons"
+                      ],
+                      "type": "object"
+                    }
+                  ],
+                  "description": "Optional receipt from a previous complete delivery or checkpoint"
+                },
+                "cognition_state_version": {
+                  "const": "cognition-state/v2",
+                  "description": "Optional additive cognition-state projection version; use cognition-state/v2 to request independent delivery, model-usability, strict-Attestation, governance, and current-system reliability fields; omit it for the exact legacy response shape",
+                  "type": "string"
+                },
+                "cursor": {
+                  "description": "Exact deterministic Overview continuation cursor returned by the preceding chunk",
+                  "type": "string"
+                },
+                "host_delivery_confirmation": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "body_bytes": {
+                      "type": "integer"
+                    },
+                    "body_sha256": {
+                      "type": "string"
+                    },
+                    "end_marker_observed": {
+                      "type": "boolean"
+                    },
+                    "version": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "body_sha256",
+                    "body_bytes",
+                    "end_marker_observed"
+                  ],
+                  "type": "object"
+                },
+                "model_cognition_attestation": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "challenge_answers": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "core_f": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "object_identity": {
+                            "description": "Exact canonical object identity, or for a Code object only its exact repository-relative path; no cleaning, case folding, basename lookup, or fuzzy resolution is accepted",
+                            "maxLength": 4096,
+                            "type": "string"
+                          },
+                          "ordinal": {
+                            "description": "1-based position in the formal Entry sequence; Header, comments, blank lines, Section/Overview/Chunk markers, receipts, and Metadata are excluded, and Chunk Receipts use the same sequence",
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "tag": {
+                            "maxLength": 256,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "ordinal",
+                          "object_identity",
+                          "tag",
+                          "core_f"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 12,
+                      "type": "array"
+                    },
+                    "challenge_digest": {
+                      "maxLength": 128,
+                      "type": "string"
+                    },
+                    "confidence_percent": {
+                      "maximum": 100,
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "coverage_percent": {
+                      "maximum": 100,
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "entry_count": {
+                      "description": "Exact current formal Entry count published with this Challenge, separate from the model-reported coverage count",
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "entry_sequence_sha256": {
+                      "description": "Exact SHA-256 of the current ordered formal Entry or cognition-object sequence published with this Challenge",
+                      "pattern": "^[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "index_sha256": {
+                      "description": "Exact current Index or requested-scope SHA-256 published with this Challenge; stale Attestation identities fail",
+                      "pattern": "^[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "reported_entry_count": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "reported_estimated_tokens": {
+                      "minimum": 0,
+                      "type": "integer"
+                    },
+                    "system_mastery_percent": {
+                      "description": "Self-assessed mastery of the system framework: architecture, module responsibilities, strong relationships, stable external contracts, and high-entropy safety and maintenance constraints; not complete source, branch, identifier, test, or runtime knowledge",
+                      "maximum": 100,
+                      "minimum": 0,
+                      "type": "number"
+                    },
+                    "truncation_detected": {
+                      "type": "boolean"
+                    },
+                    "uncertainty_reasons": {
+                      "items": {
+                        "maxLength": 1024,
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "type": "array"
+                    },
+                    "unseen_sections": {
+                      "items": {
+                        "maxLength": 1024,
+                        "type": "string"
+                      },
+                      "maxItems": 64,
+                      "type": "array"
+                    },
+                    "version": {
+                      "const": "model-cognition-attestation/v1",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "index_sha256",
+                    "entry_sequence_sha256",
+                    "entry_count",
+                    "challenge_digest",
+                    "reported_entry_count",
+                    "reported_estimated_tokens",
+                    "coverage_percent",
+                    "system_mastery_percent",
+                    "confidence_percent",
+                    "truncation_detected",
+                    "unseen_sections",
+                    "uncertainty_reasons",
+                    "challenge_answers"
+                  ],
+                  "type": "object"
+                },
+                "model_cognition_state": {
+                  "description": "Host assessment of current complete cognition: valid, uncertain, or invalid",
+                  "type": "string"
+                },
+                "probe": {
+                  "description": "check_only only: request a two-question cognition probe sampled from the current formal Entry sequence; answer from memory to prove retained cognition instead of re-requesting the Whole-Index",
+                  "type": "boolean"
+                },
+                "probe_answers": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "answers": {
+                      "items": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "core_f": {
+                            "maxLength": 16384,
+                            "type": "string"
+                          },
+                          "object_identity": {
+                            "maxLength": 4096,
+                            "type": "string"
+                          },
+                          "ordinal": {
+                            "minimum": 1,
+                            "type": "integer"
+                          },
+                          "tag": {
+                            "maxLength": 256,
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "ordinal",
+                          "object_identity",
+                          "tag",
+                          "core_f"
+                        ],
+                        "type": "object"
+                      },
+                      "maxItems": 4,
+                      "type": "array"
+                    },
+                    "digest": {
+                      "pattern": "^[0-9a-f]{64}$",
+                      "type": "string"
+                    },
+                    "version": {
+                      "const": "cognition-probe/v1",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "version",
+                    "digest",
+                    "answers"
+                  ],
+                  "type": "object"
+                },
+                "refresh_event_id": {
+                  "description": "Host event idempotency key required when refresh_reasons are declared",
+                  "type": "string"
+                },
+                "refresh_reasons": {
+                  "description": "Optional host-declared refresh reasons: context_compaction and/or phase_transition; semantic_threshold is machine-derived",
+                  "items": {
+                    "enum": [
+                      "context_compaction",
+                      "phase_transition"
+                    ],
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "uniqueItems": true
+                },
+                "scope": {
+                  "description": "Optional cognition scope: all, project, meta, code, or database; Volumes v1 defaults to all and Legacy no-argument behavior is unchanged",
+                  "enum": [
+                    "all",
+                    "project",
+                    "meta",
+                    "code",
+                    "database"
+                  ],
+                  "type": "string"
+                },
+                "scope_covered": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ],
+                  "description": "Whether the current task remains within the cognition scope already established"
+                },
+                "stable_checkpoint": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ],
+                  "description": "Whether current edits, formatting, lint, and required tests have reached the nearest stable checkpoint"
+                }
+              },
+              "type": "object"
+            },
+            "name": "aoci_overview"
+          },
+          {
+            "description": "Use only for an explicit orphan Entry candidate returned by governance. Legacy accepts a repository-relative path whose disk object no longer exists. Volumes v1 accepts code:<path> or a canonical database:// object identity and reproves the orphan from shared governance facts. R references from other Entries never block removal: a dangling annotation left behind is model-authored semantics, handled by the model on its next Whole-Index read, never by the machine. An exact machine ownership-conflict finding with different expected and actual owners and an existing expected formal owner removes only the misplaced Domain Entry while preserving that owner. The transaction guards Root, Meta, every declared object Volume, saved Evidence, and the existing Baseline/Database Binding. It removes no source file, database object, Evidence, Root, Meta, or Volume. Recovery, changed, unproven, or third-party state is rejected. Removing a non-orphan requires a maintainer decision recorded with aoci_report; never delete a workspace or database object merely to manufacture an orphan.",
+            "inputSchema": {
+              "additionalProperties": false,
+              "properties": {
+                "path": {
+                  "description": "Explicit orphan identity: a Legacy repository-relative path, code:<path>, or canonical database:// object_ref returned by governance",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path"
+              ],
+              "type": "object"
+            },
+            "name": "aoci_remove_entry"
+          },
+          {
+            "description": "Record follow-up work when evidence is insufficient to generate or decide Legacy Entry semantics reliably. This writes a local report and audit record but does not modify the formal index or Baseline. Volumes v1 returns volume_read_only. It does not replace Curation, orphan decisions, or failure recovery.",
+            "inputSchema": {
+              "additionalProperties": false,
+              "properties": {
+                "note": {
+                  "description": "Follow-up note describing what changed and why the Entry cannot yet be updated reliably",
+                  "type": "string"
+                },
+                "path": {
+                  "description": "Repository-relative path related to the follow-up",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "path",
+                "note"
+              ],
+              "type": "object"
+            },
+            "name": "aoci_report"
+          },
+          {
+            "description": "Read the current AOCI session-level runtime contract. Call when a new Agent Run lacks a reliable contract, when the contract has left usable context, or when the AOCI service identity changes. Do not repeat it within the same cognition cycle. This does not modify the formal index or Baseline, but may append a local audit record.",
+            "inputSchema": {
+              "type": "object",
+              "additionalProperties": false
+            },
+            "name": "aoci_rules"
+          },
+          {
+            "description": "Search Entry content by keyword and/or tag. Volumes v1 can restrict search to all, project, meta, code, or database and returns volume_id plus canonical object identity; Legacy behavior is unchanged. Use when the target is unknown, for local uncertainty, or on explicit request. Do not substitute search results for complete Overview. This does not modify formal cognition or Baseline, but may append a local audit record.",
+            "inputSchema": {
+              "additionalProperties": false,
+              "properties": {
+                "keyword": {
+                  "description": "Case-insensitive keyword matched against the complete Entry line (provide this or tag_filter)",
+                  "type": "string"
+                },
+                "scope": {
+                  "description": "Optional Volumes v1 search scope: all, project, meta, code, or database",
+                  "enum": [
+                    "all",
+                    "project",
+                    "meta",
+                    "code",
+                    "database"
+                  ],
+                  "type": "string"
+                },
+                "tag_filter": {
+                  "description": "Tag filter such as A=Index or C>=7 (provide this or keyword)",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "name": "aoci_search"
+          },
+          {
+            "description": "Write one complete current machine-issued model-authored Entry batch through the existing Impact, projected validation, Diff, CAS, AtomicWrite, Baseline/Database Binding, Receipt, Ledger, and Recovery pipeline. For Volumes Code authoring, preserve the exact code_batch_id, every candidate_id, path, and source_sha256 returned by no-argument aoci_maintain: aoci_update_entry.code_batch_id must equal code_plan.batch_id and every returned Code candidate.batch_id; authoring_batch.batch_identity is a different cross-domain envelope identity and must never be used in code_batch_id. Database candidates preserve the exact top-level batch_id and every candidate_id; never copy Database Volume or Table Evidence hashes into source_sha256. max_entries limits this request and atomic transaction only, not the logical plan, Whole-Index, or Managed Scope. The submitted entries must be the complete candidate set for the current machine-issued batch; the Host must not slice Maintain output. AOCI validates all candidates and source/Evidence, Scope, Composite, tag, FRAS, R/S form, and projected budget bindings before writing Code at most once, Database at most once, and Baseline/Binding at most once. R is model-authored semantics: AOCI never checks one Entry's relations against another Entry, so a relation naming an unwritten, unmanaged, or ambiguous target is accepted and persisted exactly as written and never causes a replan; author R freely and never delete or rewrite it to satisfy the machine. A successful batch with remaining nonzero is not Whole-Index aligned: call Maintain again against the new preimage and continue. A repair_required response returns every deterministic Finding with candidate_index, canonical_object_identity, rule_code, and safe_repair_action; repair only retry_scope and resubmit the same complete current batch. Existing direct single-object, Legacy, and compatible Code source_sha256 inputs remain supported. Root and Meta are Guard-only. Never guess, reduce Scope for transport limits, or submit a partial machine-issued batch.",
+            "inputSchema": {
+              "additionalProperties": false,
+              "properties": {
+                "batch_id": {
+                  "description": "Machine-owned complete current Database Cognition batch identity returned by aoci_maintain",
+                  "type": "string"
+                },
+                "candidate_id": {
+                  "description": "Machine-owned Code or Database Cognition candidate identity returned by aoci_maintain; do not synthesize it or copy Evidence hashes into it",
+                  "type": "string"
+                },
+                "code_batch_id": {
+                  "description": "Exact code_plan.batch_id returned by aoci_maintain; it equals every returned Code candidate.batch_id. Never use authoring_batch.batch_identity here",
+                  "type": "string"
+                },
+                "entries": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "items": {
+                        "additionalProperties": false,
+                        "oneOf": [
+                          {
+                            "not": {
+                              "anyOf": [
+                                {
+                                  "required": [
+                                    "object_ref"
+                                  ]
+                                },
+                                {
+                                  "required": [
+                                    "candidate_id"
+                                  ]
+                                }
+                              ]
+                            },
+                            "required": [
+                              "path",
+                              "source_sha256"
+                            ]
+                          },
+                          {
+                            "not": {
+                              "required": [
+                                "object_ref"
+                              ]
+                            },
+                            "required": [
+                              "path",
+                              "source_sha256",
+                              "candidate_id"
+                            ]
+                          },
+                          {
+                            "not": {
+                              "anyOf": [
+                                {
+                                  "required": [
+                                    "path"
+                                  ]
+                                },
+                                {
+                                  "required": [
+                                    "candidate_id"
+                                  ]
+                                }
+                              ]
+                            },
+                            "required": [
+                              "object_ref",
+                              "source_sha256"
+                            ]
+                          },
+                          {
+                            "not": {
+                              "anyOf": [
+                                {
+                                  "required": [
+                                    "path"
+                                  ]
+                                },
+                                {
+                                  "required": [
+                                    "source_sha256"
+                                  ]
+                                }
+                              ]
+                            },
+                            "required": [
+                              "object_ref",
+                              "candidate_id"
+                            ]
+                          }
+                        ],
+                        "properties": {
+                          "candidate_id": {
+                            "description": "Machine-owned identity for a Code or Database candidate; preserve it exactly. A Code entry is paired with top-level code_batch_id=code_plan.batch_id=candidate.batch_id",
+                            "type": "string"
+                          },
+                          "new_entry": {
+                            "description": "Complete single-line Entry: filename[tag]: F:... | R:... | A:... | S:...",
+                            "type": "string"
+                          },
+                          "object_ref": {
+                            "description": "Canonical Database object identity; use this instead of path for a table Entry",
+                            "type": "string"
+                          },
+                          "path": {
+                            "description": "Repository-relative path of the target file",
+                            "type": "string"
+                          },
+                          "source_sha256": {
+                            "description": "Source binding for a Code candidate; preserve it unchanged for a machine-issued Code batch",
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "new_entry"
+                        ],
+                        "type": "object"
+                      },
+                      "type": "array"
+                    }
+                  ],
+                  "description": "Submit the complete candidate set for the current machine-issued batch; continue through Maintain when remaining is nonzero"
+                },
+                "new_entry": {
+                  "description": "Complete single-line Entry for compatibility single-Entry mode",
+                  "type": "string"
+                },
+                "object_ref": {
+                  "description": "Canonical Database object identity for compatibility single-Entry mode",
+                  "type": "string"
+                },
+                "path": {
+                  "description": "Repository-relative target path for compatibility single-Entry mode",
+                  "type": "string"
+                },
+                "source_sha256": {
+                  "description": "Compatibility binding for Code source bytes or an existing Database object update; Database Cognition authoring uses candidate_id and batch_id instead",
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            },
+            "name": "aoci_update_entry"
+          }
+        ]
+      }
+    }
+  ]
+}

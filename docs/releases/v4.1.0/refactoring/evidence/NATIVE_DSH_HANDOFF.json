@@ -1,0 +1,32 @@
+{
+  "handoff_id": "C-ALPHA01-HANDOFF-20261120",
+  "task_id": "C-ALPHA-01-PLAN",
+  "from_harness": "codex-desktop",
+  "to_harness": "deepseek-schedule",
+  "summary": "供Owner/DSH离线预检；18 native Task payload绑定补充DAG，当前禁止enqueue/dispatch，待正式授权。",
+  "artifacts": [
+    {
+      "kind": "decision_doc",
+      "ref": "docs/releases/v4.1.0/refactoring/C_REFACTOR_MASTER_PLAN.md"
+    },
+    {
+      "kind": "snapshot",
+      "ref": "docs/refactor/v4.1.0-c/handoff/10_HANDOFF_MANIFEST.json"
+    }
+  ],
+  "decisions": [
+    "Owner原则接受C与最终组织职责",
+    "DSH为唯一日常执行总控",
+    "自动任务LOCAL_ONLY",
+    "ADR/预算/DSH启动未批准"
+  ],
+  "open_questions": [
+    "LOCAL_ONLY隔离",
+    "task sidecar强制",
+    "十ADR/格式/隔离",
+    "Reviewer",
+    "资源/预算"
+  ],
+  "context_fingerprint": "4649fccc566613f04568ef3564e9d585739c4e92c73ad5972714b7d4f65b992f",
+  "created_at": "2026-11-20T13:41:01.231Z"
+}

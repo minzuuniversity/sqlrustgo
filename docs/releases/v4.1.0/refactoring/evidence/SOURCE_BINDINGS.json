@@ -1,0 +1,32 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "C-ALPHA-01-HANDOFF-20261120",
+  "timestamp": "2026-11-24T10:41:07.464668+00:00",
+  "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
+  "dsh_local_sha": "551308365d6a7140ca820a2f72352d09bdcb8d99",
+  "kos_local_sha": "97d9809a145e709fcde39d9eb02800e4a4c42b2b",
+  "remote_schema_heads_verified": false,
+  "source_sha256": {
+    "/Users/liying/dev/workspaces/deepseek-schedule/deepseek-schedule/contracts/task.schema.json": "d0f77cfd4222e486ce773c6202255b4940df0d9b50f3cc38b051df3e1cd1b001",
+    "/Users/liying/dev/workspaces/deepseek-schedule/deepseek-schedule/contracts/result.schema.json": "4a76f5802d1e804eca883645c0030d9aa96cd760e3c397ba3b854f3754e7c937",
+    "/Users/liying/dev/workspaces/deepseek-schedule/deepseek-schedule/contracts/receipt.schema.json": "04077741cc283d0aec3f14ea09d98e0f1eee920b49a23469f648441ba18c6d46",
+    "/Users/liying/dev/workspaces/deepseek-schedule/deepseek-schedule/contracts/handoff.schema.json": "7a3758c858b9c3e6b72fade2dca8900dfe4ace7edf980fee4c2ef2637fb39342",
+    "/Users/liying/dev/workspaces/deepseek-schedule/deepseek-schedule/scheduler/router.py": "e18ecbb12328d9abf0469eeb29d7c2024df7e11a289b5e04e36c5a112d4de561",
+    "/Users/liying/dev/workspaces/deepseek-schedule/deepseek-schedule/scheduler/gatekeeper.py": "55d95accbdf7141f87c86ed4d3c55fa7476d9aeca56bcfa1f59e101640ab5df2",
+    "/Users/liying/dev/workspaces/deepseek-schedule/deepseek-schedule/scheduler/state_machine.py": "5c8c9dfd1d87b1afbfab8101f5ef3daf004381e740cc8c7c82377881258b4831",
+    "/Users/liying/dev/workspaces/deepseek-schedule/deepseek-schedule/adapters/opencode.py": "94d0e734bd3e6ea86741265808397a00fed899c2999b872e855c454bd5f28238",
+    "/Users/liying/dev/workspaces/deepseek-schedule/deepseek-schedule/adapters/omp_strata.py": "c8b9a66212aebd23b6d322ff2b5f571b21708d9ca7c6866d424928716988ef52",
+    "/Users/liying/dev/workspaces/deepseek-schedule/deepseek-schedule/config/routing.json": "5a1f5b71692fcca46aba9c8a89730048179500c7054a24027fab124bbe9ca817",
+    "/Users/liying/dev/workspaces/deepseek-schedule/deepseek-schedule/config/policies.json": "65983405e29d05863b39a8d1b7e43cd43513b606131632b6cd702a99184420f7",
+    "/Users/liying/dev/workspaces/deepseek-schedule/deepseek-schedule/docs/test-factory/TEST_CORPUS_MANIFEST.json": "3a8feb57832d5d0e7bac6d4553dcf4af747dd10ef9aa8cd1f9fd4c31c7161257",
+    "/Users/liying/dev/workspaces/deepseek-schedule/deepseek-schedule/docs/test-factory/hold/LOCAL_ONLY_ATTESTATION.md": "f564a044a3910d89158a9c8f945aaafba0602a56dba4d10496f02189971c94f1",
+    "/Users/liying/dev/workspaces/deepseek-schedule/deepseek-schedule/docs/test-factory/hold/LOCAL-ONLY-FAIL-CLOSED-TESTS.md": "725b5674839952f5f80f37be6786a563c33be6dcb98a2d8a8ece436bcf3a88bd",
+    "/Users/liying/dev/workspaces/deepseek-schedule/deepseek-schedule/docs/test-factory/hold/EXECUTION-MODE-CONTRACT.md": "d0a80d60b8f42809f3958ad92f60d1ee8e88694a7c0306a797eae1d7d5305851",
+    "/Users/liying/dev/workspaces/kos/engineering-os-control/docs/EVIDENCE-CONTRACT.md": "fe04b8121ee083582ea33f434e01d9177ae9c8f0a4d855de662d0317015a6d76",
+    "/Users/liying/dev/workspaces/kos/engineering-os-control/docs/STATE-TRUTH.md": "177c2917f7213c6e8a75c2490c4ebcdc3b2d655ce3ab176ffd1ca98f367918eb",
+    "/Users/liying/dev/workspaces/kos/engineering-os-control/orchestration/task_state.py": "ab0a9225e34ddf398770a7e6e4411f14cd0c161fced76974ebced61ad5c6a04e",
+    "/Volumes/workspace/dev/srg-test-factory-pilot/tools/test_factory.py": "44862a3297ae0fc1ef594c067a70dac2639bf251161cd995833bc7ad9b14d1b5",
+    "/Volumes/workspace/dev/srg-test-factory-pilot/tests/integration/test_factory/tf_t1_undo_invariants.rs": "5642978df8f848fd737123346a17048d885dd9e28bcbe28614bd9e73fe6fe7c4"
+  },
+  "conflict_resolution": "Source-bound plan, no dispatch or independent certification"
+}

@@ -1,0 +1,5 @@
+[B1] PASS  develop tip 8cbde5b6d3 is an ancestor of HEAD
+[B2] PASS  base_sha fd849ae205, tree_sha 72d378e8e5, source_ref base/v4.1.0-frozen and frozen_at all match the repository
+[B3] PASS  123 material file(s) + 56 runtime-contract file(s) imported over develop, all still present in HEAD
+[B4] PASS  ledger complete (applied 1 / path-import 1 / already-present 3); the frozen path-import directory holds 56 file(s)
+4/4 PASS -- COMPLETE: every assertion ran

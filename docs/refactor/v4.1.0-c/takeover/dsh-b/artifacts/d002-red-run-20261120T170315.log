@@ -1,0 +1,3 @@
+error: no test target named `p2c0_undo_proto` in `sqlrustgo-storage` package
+help: available test in `sqlrustgo` package:
+    p2c0_undo_proto

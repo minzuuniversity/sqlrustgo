@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentHandoff",
+  "type": "object",
+  "required": ["handoff_id", "task_id", "from_harness", "to_harness", "summary", "created_at"],
+  "additionalProperties": false,
+  "properties": {
+    "handoff_id": {"type": "string"},
+    "task_id": {"type": "string"},
+    "from_harness": {"type": "string"},
+    "to_harness": {"type": "string"},
+    "summary": {"type": "string", "maxLength": 8000},
+    "artifacts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["kind", "ref"],
+        "additionalProperties": false,
+        "properties": {
+          "kind": {"type": "string", "enum": ["diff", "test_report", "log", "screenshot", "decision_doc", "snapshot"]},
+          "ref": {"type": "string", "description": "文件路径 / commit / URL"}
+        }
+      }
+    },
+    "decisions": {"type": "array", "items": {"type": "string"}, "description": "已做决定及依据，接收方不得静默推翻"},
+    "open_questions": {"type": "array", "items": {"type": "string"}},
+    "context_fingerprint": {"type": "string", "description": "共享事实包的哈希，用于避免上下文漂移"},
+    "created_at": {"type": "string", "format": "date-time"}
+  }
+}

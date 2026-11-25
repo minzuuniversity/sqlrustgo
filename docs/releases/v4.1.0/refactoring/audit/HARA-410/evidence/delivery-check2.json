@@ -1,0 +1,13 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "HARA-410-20261120",
+  "started": "2026-11-19T22:04:32.205509+00:00",
+  "timestamp": "2026-11-19T22:04:32.336064+00:00",
+  "cwd": "/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-hara410-20261120",
+  "argv": [
+    "python3",
+    "docs/audits/HARA-410/evidence/verify_delivery.py"
+  ],
+  "exit": 0,
+  "output": "{\n  \"reports\": 9,\n  \"priority_sets\": {\n    \"priority/p0\": {\n      \"count\": 37,\n      \"missing\": [],\n      \"extra\": [],\n      \"duplicates\": []\n    },\n    \"priority/p1\": {\n      \"count\": 51,\n      \"missing\": [],\n      \"extra\": [],\n      \"duplicates\": []\n    }\n  },\n  \"local_links\": 8,\n  \"tracked_changes_outside_audit\": [],\n  \"scope\": \"Delivery consistency and observed-output assertions only; not database correctness certification\"\n}\n"
+}

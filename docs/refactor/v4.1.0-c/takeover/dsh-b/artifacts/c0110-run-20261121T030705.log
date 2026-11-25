@@ -1,0 +1,35 @@
+   Compiling sqlrustgo v4.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/dsh-b-c0109)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 3.47s
+     Running tests/integration/test_factory/ca01_complex_dml.rs (target/debug/deps/ca01_complex_dml-49f6411a7a1d3a0f)
+
+running 4 tests
+test inv15a_index_projection_matches_rowstore ... ok
+test inv15b_index_projection_undone_with_rowstore ... ok
+test inv05a_multi_row_update_rollback_is_all_or_nothing ... FAILED
+test inv05b_multi_table_dml_rollback_is_atomic ... FAILED
+
+failures:
+
+---- inv05a_multi_row_update_rollback_is_all_or_nothing stdout ----
+
+thread 'inv05a_multi_row_update_rollback_is_all_or_nothing' (757849) panicked at tests/integration/test_factory/ca01_complex_dml.rs:48:5:
+assertion `left == right` failed: INV-05: one statement affecting multiple rows must be undone atomically (all rows restored, not partially)
+  left: [["Integer(1)", "Integer(10)"], ["Integer(1)", "Integer(10)"], ["Integer(2)", "Integer(20)"], ["Integer(2)", "Integer(20)"], ["Integer(3)", "Integer(30)"], ["Integer(3)", "Integer(30)"], ["Integer(4)", "Integer(40)"], ["Integer(4)", "Integer(40)"]]
+ right: [["Integer(1)", "Integer(10)"], ["Integer(2)", "Integer(20)"], ["Integer(3)", "Integer(30)"], ["Integer(4)", "Integer(40)"]]
+
+---- inv05b_multi_table_dml_rollback_is_atomic stdout ----
+
+thread 'inv05b_multi_table_dml_rollback_is_atomic' (757850) panicked at tests/integration/test_factory/ca01_complex_dml.rs:73:5:
+assertion `left == right` failed: INV-05: table a must be fully restored
+  left: [["Integer(1)", "Integer(1)"], ["Integer(1)", "Integer(1)"]]
+ right: [["Integer(1)", "Integer(1)"]]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    inv05a_multi_row_update_rollback_is_all_or_nothing
+    inv05b_multi_table_dml_rollback_is_atomic
+
+test result: FAILED. 2 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p sqlrustgo --test ca01_complex_dml`

@@ -1,0 +1,41 @@
+==================================================================
+  Stage Gate Check: ALPHA
+  Version: v4.1.0
+  Branch: base/v4.1.0-frozen
+  Commit: b556199c86
+  Description: 功能开发阶段 (active feature development, API may change)
+  Mode:    DRY-RUN (nothing executed)
+==================================================================
+
+--- Branch Pattern ---
+  stage:     ALPHA
+  pattern:   develop/v*
+  branch:    base/v4.1.0-frozen
+  enforced:  false
+  [INFO] carrier rule is declared but not enforced for this stage (development stage)
+
+--- Required files & doc artifacts ---
+  [OK]  docs/releases/v4.1.0/CHANGELOG.md
+  [OK]  docs/releases/v4.1.0/RELEASE_NOTES.md
+  [OK]  docs/releases/v4.1.0/STAGE.yaml
+  [OK]  docs/releases/v4.1.0/CHANGELOG.md
+  [OK]  docs/releases/v4.1.0/RELEASE_NOTES.md
+  [OK]  docs/releases/v4.1.0/STAGE.yaml
+  [OK]  docs/releases/v4.1.0/FEATURE_MATRIX.md
+
+--- Required gates (10) ---
+  [DRY]  scripts/gate/check_alpha_v4.1.0.sh -> scripts/gate/check_alpha_v410.sh
+  [DRY]  scripts/gate/check_arch_invariants.sh -> scripts/gate/check_arch_invariants.sh
+  [DRY]  scripts/gate/check_arch3_no_bypass.sh -> scripts/gate/check_arch3_no_bypass.sh
+  [DRY]  SQLRUSTGO_COVERAGE_STAGE=alpha bash scripts/gate/check_coverage_v312.sh
+  [DRY]  scripts/gate/check_sql_corpus_gate.sh -> scripts/gate/check_sql_corpus_gate.sh
+  [DRY]  scripts/gate/check_anti_ignore_gate.sh -> scripts/gate/check_anti_ignore_gate.sh
+  [DRY]  scripts/gate/check_g1_tpch_baseline.sh -> scripts/gate/check_g1_tpch_baseline.sh
+  [DRY]  cargo build --all-features
+  [DRY]  cargo test --all-features --lib
+  [DRY]  cargo fmt --check
+
+==================================================================
+  Stage ALPHA (v4.1.0): 7 PASS, 0 FAIL
+  gate logs: docs/releases/v4.1.0/logs/gates/
+==================================================================

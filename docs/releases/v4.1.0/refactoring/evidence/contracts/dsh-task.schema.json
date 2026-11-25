@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "AgentTask",
+  "type": "object",
+  "required": ["task_id", "project", "repo", "base_commit", "risk", "objective", "allowed_paths", "acceptance", "budget"],
+  "additionalProperties": false,
+  "properties": {
+    "task_id": {"type": "string", "pattern": "^[A-Z0-9][A-Z0-9._-]{2,63}$"},
+    "project": {"type": "string"},
+    "repo": {"type": "string", "description": "主仓库绝对路径或 git URL"},
+    "base_commit": {"type": "string", "description": "冻结的基线 SHA；worktree 由此创建"},
+    "risk": {"type": "string", "enum": ["L0", "L1", "L2", "L3", "L4"]},
+    "objective": {"type": "string", "maxLength": 4000},
+    "allowed_paths": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "forbidden_paths": {"type": "array", "items": {"type": "string"}, "default": [".env", "secrets/"]},
+    "acceptance": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+    "budget": {
+      "type": "object",
+      "required": ["max_attempts", "max_runtime_seconds"],
+      "additionalProperties": false,
+      "properties": {
+        "max_attempts": {"type": "integer", "minimum": 1, "maximum": 5},
+        "max_runtime_seconds": {"type": "integer", "minimum": 30},
+        "allow_paid_overage": {"type": "boolean", "default": false}
+      }
+    },
+    "execution": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "preferred_harness": {"type": "string", "enum": ["opencode", "codex", "pi", "mock", "claude-code", "omp", "deepseek-harness"], "default": "opencode"},
+        "preferred_pool": {"type": "string"},
+        "reviewer_pool": {"type": "string"}
+      }
+    },
+    "task_type": {"type": "string", "enum": ["normal", "infra"], "default": "normal", "description": "infra 任务强制 Recovery Verification 四判据"},
+    "recovery_verification": {"type": "boolean", "default": false, "description": "显式要求四判据（service/functional_recovered, no_regression, evidence_recorded）"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "hub_ref": {
+      "type": "object",
+      "description": "与 ai-project-hub 的任务治理关联（新引擎不拥有项目任务权威）",
+      "additionalProperties": false,
+      "properties": {
+        "decision_id": {"type": "string", "description": "opencode_shadow 决策 ID（SHA256 32hex）"},
+        "hub_task_key": {"type": "string", "description": "task:<project>:<task>"},
+        "session": {"type": "string"},
+        "issue": {"type": "integer"}
+      }
+    }
+  }
+}

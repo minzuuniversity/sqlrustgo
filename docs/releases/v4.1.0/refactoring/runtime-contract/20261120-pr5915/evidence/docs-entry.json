@@ -1,0 +1,15 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "RUNTIME-5915-20261120",
+  "conflict_resolution": "Source-bound recommendation; Owner approval pending; no core changes or workers",
+  "started_at": "2026-11-20T14:46:40.069200+00:00",
+  "timestamp": "2026-11-20T14:46:40.220636+00:00",
+  "cwd": ".",
+  "argv": [
+    "bash",
+    "scripts/gate/check_docs_links.sh"
+  ],
+  "exit_code": 0,
+  "raw_log": "docs-entry.log",
+  "evidence_hash": "sha256:d6aec487ebb33131619f06041f87bf2d82dd3cb2021259f5eb98ee4cbbd51981"
+}

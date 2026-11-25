@@ -1,0 +1,123 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "RUNTIME-5915-20261120",
+  "conflict_resolution": "Source-bound recommendation; Owner approval pending; no core changes or workers",
+  "timestamp": "2026-11-20T14:25:48.300079+00:00",
+  "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/issues/5910",
+  "http_status": 200,
+  "data": {
+    "id": 10601,
+    "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/issues/5910",
+    "html_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5910",
+    "number": 5910,
+    "user": {
+      "id": 1,
+      "login": "openclaw",
+      "type": "User",
+      "login_name": "",
+      "source_id": 0,
+      "full_name": "",
+      "email": "1+openclaw@noreply.192.168.0.252",
+      "avatar_url": "http://192.168.0.252:3000/avatars/b5ad8ef56d54a99ca3133efd201841aabc6a069fc055eb72eb67395547685052",
+      "html_url": "http://192.168.0.252:3000/openclaw",
+      "language": "",
+      "is_admin": false,
+      "last_login": "0001-01-01T00:00:00Z",
+      "created": "2026-04-28T14:39:45Z",
+      "restricted": false,
+      "active": false,
+      "prohibit_login": false,
+      "location": "",
+      "website": "",
+      "description": "",
+      "visibility": "public",
+      "followers_count": 0,
+      "following_count": 0,
+      "starred_repos_count": 0,
+      "username": "openclaw"
+    },
+    "original_author": "",
+    "original_author_id": 0,
+    "title": "[v4.1.0][P0][存储/数据完整性] FileStorage 的 UndoOp::DeleteAll 快照取自 tables，不含仍在 insert_buffer 的行 ⇒ 存储层单独恢复也丢行",
+    "body": "## 现象（#5909 隔离测量中发现）\n\n一张**没有主键**的表里有两行完全相同的记录，行先经由 insert_buffer（尚未 flush 到 tables），随后被一次带过滤条件的 DELETE 命中两行，再 ROLLBACK。\n\n实测：FileStorage 记录的 `UndoOp::DeleteAll` 快照为 **rows=0**，而当时表里实际有 2 行。\n\n⇒ 存储层自己的 undo 日志在「行仍在缓冲中」时**快照不完整**：它把「删除前的内容」取自 `data.rows`（已落盘/已 flush 的行），**不含缓冲中的行**。\n\n## 后果\n\n配置 C（**只留存储层、摘掉引擎回放**）下，该场景的最终结果仍是 **1 行**（期望 2 行）⇒ **存储层单独恢复也丢行**。\n\n⇒ 这说明「无主键表 + 缓冲写入」下的恢复缺陷**不是**「两层都参与」造成的，**收敛到单一恢复责任层并不能解决它**（见 #5908 的隔离测量表）。\n\n## 证据等级\n\n- 现象（DeleteAll 快照 rows=0；配置 C 下仍丢行）：**E1**（直接实测，插桩事件 + 三种隔离配置的结果）；\n- 机理（快照取自 data.rows，因而不含 insert_buffer 中的行）：**E2**（由代码路径与实测现象推断，未逐行验证）；\n- 修复方案：**尚未设计**，不得声明完成。\n\n## 与既有问题���关系\n\n- #5908（无主键重复行 ⇒ 按值恢复无法定位被删的那一行）：本条是其**存储层一侧**的对应缺陷 —— 引擎层缺稳定行身份，存储层的快照又不完整；\n- #5909（双层 undo 的精确一次恢复语义未证明）：本条是其中「存储层覆盖面」的一处实证缺口。\n\n## 本线立场\n\n本线**不擅自改动**：修复需要先定「稳定行身份」的机制（与 #5909 裁决 3 同源），属主域。\n\n仅登记与定位，并给出可复现的观察点：隔离测量中 FileStorage 的 `UndoOp::DeleteAll` 事件行的 `rows=` 计数。\n",
+    "ref": "",
+    "assets": [],
+    "labels": [
+      {
+        "id": 106,
+        "name": "GA-blocker",
+        "exclusive": false,
+        "is_archived": false,
+        "color": "d93f0b",
+        "description": "V312-RC-GA: must be fixed before GA cut (per docs/releases/v3.12.0/RC_GA_TRIAGE_AND_GATE_PLAN_2026-09-03.md §3)",
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/labels/106"
+      },
+      {
+        "id": 87,
+        "name": "blocked-ga",
+        "exclusive": false,
+        "is_archived": false,
+        "color": "e11d21",
+        "description": "Blocked on user/owner action (not local Z440)",
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/labels/87"
+      },
+      {
+        "id": 151,
+        "name": "cap/architecture",
+        "exclusive": false,
+        "is_archived": false,
+        "color": "1d76db",
+        "description": "",
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/labels/151"
+      },
+      {
+        "id": 156,
+        "name": "cost/t2",
+        "exclusive": false,
+        "is_archived": false,
+        "color": "0e8a16",
+        "description": "",
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/labels/156"
+      },
+      {
+        "id": 39,
+        "name": "priority/p0",
+        "exclusive": false,
+        "is_archived": false,
+        "color": "d93f0b",
+        "description": "P0 critical issue",
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/labels/39"
+      },
+      {
+        "id": 157,
+        "name": "state/ready",
+        "exclusive": false,
+        "is_archived": false,
+        "color": "fbca04",
+        "description": "",
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/labels/157"
+      }
+    ],
+    "milestone": null,
+    "projects": null,
+    "assignee": null,
+    "assignees": null,
+    "state": "open",
+    "is_locked": false,
+    "comments": 1,
+    "created_at": "2026-11-19T18:11:53Z",
+    "updated_at": "2026-11-19T18:20:00Z",
+    "closed_at": null,
+    "due_date": null,
+    "time_estimate": 0,
+    "pull_request": null,
+    "repository": {
+      "id": 10,
+      "name": "sqlrustgo",
+      "owner": "openclaw",
+      "full_name": "openclaw/sqlrustgo"
+    },
+    "pin_order": 0,
+    "content_version": 0
+  }
+}

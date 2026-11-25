@@ -1,0 +1,68 @@
+{
+  "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
+  "tree_sha": "72d378e8e58797eae18502ab474325015b8993d4",
+  "parent": "8cbde5b6d33c876fa1197474c46d50142a9823bd",
+  "frozen_at": "2026-11-23T11:42:14.812504+00:00",
+  "source_ref": "base/v4.1.0-frozen",
+  "historical_set_additions": {
+    "paths": [
+      "audit/v4.1.0/runs/20261124-task8-alpha-negfix-001/manifest.yaml"
+    ],
+    "recorded_by": "Task 8 revision 1 (2026-11-24)",
+    "note": "S5 of verify_sha_scope.py freezes the historical record set (audit/v4.1.0/runs/*/manifest.yaml) at BASE.  Its own docstring allows exactly two ways forward for a NEW audit run manifest: 'a *new* audit run manifest must be added to the freeze record (or the gate must be re-ruled), it must not silently widen the set'.  This record takes the first path: the Task 8 evidence run is listed here explicitly, so the set widens by an entry that is registered, not by an entry that appeared.  Everything else about S5 is unchanged: the frozen entries are still compared byte-for-byte against BASE and their frozen_commit bindings are still compared against the import commit, and any manifest.yaml that is NOT listed here is still rejected as 'not part of the frozen historical set'.",
+    "rationale": "The alternative -- renaming the file so it does not match S5's pattern -- left the evidence chain unverifiable by the repository's own tooling (audit_run.py verify could not find the manifest; audit_integrity_report.py classified the run as 'no-manifest').  A registered addition keeps the evidence checkable."
+  },
+  "cherry_picked": [
+    {
+      "sha": "45da6968ae2baaade6a31206eeee5854a8514ee2",
+      "state": "applied",
+      "cherry_pick": "ca8b1684ba2efe688a40769492186a61f1933909"
+    },
+    {
+      "sha": "b681b74ca3c0373cb2b7c44ff2cb032cf1a1c540",
+      "state": "path-import",
+      "path": "docs/releases/v4.1.0/refactoring/runtime-contract/20261120-pr5915/",
+      "files": 56
+    },
+    {
+      "sha": "cd8cefe623e148964fd0c4ce0ccfcc56eff762df",
+      "state": "already-present",
+      "net_delta": "empty",
+      "conflict_resolved": "scripts/gate/check_g1_tpch_baseline.sh",
+      "cherry_pick": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e"
+    },
+    {
+      "sha": "9a61cf59c0756ecfba2987cc02a2b5994eff7d5b",
+      "state": "already-present",
+      "net_delta": "empty"
+    },
+    {
+      "sha": "cfd4306b7e6d6c8a7130d1fed7769ba834ed6de8",
+      "state": "already-present",
+      "net_delta": "empty"
+    }
+  ],
+  "material_import": {
+    "from": "45da6968ae2baaade6a31206eeee5854a8514ee2",
+    "files": 123
+  },
+  "adr_catalogue": {
+    "expected_ids": [
+      "ADR-410-001",
+      "ADR-410-002",
+      "ADR-410-003",
+      "ADR-410-004",
+      "ADR-410-005",
+      "ADR-410-006",
+      "ADR-410-007",
+      "ADR-410-008",
+      "ADR-410-009",
+      "ADR-410-010",
+      "ADR-410-011"
+    ],
+    "expected_size": 11,
+    "adr_410_011_in_adrs": true,
+    "recorded_by": "Task 4 (2026-11-23)",
+    "note": "The state of docs/releases/v4.1.0/refactoring/adrs/ after Task 4 relocated ADR-410-011 out of runtime-contract/20261120-pr5915/ (O7) and recorded the owner's tiers in the ADR bodies (ADR-DECISION-RECORD.md:35-47): 001/002/005 APPROVED, 006/011 CONDITIONALLY_APPROVED, 003/004/007/008/009/010 APPROVED_DIRECTION. verify_handoff.py asserts against this record, not against a set of acceptable values."
+  }
+}

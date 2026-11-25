@@ -1,0 +1,48 @@
+{
+  "model_policy": "LOCAL_ONLY",
+  "enforcement_status": "INCOMPLETE",
+  "dispatch_allowed": false,
+  "active_dsh_strategy_observed": "LOCAL_FIRST",
+  "worker_roles": {
+    "implementation": "OpenCode",
+    "testing_review_backup": "OMP",
+    "controller": "DSH only"
+  },
+  "forbidden_inference": [
+    "OpenAI cloud",
+    "OpenCode Go cloud",
+    "MiniMax subscription",
+    "Claude cloud",
+    "other external paid inference"
+  ],
+  "controller_deterministic_is_not_cloud_agent_proof": true,
+  "codex_owner_initiated_architecture_exception": true,
+  "credential_values_logged": false,
+  "required_preflight": [
+    "owner_activation_receipt",
+    "resource_window",
+    "endpoint_model_identity",
+    "context_tool_capabilities",
+    "worker_sanitized_environment",
+    "egress_allowlist_negative_test",
+    "subagent_bridge_summary_retry_no_cloud",
+    "per_call_usage_receipts",
+    "no_gmp_interference"
+  ],
+  "budget": {
+    "proposed_total_token_upper": 2570000,
+    "first_batch_requested_ceiling": 5000000,
+    "authorized_tokens": 0
+  },
+  "limits": {
+    "per_repo_parallel": 1,
+    "max_attempts": 2,
+    "no_new_evidence_retry": false,
+    "gpu_purchase": false,
+    "service_reconfiguration": false
+  },
+  "source_refs": [
+    "evidence/contracts/dsh-task.schema.json",
+    "evidence/SOURCE_BINDINGS.json"
+  ]
+}

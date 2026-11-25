@@ -1,0 +1,123 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "RUNTIME-5915-20261120",
+  "conflict_resolution": "Source-bound recommendation; Owner approval pending; no core changes or workers",
+  "timestamp": "2026-11-20T14:25:48.219803+00:00",
+  "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/issues/5909",
+  "http_status": 200,
+  "data": {
+    "id": 10591,
+    "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/issues/5909",
+    "html_url": "http://192.168.0.252:3000/openclaw/sqlrustgo/issues/5909",
+    "number": 5909,
+    "user": {
+      "id": 1,
+      "login": "openclaw",
+      "type": "User",
+      "login_name": "",
+      "source_id": 0,
+      "full_name": "",
+      "email": "1+openclaw@noreply.192.168.0.252",
+      "avatar_url": "http://192.168.0.252:3000/avatars/b5ad8ef56d54a99ca3133efd201841aabc6a069fc055eb72eb67395547685052",
+      "html_url": "http://192.168.0.252:3000/openclaw",
+      "language": "",
+      "is_admin": false,
+      "last_login": "0001-01-01T00:00:00Z",
+      "created": "2026-04-28T14:39:45Z",
+      "restricted": false,
+      "active": false,
+      "prohibit_login": false,
+      "location": "",
+      "website": "",
+      "description": "",
+      "visibility": "public",
+      "followers_count": 0,
+      "following_count": 0,
+      "starred_repos_count": 0,
+      "username": "openclaw"
+    },
+    "original_author": "",
+    "original_author_id": 0,
+    "title": "[v4.1.0][P0][架构/数据完整性] 顶层 ROLLBACK 的「单一恢复责任」尚未确定 —— 双层 undo 的精确一次恢复语义未证明（架构级）",
+    "body": "## 问题\n\n一次 ROLLBACK 会查**两份** undo 日志，两份都能修改同一事务的数据：\n\n1. **存储后端自己的**：`FileStorage` 的每事务 `UndoOp` 日志（由 `rollback_transaction_lockfree_for` 回放，**按行下标精确还原**）、`MemoryStorage` 的 `TxLog`（由 `rollback_transaction` 回放）；\n2. **引擎层的**：`UndoRecord`（由 `TransactionManager::rollback_with_undo` 驱动回放闭包执行，**按行值定位**，无稳定行身份）。\n\n修复前两层都只认裸表名、都落 default 库（症状）；#5891 / #5896 / #5897 把两层都修对之后，两层都**正确地**恢复源库 —— 于是 #5905 的重复行。\n\n⇒ 真正的架构风险不是某个过滤器写错了，而是：**两层各自「正确」地恢复，并不等于组合起来恰好恢复一次**。这一语义**尚未被证明**。\n\n## 需要先做的证明（评审给的 P0 验证项）\n\n**① 双层回放的实际顺序与责任边界**：用隔离测试分别记录**每一层**的回放次数、顺序与影响行数，覆盖 INSERT / UPDATE / DELETE / SAVEPOINT / 顶层 ROLLBACK，验证**同一数据变更不会被重复恢复**。\n\n**② 各后端对顶层 undo 的覆盖面**：证明 FileStorage 与 MemoryStorage 各自的 undo 日志是否**覆盖了引擎的全部 DML 路径**。只有证明了覆盖面，才能安全地把顶层 ROLLBACK 的恢复责任收敛到一层。\n\n**③ SAVEPOINT 期间是否还会产生存储层日志**：若会产生，则部分回滚与顶层回滚的责任划分需要额外说明。\n\n**④ 回放失败时能否原子终止**：若回放中途失败，两层各已改了一半，如何避免留下半恢复状态。\n\n## 两条候选方向（评审意见，尚未择一）\n\n- **A：给引擎层 undo 记录补稳定行身份**（主键列**下标** + 主键值；无主键表需行 id 机制）⇒ 引擎层自身即可精确恢复。附带消除「主键过滤按列位置匹配、在主键非首列的表上会命中错行」的隐患。\n- **B：顶层回滚只保留一个恢复责任层**（顶层由具备完整撤销能力的那一层执行，引擎层只负责 SAVEPOINT）。评审明确建议：**先分别证明 FileStorage / MemoryStorage 的覆盖面，再切换**；**不要**现在直接按后端类型切换回滚路径。\n\n评审同时否掉了两条捷径：**不建议**给 `UndoOp::DeleteRow` 加基于行值的幂等保护（会把合法的重复行误判为「已恢复」，导致少恢复一行）；**不建议**用「重复行罕见」放行。\n\n## 现状\n\n- #5905（重复行）已修（PR #5903），但其修法**不是通用终局修复** —— 无主键表重复行的确定性反例见 #5908；\n- #5906（UPDATE 改主键撤不回来）是本架构问题在 UPDATE 路径上的具体表现，独立跟踪。\n\n## 本线立场\n\n本线**不擅自改动**：A 涉及存储层 API 与行身份机制（改动面大、影响多个后端），B 涉及回滚责任划分（架构决策 + 覆盖面证明），两者都需属主定调。本 issue 跟踪「证明」这一前置条件：证明不成立前，不能宣称 undo 语义已正确。\n\n## 外部评审留痕\n\n本轮仅 chatGPT-web **单血统**（deepseek-web 因 PoW 会话过期不可用，缺口已公开登记）。评审原文要点：\n\n- 「当前最关键的架构风险不是单个 UndoRecord 过滤器，而是：两个独立 undo 层均可修改同一事务的数据，但尚未证明其组合满足精确一次恢复的语义」；\n- 「在这一点得到验证之前，即使 #5905 与 #5906 的各自回归测试全部通过，也不足以解除相关 GA 阻断」。\n",
+    "ref": "",
+    "assets": [],
+    "labels": [
+      {
+        "id": 106,
+        "name": "GA-blocker",
+        "exclusive": false,
+        "is_archived": false,
+        "color": "d93f0b",
+        "description": "V312-RC-GA: must be fixed before GA cut (per docs/releases/v3.12.0/RC_GA_TRIAGE_AND_GATE_PLAN_2026-09-03.md §3)",
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/labels/106"
+      },
+      {
+        "id": 87,
+        "name": "blocked-ga",
+        "exclusive": false,
+        "is_archived": false,
+        "color": "e11d21",
+        "description": "Blocked on user/owner action (not local Z440)",
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/labels/87"
+      },
+      {
+        "id": 151,
+        "name": "cap/architecture",
+        "exclusive": false,
+        "is_archived": false,
+        "color": "1d76db",
+        "description": "",
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/labels/151"
+      },
+      {
+        "id": 156,
+        "name": "cost/t2",
+        "exclusive": false,
+        "is_archived": false,
+        "color": "0e8a16",
+        "description": "",
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/labels/156"
+      },
+      {
+        "id": 39,
+        "name": "priority/p0",
+        "exclusive": false,
+        "is_archived": false,
+        "color": "d93f0b",
+        "description": "P0 critical issue",
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/labels/39"
+      },
+      {
+        "id": 159,
+        "name": "state/in-review",
+        "exclusive": false,
+        "is_archived": false,
+        "color": "fbca04",
+        "description": "",
+        "url": "http://192.168.0.252:3000/api/v1/repos/openclaw/sqlrustgo/labels/159"
+      }
+    ],
+    "milestone": null,
+    "projects": null,
+    "assignee": null,
+    "assignees": null,
+    "state": "open",
+    "is_locked": false,
+    "comments": 2,
+    "created_at": "2026-11-19T17:46:31Z",
+    "updated_at": "2026-11-20T14:06:47Z",
+    "closed_at": null,
+    "due_date": null,
+    "time_estimate": 0,
+    "pull_request": null,
+    "repository": {
+      "id": 10,
+      "name": "sqlrustgo",
+      "owner": "openclaw",
+      "full_name": "openclaw/sqlrustgo"
+    },
+    "pin_order": 0,
+    "content_version": 0
+  }
+}

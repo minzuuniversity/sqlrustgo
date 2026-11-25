@@ -1,0 +1,25 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "C-ALPHA-01-HANDOFF-20261120",
+  "timestamp": "2026-11-20T06:56:35.995479+00:00",
+  "mode": "MOCK_CONTRACT_OBSERVATION_NO_DISPATCH_NO_MODEL_CALLS",
+  "pilot_zero_test_exit0_result": {
+    "tests": [],
+    "summary": {},
+    "exit_code": 0,
+    "class": "PASS",
+    "duration_s": 0.0,
+    "cmd": "cargo test -p sqlrustgo-storage --lib --"
+  },
+  "dsh_failed_required_test_decision": {
+    "decision": "PASS_TO_REVIEW",
+    "reasons": []
+  },
+  "source_sha256": {
+    "/Volumes/workspace/dev/srg-test-factory-pilot/tools/test_factory.py": "6c95c5b3595b3bf938e47d3b2bd275b450734b4da66d6959b2ccd5c6a4419298",
+    "/Users/liying/dev/workspaces/deepseek-schedule/deepseek-schedule/scheduler/router.py": "842533c036581d2e842911df8062de06a5e7158b8142b0fad8548bf9a2915a5f",
+    "/Users/liying/dev/workspaces/deepseek-schedule/deepseek-schedule/scheduler/gatekeeper.py": "40285d10f9ab191183c43e4a6b015c23aea3d5c04caeb76a2b02f5f6f7da8f51",
+    "/Users/liying/dev/workspaces/deepseek-schedule/deepseek-schedule/config/routing.json": "07eb382dc755420f9f300f0e9a2fe6dc2f079a6dc7f3f6fb44e85aab8324cf21",
+    "/Users/liying/dev/workspaces/kos/engineering-os-control/docs/EVIDENCE-CONTRACT.md": "fe04b8121ee083582ea33f434e01d9177ae9c8f0a4d855de662d0317015a6d76"
+  }
+}

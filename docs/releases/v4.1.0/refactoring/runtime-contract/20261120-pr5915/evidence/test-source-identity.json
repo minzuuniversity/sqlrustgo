@@ -1,0 +1,16 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "RUNTIME-5915-20261120",
+  "conflict_resolution": "Source-bound recommendation; Owner approval pending; no core changes or workers",
+  "started_at": "2026-11-20T14:30:11.103609+00:00",
+  "timestamp": "2026-11-20T14:30:12.005937+00:00",
+  "cwd": "/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-pr5915-verification",
+  "argv": [
+    "git",
+    "status",
+    "--short"
+  ],
+  "exit_code": 0,
+  "raw_log": "test-source-identity.log",
+  "evidence_hash": "sha256:6191f0f0d5b5b74014e8b818a8c46662eb0f29e11eb40c683f1e239ba102899d"
+}

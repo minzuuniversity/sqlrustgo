@@ -1,0 +1,9 @@
+   Compiling sqlrustgo v4.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/dsh-b-c0109)
+error[E0425]: cannot find value `dir` in this scope
+   --> tests/integration/test_factory/ca01_bufferpool.rs:118:27
+    |
+118 |     let mut e = engine_bp(dir.path());
+    |                           ^^^ not found in this scope
+
+For more information about this error, try `rustc --explain E0425`.
+error: could not compile `sqlrustgo` (test "ca01_bufferpool") due to 1 previous error

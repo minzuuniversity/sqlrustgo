@@ -1,0 +1,40 @@
+   Compiling sqlrustgo-storage v4.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/dsh-b-c0109/crates/storage)
+   Compiling sqlrustgo-optimizer v4.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/dsh-b-c0109/crates/optimizer)
+   Compiling sqlrustgo-security v0.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/dsh-b-c0109/crates/security)
+   Compiling sqlrustgo-transaction v4.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/dsh-b-c0109/crates/transaction)
+   Compiling sqlrustgo-tools v4.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/dsh-b-c0109/crates/tools)
+   Compiling sqlrustgo-graph v4.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/dsh-b-c0109/crates/graph)
+   Compiling sqlrustgo-admin v4.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/dsh-b-c0109/crates/admin)
+   Compiling sqlrustgo-planner v4.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/dsh-b-c0109/crates/planner)
+   Compiling sqlrustgo-executor v4.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/dsh-b-c0109/crates/executor)
+   Compiling sqlrustgo-gmp v4.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/dsh-b-c0109/crates/gmp)
+   Compiling sqlrustgo-server v4.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/dsh-b-c0109/crates/server)
+   Compiling sqlrustgo v4.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/dsh-b-c0109)
+   Compiling sqlrustgo-mysql-server v0.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/dsh-b-c0109/crates/mysql-server)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 7.59s
+     Running tests/integration/test_factory/ca01_visibility_oracle.rs (target/debug/deps/ca01_visibility_oracle-516ae683416d279b)
+
+running 5 tests
+test inv04b_savepoint_cursor_is_transaction_local ... ok
+test inv04a_rollback_to_savepoint_preserves_earlier_work ... ok
+test inv02_update_primary_key_rollback_restores_original_key ... ok
+test inv15_regression_index_and_rowstore_agree_at_committed_state ... ok
+test inv13_uncommitted_state_invisible_to_peer_engine ... FAILED
+
+failures:
+
+---- inv13_uncommitted_state_invisible_to_peer_engine stdout ----
+
+thread 'inv13_uncommitted_state_invisible_to_peer_engine' (2423846) panicked at tests/integration/test_factory/ca01_visibility_oracle.rs:141:5:
+assertion `left == right` failed: INV-13: uncommitted state must not be visible to another connection (read-committed floor)
+  left: 2
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    inv13_uncommitted_state_invisible_to_peer_engine
+
+test result: FAILED. 4 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p sqlrustgo --test ca01_visibility_oracle`

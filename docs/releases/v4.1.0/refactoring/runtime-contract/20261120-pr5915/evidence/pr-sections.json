@@ -1,0 +1,20 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "RUNTIME-5915-20261120",
+  "conflict_resolution": "Source-bound recommendation; Owner approval pending; no core changes or workers",
+  "started_at": "2026-11-20T14:46:40.069201+00:00",
+  "timestamp": "2026-11-20T14:46:40.143799+00:00",
+  "cwd": ".",
+  "argv": [
+    "env",
+    "SOURCE_AGENT=codex",
+    "SOURCE_RUN=RUNTIME-5915-20261120",
+    "bash",
+    "scripts/gate/check_pr_template_sections.sh",
+    "--pr-body",
+    "docs/releases/v4.1.0/refactoring/runtime-contract/20261120-pr5915/PR_BODY.md"
+  ],
+  "exit_code": 0,
+  "raw_log": "pr-sections.log",
+  "evidence_hash": "sha256:06a7e9576ecfd1a366fe2c1e9e588d9677c846a583c791950067ad8cdade56d2"
+}

@@ -1,0 +1,34 @@
+   Compiling sqlrustgo v4.1.0 (/private/tmp/srg-d004-task)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 2.99s
+     Running tests/integration/test_factory/ca01_snapshot_reopen.rs (target/debug/deps/ca01_snapshot_reopen-b36537d3c64076cc)
+
+running 3 tests
+test inv07c_rollback_then_reopen_is_clean ... ok
+test inv07a_uncommitted_invisible_to_other_engine ... FAILED
+test inv07b_reopen_baseline_excludes_uncommitted ... FAILED
+
+failures:
+
+---- inv07a_uncommitted_invisible_to_other_engine stdout ----
+
+thread 'inv07a_uncommitted_invisible_to_other_engine' (39448715) panicked at tests/integration/test_factory/ca01_snapshot_reopen.rs:44:5:
+assertion `left == right` failed: INV-07: uncommitted row invisible to engine B
+  left: 2
+ right: 1
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+---- inv07b_reopen_baseline_excludes_uncommitted stdout ----
+
+thread 'inv07b_reopen_baseline_excludes_uncommitted' (39448716) panicked at tests/integration/test_factory/ca01_snapshot_reopen.rs:65:5:
+assertion `left == right` failed: INV-07: recovery baseline must exclude uncommitted (2,20)
+  left: [["Integer(1)", "Integer(10)"], ["Integer(2)", "Integer(20)"]]
+ right: [["Integer(1)", "Integer(10)"]]
+
+
+failures:
+    inv07a_uncommitted_invisible_to_other_engine
+    inv07b_reopen_baseline_excludes_uncommitted
+
+test result: FAILED. 1 passed; 2 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+error: test failed, to rerun pass `-p sqlrustgo --test ca01_snapshot_reopen`

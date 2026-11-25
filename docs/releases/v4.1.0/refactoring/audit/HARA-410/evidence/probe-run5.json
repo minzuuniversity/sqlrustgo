@@ -1,0 +1,20 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "HARA-410-20261120",
+  "started": "2026-11-19T21:42:34.168866+00:00",
+  "timestamp": "2026-11-19T21:42:37.088978+00:00",
+  "cwd": "/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-hara410-20261120",
+  "argv": [
+    "cargo",
+    "run",
+    "--offline",
+    "--manifest-path",
+    "docs/audits/HARA-410/evidence/probe/Cargo.toml",
+    "--target-dir",
+    "target-hara410",
+    "-j",
+    "2"
+  ],
+  "exit": 0,
+  "output": "   Compiling hara410-probe v0.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-hara410-20261120/docs/audits/HARA-410/evidence/probe)\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.17s\n     Running `target-hara410/debug/hara410-probe`\nHARA pending_restart child=exit status: 0 recovery=Ok(RecoveryReport { entries_total: 2, committed_txns: 0, rolled_back_txns: 0, incomplete_txns: 1, rows_inserted: 0, rows_updated: 0, rows_deleted: 0, skipped_entries: 0 }) expected=0 actual=1\nHARA commit_sync lockfree=false expected_at_least=1 actual=1\nHARA commit_sync lockfree=true expected_at_least=1 actual=0\nHARA recovery_failure_first expected=Err actual=Err(ExecutionError(\"HARA recovery I/O failure\"))\nHARA recovery_failure_second expected=Err actual=Ok(RecoveryReport { entries_total: 0, committed_txns: 0, rolled_back_txns: 0, incomplete_txns: 0, rows_inserted: 0, rows_updated: 0, rows_deleted: 0, skipped_entries: 0 })\nHARA sql_delete dml=Ok(()) rollback=Ok(()) expected=[[1]] actual=Ok([[Integer(1)], [Integer(1)]])\nHARA sql_pk_update dml=Ok(()) rollback=Ok(()) expected=[[1]] actual=Ok([[Integer(1)]])\nHARA sql_replace dml=Ok(()) rollback=Ok(()) expected=[[1,10]] actual=Ok([])\nHARA sql_odku dml=Ok(()) rollback=Ok(()) expected=[[1,10]] actual=Ok([])\nHARA sql_truncate dml=Ok(()) rollback=Ok(()) expected=[[1]] actual=Ok([[Integer(1)]])\nHARA sql_clustered dml=Ok(()) rollback=Ok(()) expected=[[1]] actual=Ok([[Integer(1)], [Integer(2)]])\nHARA flush_insert_rollback flush=false expected=0 actual=0\nHARA flush_insert_rollback flush=true expected=0 actual=1\nHARA buffered_delete_all_rollback expected=1 actual=1\nHARA append_rollback result=Ok(()) expected=0 actual=1\nTransaction 13 undo failed (continuing): HARA injected undo failure\nHARA undo_failure expected=Err actual=Ok(())\n"
+}

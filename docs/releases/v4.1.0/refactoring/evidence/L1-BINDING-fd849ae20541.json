@@ -1,0 +1,217 @@
+{
+  "kind": "L1_SLICE_RECEIPT_BINDING",
+  "purpose": "C5：回执自绑定。把 L1 切片的逐条结果钉到**产生它的那棵树**与那一批工具上。逐条结果本身是一份裸 JSON 列表，不携带任何 SHA 绑定。",
+  "reading_guide": {
+    "executed": "**执行点**：cargo 实际跑的那棵树。C5 要求绑定的就是它。",
+    "artefact_commits": "**承载产物的提交**：这些产物被提交进仓的提交，必然晚于 executed，不是执行点。两者在本文件里分块记录，不可互相顶替。",
+    "base": "冻结的内容基线；executed 是它的后代（产品代码逐字节相同）。"
+  },
+  "executed": {
+    "sha": "7fb973b1f87e89720a8d37b0fa217eb9694ae380",
+    "tree": "06565d61a2eacf50717d1cec290990fe99a2b248",
+    "worktree": "/Volumes/workspace/dev/wt-v410-base",
+    "branch": "base/v4.1.0-frozen",
+    "evidence": {
+      "factory_recorded_base_sha": "7fb973b1f87e89720a8d37b0fa217eb9694ae380",
+      "factory_recorded_base_sha_source": "MATRIX-sqlrustgo-storage-lib-20261123T232756.json 的 base_sha 字段；工厂在运行时用 git rev-parse HEAD 取该工作树的 HEAD（test_factory.py:37-38 与 145）",
+      "raw_log_sha256": "278f559ef1f951648ce91ac7afbf0912bd6b9ef7dadffba1226403183e7d440c",
+      "packed_result_sha256": "a3f52c4e2cb80a377fb5c764d9ac53a8a1cff1982cf33ab96dab8804177d0679",
+      "product_code_identical_to_base": true,
+      "product_code_evidence": "git diff --name-only fd849ae20541901d5e59f45cd3ba2c51093f5d5e..7fb973b1f87e89720a8d37b0fa217eb9694ae380 -- 'src' 'crates/*/src' 'tests' 'crates/*/tests' → 空",
+      "commits_between_base_and_executed": 38,
+      "note": "这是 cargo 实际跑的那棵树。它与 artefact_commits 是两件事：产物是复跑之后才被提交进仓的。"
+    }
+  },
+  "artefact_commits": {
+    "note": "承载本批产物的提交。每一个都是 executed 的后代，因此**不能**被当作执行点；反之 executed 也不可能是其中任何一个。",
+    "commits": [
+      {
+        "sha": "601c026f48af5148ed7bcfa3330ba3c0e01c6af3",
+        "subject": "test(v4.1.0): L1 风险切片复跑并产出双向差异表",
+        "role": "第一次提交本批产物（矩阵回写 + 逐条结果 + 差异表 + 原始日志 + 打包结果）"
+      },
+      {
+        "sha": "6bf3cb2f3ee3ebd16cad0ec8758ef38d852f536d",
+        "subject": "fix(v4.1.0): L1 复跑证据的装配缺口归因、验收口径冲突与回执绑定",
+        "role": "评审第 1 轮修复（NOT_RUN 归因改写 + 验收口径冲突 + 绑定记录首版 + 矩阵 actual 压缩）"
+      }
+    ],
+    "this_record_introduced_by": {
+      "note": "本记录（及第 2 轮修复）由它自己的那一次提交引入。",
+      "resolvable_via": "git log --oneline -- docs/releases/v4.1.0/refactoring/evidence/L1-BINDING-fd849ae20541.json"
+    },
+    "ordering_evidence": "git merge-base --is-ancestor 7fb973b1f87e89720a8d37b0fa217eb9694ae380 601c026f48 → 0（executed 是每个 artefact commit 的祖先）"
+  },
+  "base": {
+    "base_sha": "fd849ae20541901d5e59f45cd3ba2c51093f5d5e",
+    "base_sha_short": "fd849ae20541",
+    "base_tree": "72d378e8e58797eae18502ab474325015b8993d4",
+    "freeze_record": {
+      "path": "docs/refactor/v4.1.0-c/takeover/BASELINE_FREEZE.json",
+      "sha256": "ed700f89b4042878310eee042dc1e5649e1cc25b415bb1d751efb64ffc71f0d8"
+    }
+  },
+  "receipt": {
+    "path": "docs/releases/v4.1.0/refactoring/evidence/L1-RERUN-fd849ae20541.json",
+    "sha256": "9e192d965f1a5b40648b153bc37abab4131b7c3c3883426d8c5f453f4898c294",
+    "case_count": 44,
+    "status_counts": {
+      "NOT_RUN": 2,
+      "PASS": 42
+    }
+  },
+  "difference_table": {
+    "path": "docs/releases/v4.1.0/refactoring/evidence/L1-DIFF-fd849ae20541.md",
+    "sha256": "94f393929a41becc5260cf4c0eb9be8ba20e5d9f9442a0e763a2abd3250a51de"
+  },
+  "inputs": {
+    "matrix": {
+      "path": "docs/releases/v4.1.0/refactoring/TEST_COVERAGE_MATRIX.json",
+      "sha256": "8f581e9fd8a8194c42922fe42efccb7a09e24972a63c1f7b83c5090828daad31"
+    },
+    "driver": {
+      "path": "docs/releases/v4.1.0/refactoring/tools/matrix_driver.py",
+      "sha256": "f28205efa623beb1093ea15ce3414ff2b3a4b7c1abcc0f5ad5fe3850333b9b2e"
+    },
+    "factory": {
+      "path": "docs/releases/v4.1.0/refactoring/tools/test_factory.py",
+      "sha256": "44862a3297ae0fc1ef594c067a70dac2639bf251161cd995833bc7ad9b14d1b5"
+    }
+  },
+  "artifact": {
+    "path": "docs/releases/v4.1.0/refactoring/evidence/MATRIX-sqlrustgo-storage-lib-20261123T232756.log",
+    "sha256": "278f559ef1f951648ce91ac7afbf0912bd6b9ef7dadffba1226403183e7d440c",
+    "packed_result": {
+      "path": "docs/releases/v4.1.0/refactoring/evidence/MATRIX-sqlrustgo-storage-lib-20261123T232756.json",
+      "sha256": "a3f52c4e2cb80a377fb5c764d9ac53a8a1cff1982cf33ab96dab8804177d0679"
+    }
+  },
+  "run": {
+    "slice": [
+      "T1",
+      "T2",
+      "T3"
+    ],
+    "driver_command": "python3 docs/releases/v4.1.0/refactoring/tools/matrix_driver.py --matrix docs/releases/v4.1.0/refactoring/TEST_COVERAGE_MATRIX.json --slice T1,T2,T3 --out docs/releases/v4.1.0/refactoring/evidence/ --repo /Volumes/workspace/dev/wt-v410-base",
+    "factory_command": "/opt/homebrew/opt/python@3.15/bin/python3.15 /Volumes/workspace/dev/wt-v410-base/docs/releases/v4.1.0/refactoring/tools/test_factory.py run --repo /Volumes/workspace/dev/wt-v410-base --suite MATRIX-sqlrustgo-storage-lib --package sqlrustgo-storage --out docs/releases/v4.1.0/refactoring/evidence --timeout 1800 --filter append_only_storage::tests::transaction_lifecycle --filter engine::memory_storage_rollback_after_bufferpool_insert_does_not_change_pages_visited --filter engine::tests::rollback_actually_undoes_an_insert_4948 --filter engine::tests::rollback_of_update_restores_only_the_changed_row_5072 --filter engine::tests::test_nested_transaction_returns_error --filter engine::tests::test_rollback_removes_inserted_rows --filter engine::tests::test_rollback_restores_deleted_rows --filter engine::tests::test_storage_engine_begin_rollback --filter engine::tests::test_storage_engine_set_current_tx_id --filter engine::tests::test_storage_engine_transaction --filter file_storage::tests::test_in_transaction --filter file_storage::tests::test_set_current_tx_id --filter parallel_wal_storage::tests::transaction_lifecycle_via_wal --filter pitr::tests::open_transaction_at_target_is_not_applied --filter read_write_split::tests::test_classify_sql_transaction --filter semisync::tests::test_semi_sync_master_record_transactions --filter table_level_storage::tests::transaction_lifecycle_passthrough --filter vtu_guard::tests::test_3129_memory_storage_in_transaction_reflects_tx_id --filter vtu_guard::tests::test_3129_vtu_guard_passes_in_tx_with_memory_storage --filter vtu_guard::tests::test_vtu_guard_tx_state_via_set_current_tx_id --filter wal_legacy::tests::test_wal_5_transactions --filter wal_legacy::tests::test_wal_manager_log_rollback --filter wal_legacy::tests::test_wal_multiple_transactions --filter wal_storage::tests::test_active_txs_lifecycle_begin_rollback --filter wal_storage::tests::test_wal_active_tx_ids_empty --filter wal_storage::tests::test_wal_set_current_tx_id --filter wal_storage::tests::test_wal_storage_multiple_transactions --filter wal_storage::tests::test_wal_storage_rollback --filter bplus_tree::tests::duplicate_keys_keep_every_row_id --filter file_storage::tests::test_save_trigger_load_trigger_duplicate --filter mvcc::tests::test_empty_table_snapshot --filter mvcc::tests::test_find_visible_at_snapshot_before_all --filter mvcc::tests::test_gc_drops_old_versions --filter mvcc::tests::test_get_visible_pk_lookup --filter adaptive_hash_index::tests::test_invalidate_page_removes_entries --filter append_only_storage::tests::flush_clears_dirty --filter binary_storage::tests::test_bin_flush --filter buffer_pool::tests::buffer_pool_bumps_disk_reads_on_loader_invocation --filter buffer_pool::tests::buffer_pool_bumps_disk_writes_on_insert --filter buffer_pool::tests::buffer_pool_bumps_pages_visited_on_get_or_load --filter buffer_pool::tests::buffer_pool_stats_exposes_five_new_fields_with_zero_init --filter buffer_pool::tests::test_buffer_pool_basic",
+    "interpreter": "python3（运行时解析为 sys.executable，逐条记录在回执的 command 里）",
+    "driver_exit_code": 1,
+    "driver_exit_code_meaning": "驱动 fail-closed：切片内只要有一条不是 PASS 即返回非零；本轮 2 条 NOT_RUN（装配缺口，非缺陷）导致退出码 1。",
+    "cargo_result": "42 passed; 0 failed; 0 ignored; 884 filtered out",
+    "pilot_evidence_out_of_repo": {
+      "path": "/Volumes/workspace/dev/srg-test-factory-pilot/evidence/rerun-tf_t1_undo_invariants-20261120T171057.log",
+      "note": "pilot 侧跑过 PILOT-T1-101/102 且通过（4 passed; 0 failed）；该日志在 pilot 检出里，不在本仓，故不参与本仓的 manifest 哈希。"
+    }
+  },
+  "matrix_actual_form": {
+    "invariant": "矩阵的 actual 与逐条结果的 actual **不再逐字相等**（42 条 PASS 行）；两者是派生关系。这是对第 1 轮「矩阵↔回执 44×3 项全等」不变式的**显式变更**，在此登记而不是默默改掉。",
+    "derivation": {
+      "applies_to": "42 条 PASS 行",
+      "rule": "matrix.actual == suite + ': ' + receipt.actual.rsplit(' → ', 1)[1]，其中 suite 取自 receipt.actual 里 `--suite ` 之后的那个 token",
+      "suite": "MATRIX-sqlrustgo-storage-lib",
+      "example": {
+        "receipt.actual": "<完整 cargo 命令> → append_only_storage::tests::transaction_lifecycle ... ok",
+        "matrix.actual": "MATRIX-sqlrustgo-storage-lib: append_only_storage::tests::transaction_lifecycle ... ok"
+      }
+    },
+    "identity_rows": "2 条 NOT_RUN 行：matrix.actual == receipt.actual（逐字相等）—— 驱动的短理由，本就不含机器路径。",
+    "authoritative_full_text": "L1-RERUN-fd849ae20541.json 的 actual / command 是权威全文；矩阵只留摘要，便于人读。",
+    "validator_note": "verify_matrix.py 从不校验 actual（它查 case_id / invariant_ids / invariant_mapping_status / invariant_mapping_basis / execution_status / 词表 / red_identity，以及 M7 的映射形式与空映射登记），因此这条派生不变式与任何门禁都不冲突，不需要改校验器。",
+    "how_to_check": "python3 - <<'PY'\nimport json, re, pathlib\nEV = pathlib.Path(\"docs/releases/v4.1.0/refactoring/evidence\")\ncases = json.load(open(\"docs/releases/v4.1.0/refactoring/TEST_COVERAGE_MATRIX.json\"))[\"cases\"]\nreceipt = {v[\"matrix_index\"]: v for v in json.load(open(EV / \"L1-RERUN-fd849ae20541.json\"))}\nbad = []\nfor i, c in enumerate(cases):\n    if c[\"feature\"] not in (\"T1\", \"T2\", \"T3\"):\n        continue\n    v = receipt[i]\n    if v[\"execution_status\"] == \"PASS\":\n        cmd, tail = v[\"actual\"].rsplit(\" → \", 1)\n        expected = f\"{re.search(r'--suite (\\S+)', cmd).group(1)}: {tail}\"\n    else:\n        expected = v[\"actual\"]\n    if c[\"actual\"] != expected:\n        bad.append(c[\"case_id\"])\nprint(\"matrix actual derivation:\", \"OK (44/44)\" if not bad else f\"MISMATCH {bad}\")\nPY"
+  },
+  "verification": {
+    "note": "下列摘要在**全部内容编辑完成之后**重算，逐个与磁盘文件比对；任何一条对不上都应视为本记录失效。",
+    "digests": {
+      "receipt": {
+        "path": "docs/releases/v4.1.0/refactoring/evidence/L1-RERUN-fd849ae20541.json",
+        "sha256": "9e192d965f1a5b40648b153bc37abab4131b7c3c3883426d8c5f453f4898c294",
+        "matches_file_on_disk": true
+      },
+      "difference_table": {
+        "path": "docs/releases/v4.1.0/refactoring/evidence/L1-DIFF-fd849ae20541.md",
+        "sha256": "94f393929a41becc5260cf4c0eb9be8ba20e5d9f9442a0e763a2abd3250a51de",
+        "matches_file_on_disk": true
+      },
+      "artifact_raw_log": {
+        "path": "docs/releases/v4.1.0/refactoring/evidence/MATRIX-sqlrustgo-storage-lib-20261123T232756.log",
+        "sha256": "278f559ef1f951648ce91ac7afbf0912bd6b9ef7dadffba1226403183e7d440c",
+        "matches_file_on_disk": true
+      },
+      "artifact_packed_result": {
+        "path": "docs/releases/v4.1.0/refactoring/evidence/MATRIX-sqlrustgo-storage-lib-20261123T232756.json",
+        "sha256": "a3f52c4e2cb80a377fb5c764d9ac53a8a1cff1982cf33ab96dab8804177d0679",
+        "matches_file_on_disk": true
+      },
+      "input_matrix": {
+        "path": "docs/releases/v4.1.0/refactoring/TEST_COVERAGE_MATRIX.json",
+        "sha256": "8f581e9fd8a8194c42922fe42efccb7a09e24972a63c1f7b83c5090828daad31",
+        "matches_file_on_disk": true
+      },
+      "input_driver": {
+        "path": "docs/releases/v4.1.0/refactoring/tools/matrix_driver.py",
+        "sha256": "f28205efa623beb1093ea15ce3414ff2b3a4b7c1abcc0f5ad5fe3850333b9b2e",
+        "matches_file_on_disk": true
+      },
+      "input_factory": {
+        "path": "docs/releases/v4.1.0/refactoring/tools/test_factory.py",
+        "sha256": "44862a3297ae0fc1ef594c067a70dac2639bf251161cd995833bc7ad9b14d1b5",
+        "matches_file_on_disk": true
+      },
+      "base_freeze_record": {
+        "path": "docs/refactor/v4.1.0-c/takeover/BASELINE_FREEZE.json",
+        "sha256": "ed700f89b4042878310eee042dc1e5649e1cc25b415bb1d751efb64ffc71f0d8",
+        "matches_file_on_disk": true
+      }
+    },
+    "command": "python3 -c \"import hashlib,json,pathlib;b=json.load(open('docs/releases/v4.1.0/refactoring/evidence/L1-BINDING-fd849ae20541.json'));[print(k, hashlib.sha256(pathlib.Path(v['path']).read_bytes()).hexdigest()==v['sha256']) for k,v in b['verification']['digests'].items()]\""
+  },
+  "generated_at": "2026-11-23T15:59:52.239616+00:00",
+  "task10_amendment": {
+    "note": "Task 10（逐用例重做 invariant 映射）改了矩阵与矩阵门禁，本记录里随之变化的摘要在此登记；执行结果（逐条状态）一个字未动。",
+    "amended_at": "2026-11-24",
+    "revision": 2,
+    "what_changed": [
+      "TEST_COVERAGE_MATRIX.json 的 invariant_ids 按 75 条逐用例重建（原来按 feature 分桶），source.declared_invariant 改成逐用例的精确断言文本，并新增 invariant_mapping_basis；red_identity / assertion_* / execution_status / actual / artifact_sha256 逐字节未动。",
+      "修订 1（评审后）：三条 bespoke 探针（PILOT-T5-101 / PILOT-T6-001B / PILOT-T6-002B）的测试源码不在本仓，第一轮按**标签**贴的 id 已撤下，改为空映射并登记缺口提案 GAP-14；于是有源码派生覆盖的用例由 15 条降为 12 条，空映射由 60 条增为 63 条。",
+      "verify_matrix.py 的 M7 收紧（近似依据的相似度阈值、共享 id 的逐案说明与规模上限、映射状态词表登记在 TRANSACTION_INVARIANTS.md 并被读回比对、缺口提案索引表双向对齐），矩阵门禁契约保持 7/7；test_matrix_driver.py 新增 Q1–Q10 夹具。",
+      "本文件（差异表）追加 §七 补记与 §7.4 修订 1，说明映射层改动不影响逐条状态。"
+    ],
+    "digests_moved": [
+      {
+        "where": "verification.digests.difference_table",
+        "old_sha256": "cf2e88bd63bbb88f483d55573e22e9c9c200ff3bd977c4854ac2e81a45f6a660",
+        "new_sha256": "94f393929a41becc5260cf4c0eb9be8ba20e5d9f9442a0e763a2abd3250a51de",
+        "recomputed_by": "sha256sum <path>（与 verification.command 同一算法）"
+      },
+      {
+        "where": "verification.digests.input_matrix",
+        "old_sha256": "fce4fde0b19181227f21d83936a874a4201b09ccbcec2799ce7fa42ec0641bed",
+        "new_sha256": "8f581e9fd8a8194c42922fe42efccb7a09e24972a63c1f7b83c5090828daad31",
+        "recomputed_by": "sha256sum <path>（与 verification.command 同一算法）"
+      },
+      {
+        "where": "inputs.matrix",
+        "old_sha256": "fce4fde0b19181227f21d83936a874a4201b09ccbcec2799ce7fa42ec0641bed",
+        "new_sha256": "8f581e9fd8a8194c42922fe42efccb7a09e24972a63c1f7b83c5090828daad31",
+        "recomputed_by": "sha256sum <path>（与 verification.command 同一算法）"
+      },
+      {
+        "where": "difference_table",
+        "old_sha256": "cf2e88bd63bbb88f483d55573e22e9c9c200ff3bd977c4854ac2e81a45f6a660",
+        "new_sha256": "94f393929a41becc5260cf4c0eb9be8ba20e5d9f9442a0e763a2abd3250a51de",
+        "recomputed_by": "sha256sum <path>（与 verification.command 同一算法）"
+      }
+    ],
+    "digests_unchanged_and_rechecked": [
+      "artifact_packed_result",
+      "artifact_raw_log",
+      "base_freeze_record",
+      "difference_table",
+      "input_driver",
+      "input_factory",
+      "input_matrix",
+      "receipt"
+    ],
+    "flag_correction": "本记录第一次写入时，digest 变了的两项（input_matrix、difference_table）曾把 matches_file_on_disk 写成 false —— 那是按**旧** digest 比对得出的标志，在 digest 被重算之后已经不成立。第二次写入按**已存储的** digest 重新比对了全部 8 项，现全部为 true；`verification.command` 可原样复核。"
+  }
+}

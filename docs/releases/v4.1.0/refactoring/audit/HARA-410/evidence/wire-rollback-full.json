@@ -1,0 +1,23 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "HARA-410-20261120",
+  "started": "2026-11-19T22:00:37.243048+00:00",
+  "timestamp": "2026-11-19T22:00:38.189140+00:00",
+  "cwd": "/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-hara410-20261120",
+  "argv": [
+    "env",
+    "CARGO_TARGET_DIR=target-hara410-wire",
+    "CARGO_BUILD_JOBS=2",
+    "cargo",
+    "test",
+    "--offline",
+    "-p",
+    "sqlrustgo-mysql-server",
+    "--test",
+    "rollback_undo_test",
+    "--",
+    "--nocapture"
+  ],
+  "exit": 0,
+  "output": "    Finished `test` profile [unoptimized + debuginfo] target(s) in 0.64s\n     Running tests/rollback_undo_test.rs (target-hara410-wire/debug/deps/rollback_undo_test-6fb87e53ce9ac05d)\n\nrunning 6 tests\ntest commit_still_applies_the_transaction ... ok\ntest rollback_of_an_empty_transaction_changes_nothing ... ok\ntest rollback_restores_a_deleted_row ... ok\ntest rollback_undoes_the_transactions_inserts_and_updates ... ok\ntest rollback_leaves_other_connections_commits_intact ... ok\ntest committed_rows_are_visible_to_other_connections ... ok\n\ntest result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.25s\n\n"
+}

@@ -10,7 +10,15 @@
   .gitea/workflows + .github/workflows  CI 执行点（gate_executability.ci_roots）
 
 登记表 docs/releases/v4.1.0/GATE_CATALOG.jsonl 每行：
-  gate / class / stages / reason / owner_task / can_fail / swallow_hits / neg_fixture
+  gate / class / stages / reason / owner_task / can_fail / swallow_hits /
+  neg_fixture / external_fixture
+
+`neg_fixture` 与 `external_fixture` 是两件事（R47）：
+  neg_fixture      门禁**自带** selftest（由门禁脚本源码里的关键字派生）
+  external_fixture 门禁在**外部台账** docs/releases/v4.1.0/NEG_FIXTURES_v4.1.0.jsonl
+                   里有一行夹具记录（由台账派生）
+改 `neg_fixture` 的原义会让历史审计口径（24/168）失真，所以不改；
+两个字段各自为真、互不覆盖。
 
 class 四值（互斥，按优先级判定）：
   stage_required     被某阶段的 required_gates 解析到
@@ -32,6 +40,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 CATALOG = REPO_ROOT / "docs" / "releases" / "v4.1.0" / "GATE_CATALOG.jsonl"
+LEDGER = REPO_ROOT / "docs" / "releases" / "v4.1.0" / "NEG_FIXTURES_v4.1.0.jsonl"
 STAGE_ORDER = ("DRAFT", "ALPHA", "BETA", "RC", "GA")
 
 sys.path.insert(0, str(REPO_ROOT / "scripts" / "gate"))
@@ -46,6 +55,37 @@ def check_scripts() -> list[str]:
 def _src_without_comments(path: str) -> str:
     import gov_probe as gp
     return gp._src_without_comments(path)
+
+
+def ledger_gates() -> set[str]:
+    """台账里有夹具行的门禁集合。
+
+    台账 = docs/releases/v4.1.0/NEG_FIXTURES_v4.1.0.jsonl（每行一道门禁
+    及其夹具状态）。这是 issue #5598 定下的口径：「关键字统计会把『提到过
+    反例』当成『有反例夹具』。台账按门禁逐行记账才是可核对的口径」。
+
+    与 `neg_fixture` 的分工（R47）：
+      * `neg_fixture`  = 门禁**自带** selftest（由门禁脚本源码派生）。
+      * `external_fixture` = 门禁在**外部台账**里有一行夹具记录。
+    两个字段各说各的，互不覆盖；改 `neg_fixture` 的原义会让
+    OWNER_REPORT_V4.1.0_2026-11-05.md / IL6_AUDIT_GATE_SELFREFERENCE /
+    GATE_BASELINE_V410.jsonl 的 24/168 历史口径失真，所以不改。
+    """
+    gates: set[str] = set()
+    if not LEDGER.is_file():
+        return gates
+    for line in LEDGER.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("//"):
+            continue
+        try:
+            row = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        g = row.get("gate")
+        if g:
+            gates.add(str(g))
+    return gates
 
 
 def live_rows() -> list[dict]:
@@ -65,6 +105,8 @@ def live_rows() -> list[dict]:
         for p in glob.glob(pat, recursive=True):
             body = Path(p).read_text(encoding="utf-8", errors="replace")
             refs |= gp.gate_refs_in(p, body, ge.GATE_PATH_RE)
+
+    ext = ledger_gates()
 
     rows = []
     for f in check_scripts():
@@ -87,6 +129,7 @@ def live_rows() -> list[dict]:
             "can_fail": gp.can_fail_paths(src),
             "swallow_hits": sum(src.count(t) for t in gp.SWALLOW_TOKENS),
             "neg_fixture": bool(gp.NEG_FIXTURE_RE.search(src)),
+            "external_fixture": f in ext,
         })
     return rows
 
@@ -139,7 +182,8 @@ def cmd_emit(argv: list[str]) -> int:
     print(json.dumps({"kind": "gate_catalog_emit", "path": str(out),
                       "rows": len(rows), "by_class": ct,
                       "can_fail_n": sum(1 for r in rows if r["can_fail"]),
-                      "neg_fixture_n": sum(1 for r in rows if r["neg_fixture"])},
+                      "neg_fixture_n": sum(1 for r in rows if r["neg_fixture"]),
+                      "external_fixture_n": sum(1 for r in rows if r["external_fixture"])},
                      ensure_ascii=False))
     return 0
 
@@ -173,7 +217,7 @@ def cmd_check(argv: list[str]) -> int:
         got = rec_by.get(g)
         if not got:
             continue
-        for k in ("class", "stages", "can_fail", "swallow_hits", "neg_fixture"):
+        for k in ("class", "stages", "can_fail", "swallow_hits", "neg_fixture", "external_fixture"):
             if got.get(k) != want[k]:
                 fails.append(f"C2 {g} 登记 {k}={got.get(k)!r} 现场重算 {want[k]!r}")
         # C4 不可运行的门禁必须显式交代
@@ -182,6 +226,35 @@ def cmd_check(argv: list[str]) -> int:
                 fails.append(f"C4 {g} 缺 reason")
             if not (got.get("owner_task") or "").strip() or got.get("owner_task") == "-":
                 fails.append(f"C4 {g} 缺 owner_task")
+
+    # C8 外部夹具口径的双向核对（R47）
+    #
+    # `external_fixture` 的原义是「这道门禁在台账里有一行夹具记录」。
+    # 上面的 C2 已经把「登记值 == 台账派生值」这一条单向核对了；这里补上
+    # 另一半：**声称能抓东西的行必须有台账行支撑**。
+    #
+    # 背景：7 行曾同时出现 `neg_fixture=false` 与 `effect.catches` 非空，
+    # 看起来自相矛盾。其实两个字段在说两件事（自带 selftest vs 外部夹具），
+    # 加上第三个事实（台账里有行）之后，它们是三个各自为真的正交事实。
+    # 这一条判据就是防止「第三个事实」以后又被丢掉。
+    ext = ledger_gates()
+    for g, want in live.items():
+        got = rec_by.get(g)
+        if not got:
+            continue
+        catches = (got.get("effect") or {}).get("catches") or []
+        if catches and g not in ext:
+            fails.append(f"C8 {g} 声称能抓 {catches}，但台账 "
+                         f"{LEDGER.name} 里没有这一行的夹具记录 ⇒ 声明没有证据支撑")
+    # 反向：台账里有行、登记却说没有 ⇒ 登记漏了事实（同一判据的另一半）
+    for g in sorted(ext):
+        got = rec_by.get(g)
+        if got is None:
+            continue
+        if not got.get("external_fixture"):
+            fails.append(f"C8 {g} 台账里有夹具行，但登记 external_fixture=false ⇒ 登记与台账不一致")
+    for g in sorted(ext - set(live)):
+        fails.append(f"C8 台账里的 {g} 在门禁全集中不存在 ⇒ 台账指向了一个不存在的门禁")
 
     # C6 不可运行的门禁必须"交代"，且理由必须逐字出自该门禁文件（反编造）
     for g, want in live.items():

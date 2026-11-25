@@ -190,6 +190,17 @@ docs/releases/v3.12.0/perf/TPCH_SF1_CORRECTNESS_BUNDLE/
 !docs/governance/*.json
 !docs/releases/*/manifest.json
 !docs/releases/*/evidence/*/summary.json
+# The v4.1.0 refactor takeover directory holds the frozen-baseline record
+# (docs/refactor/v4.1.0-c/takeover/BASELINE_FREEZE.json) and the artefacts the
+# later tasks write next to it. These are governance inputs, not build output,
+# so the broad `*.json` rule above must not make them uncommittable -- the
+# same exception pattern as the gate baselines below.
+!docs/refactor/v4.1.0-c/takeover/*.json
+# takeover/dsh-b/ holds DSH-B's delivered governance records (ADR decision
+# ledger, RED identity ledger, defect acceptance packs). They are imported
+# deliverables, so the broad `*.json` rule must not make them uncommittable
+# either -- the same exception pattern as the takeover record above.
+!docs/refactor/v4.1.0-c/takeover/dsh-b/**/*.json
 # #5441: the per-run stage/GA gate decision record IS the governance
 # evidence chain — docs/governance/GATE_CONDITIONS.md "门禁执行要求 / 日志保存"
 # requires it at `docs/releases/v{VERSION}/logs/gate_<stage>_<commit>_<ts>.log`.

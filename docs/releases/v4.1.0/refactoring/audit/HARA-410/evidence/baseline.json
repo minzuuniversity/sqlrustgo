@@ -1,0 +1,14 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "HARA-410-20261120",
+  "started": "2026-11-19T21:22:58.687647+00:00",
+  "timestamp": "2026-11-19T21:22:59.303358+00:00",
+  "cwd": "/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-hara410-20261120",
+  "argv": [
+    "bash",
+    "-c",
+    "git rev-parse HEAD HEAD^{tree}; git status --short; git ls-remote gitea252 refs/heads/develop/v4.1.0 refs/heads/main; git log -1 --pretty=fuller; rg -n \"^current_stage:\" docs/releases/v4.1.0/STAGE.yaml; bash scripts/gate/check_arch_sem_debt.sh"
+  ],
+  "exit": 0,
+  "output": "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0\n4194fc975ebaf749de477f42ca5a300facef1278\n?? docs/audits/HARA-410/\ne9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0\trefs/heads/develop/v4.1.0\nfeefb6330c34e9077702d6404581600473e3bfb2\trefs/heads/main\ncommit e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0\nMerge: f6beacad31 a3d4196264\nAuthor:     openclaw <openclaw@gaoyuanyiyao.com>\nAuthorDate: Thu Nov 19 14:59:22 2026 +0000\nCommit:     openclaw <openclaw@gaoyuanyiyao.com>\nCommitDate: Thu Nov 19 14:59:22 2026 +0000\n\n    Merge pull request 'docs(v4.1.0): 属主 10 项裁定落地 —— 独占判据换尺 + tip 冻结窗口收窄 + 授权面收紧实测（GA-SOAK-38）' (#5890) from docs-v410-soak-verdict38 into develop/v4.1.0\n201:current_stage: \"ALPHA\"\n=== D8: Architecture/Semantic Debt Gate (5-Principle P5) ===\n  SSOT: /Volumes/workspace/dev/sqlrustgo/.worktrees/codex-hara410-20261120/docs/governance/debt/debt-registry.yaml\n\n  [ARCH-1] state=CLOSED ✅\n  [ARCH-2] state=CLOSED ✅\n  [ARCH-3] state=CLOSED ✅\n  [SEM-1] state=CLOSED ✅\n  [SEM-2] state=CLOSED ✅\n  [SEM-3] state=CLOSED (100%) ✅\n  [SEM-4] state=CLOSED (87.80%) ✅\n\n=== D8 Arch/Sem Debt Summary ===\n  CLOSED:               7\n  IN_PROGRESS/BLOCKED:  0 (with plan)\n  OPEN w/o plan:        0\n  UNKNOWN:              0\n\n✅ D8 Arch/Sem Debt: PASS (all 7 items CLOSED)\n"
+}

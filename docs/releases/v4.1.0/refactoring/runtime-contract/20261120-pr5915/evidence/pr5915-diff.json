@@ -1,0 +1,20 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "RUNTIME-5915-20261120",
+  "conflict_resolution": "Source-bound recommendation; Owner approval pending; no core changes or workers",
+  "started_at": "2026-11-20T14:44:44.131975+00:00",
+  "timestamp": "2026-11-20T14:44:44.175262+00:00",
+  "cwd": ".",
+  "argv": [
+    "git",
+    "diff",
+    "e9ff21fca3aa945f6fe543ce8f91dfc19e6aaed0",
+    "56cfa222f1450975d3b3adc6ab9c36a4d258a5f6",
+    "--",
+    "Cargo.toml",
+    "tests/integration/test_factory"
+  ],
+  "exit_code": 0,
+  "raw_log": "pr5915-diff.log",
+  "evidence_hash": "sha256:962854491f598452c3f0dba70f493a42d404cc2688b577206f32bfc7ddc9dbb5"
+}

@@ -1,0 +1,16 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "HARA-410-20261120",
+  "started": "2026-11-19T21:23:40.505283+00:00",
+  "timestamp": "2026-11-19T21:23:41.013116+00:00",
+  "cwd": "/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-hara410-20261120",
+  "argv": [
+    "gitnexus",
+    "context",
+    "-r",
+    "sqlrustgo",
+    "ExecutionEngine"
+  ],
+  "exit": 0,
+  "output": "{\n  \"status\": \"ambiguous\",\n  \"message\": \"Found 9 symbols matching 'ExecutionEngine'. Use uid, file_path, or kind to disambiguate.\",\n  \"candidates\": [\n    {\n      \"uid\": \"Impl:src/engine_ddl.rs:ExecutionEngine\",\n      \"name\": \"ExecutionEngine\",\n      \"kind\": \"\",\n      \"filePath\": \"src/engine_ddl.rs\",\n      \"line\": 24,\n      \"score\": 0.5\n    },\n    {\n      \"uid\": \"Impl:src/engine_create.rs:ExecutionEngine\",\n      \"name\": \"ExecutionEngine\",\n      \"kind\": \"\",\n      \"filePath\": \"src/engine_create.rs\",\n      \"line\": 24,\n      \"score\": 0.5\n    },\n    {\n      \"uid\": \"Impl:src/engine_select.rs:ExecutionEngine\",\n      \"name\": \"ExecutionEngine\",\n      \"kind\": \"\",\n      \"filePath\": \"src/engine_select.rs\",\n      \"line\": 396,\n      \"score\": 0.5\n    },\n    {\n      \"uid\": \"Impl:src/engine_builder.rs:ExecutionEngine\",\n      \"name\": \"ExecutionEngine\",\n      \"kind\": \"\",\n      \"filePath\": \"src/engine_builder.rs\",\n      \"line\": 27,\n      \"score\": 0.5\n    },\n    {\n      \"uid\": \"Impl:src/execution_engine.rs:ExecutionEngine\",\n      \"name\": \"ExecutionEngine\",\n      \"kind\": \"\",\n      \"filePath\": \"src/execution_engine.rs\",\n      \"line\": 345,\n      \"score\": 0.5\n    },\n    {\n      \"uid\": \"Struct:src/execution_engine.rs:ExecutionEngine\",\n      \"name\": \"ExecutionEngine\",\n      \"kind\": \"\",\n      \"filePath\": \"src/execution_engine.rs\",\n      \"line\": 79,\n      \"score\": 0.5\n    },\n    {\n      \"uid\": \"Impl:src/execution_engine_methods.rs:ExecutionEngine\",\n      \"name\": \"ExecutionEngine\",\n      \"kind\": \"\",\n      \"filePath\": \"src/execution_engine_methods.rs\",\n      \"line\": 29,\n      \"score\": 0.5\n    },\n    {\n      \"uid\": \"Trait:crates/executor/src/execution/engine.rs:ExecutionEngine\",\n      \"name\": \"ExecutionEngine\",\n      \"kind\": \"\",\n      \"filePath\": \"crates/executor/src/execution/engine.rs\",\n      \"line\": 4,\n      \"score\": 0.5\n    },\n    {\n      \"uid\": \"Section:docs/releases/v1.1.0/API_DOCUMENTATION.md:L12:ExecutionEngine\",\n      \"name\": \"ExecutionEngine\",\n      \"kind\": \"\",\n      \"filePath\": \"docs/releases/v1.1.0/API_DOCUMENTATION.md\",\n      \"line\": 12,\n      \"score\": 0.5\n    }\n  ]\n}\n"
+}

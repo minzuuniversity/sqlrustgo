@@ -1,0 +1,9 @@
+[M1] PASS  12 case(s) carry at least one invariant id, 63 declare an empty mapping (NO_INVARIANT_MATCH) with a per-case basis
+[M2] PASS  75 case(s), mapping status MAPPED/NO_INVARIANT_MATCH
+[M3] PASS  75 case(s), 75 distinct case_id(s)
+[M4] PASS  5 distinct id(s) referenced, all declared in docs/releases/v4.1.0/refactoring/TRANSACTION_INVARIANTS.md
+[M5] PASS  75 case(s) use the contract/pilot vocabulary; the mapping covers 9 word(s) and keeps the RED words on KNOWN_FAIL
+[M6] PASS  4 KNOWN_FAIL case(s), every one carries the five-element RED identity
+[M7] PASS  75 case(s) carry a per-case basis (max pairwise similarity < 0.9); 63 empty mapping(s), all listed in the index table of docs/refactor/v4.1.0-c/takeover/INVARIANT-GAP-PROPOSALS.md; 5 invariant id(s) claimed, each justified per case [INV-01×5, INV-02×1, INV-04×2, INV-07×1, INV-14×4]; 0 declared-invariant label(s) still shared, 0 of them with divergent id sets; FORM ONLY -- substantive agreement with the test source is a human/Oracle review item
+note: docs/releases/v4.1.0/refactoring/STORAGE_CAPABILITY_CONTRACT.md declares no invariant id -- the corpus is the id column of the other registry
+7/7 PASS

@@ -1,0 +1,20 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "RUNTIME-5915-20261120",
+  "conflict_resolution": "Source-bound recommendation; Owner approval pending; no core changes or workers",
+  "started_at": "2026-11-20T14:25:48.510290+00:00",
+  "timestamp": "2026-11-20T14:25:49.460506+00:00",
+  "cwd": ".",
+  "argv": [
+    "gitnexus",
+    "context",
+    "-r",
+    "sqlrustgo",
+    "undo_transaction_in_place",
+    "-f",
+    "crates/storage/src/file_storage.rs"
+  ],
+  "exit_code": 0,
+  "raw_log": "gitnexus-undo.log",
+  "evidence_hash": "sha256:d2f90ed5b29a97077dcf51879b3c0e431f8c72a2e28046128705dc63a229dad8"
+}

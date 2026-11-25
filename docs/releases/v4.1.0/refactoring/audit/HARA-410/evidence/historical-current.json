@@ -1,0 +1,20 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "HARA-410-20261120",
+  "started": "2026-11-19T21:37:19.716255+00:00",
+  "timestamp": "2026-11-19T21:37:24.105734+00:00",
+  "cwd": "/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-hara410-20261120",
+  "argv": [
+    "cargo",
+    "run",
+    "--offline",
+    "--manifest-path",
+    "docs/audits/HARA-410/evidence/historical/current/Cargo.toml",
+    "--target-dir",
+    "target-hara410",
+    "-j",
+    "2"
+  ],
+  "exit": 0,
+  "output": "     Locking 90 packages to latest compatible versions\n   Compiling errno v0.3.14\n   Compiling rustix v1.1.5\n   Compiling tempfile v3.27.0\n   Compiling hara410-historical-current v0.1.0 (/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-hara410-20261120/docs/audits/HARA-410/evidence/historical/current)\n    Finished `dev` profile [unoptimized + debuginfo] target(s) in 2.24s\n     Running `target-hara410/debug/historical-probe`\nHARA historical flush=false rollback=Ok(()) expected=0 actual=0\nHARA historical flush=true rollback=Ok(()) expected=0 actual=1\n"
+}

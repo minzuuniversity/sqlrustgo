@@ -1,0 +1,297 @@
+schema_version: 1
+run_id: 20261124-task8-alpha-negfix-001
+source_agent: task8-implementer
+frozen_commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+environment:
+  os: Darwin
+  arch: arm64
+  rustc: rustc 1.99.0 (b940084d7 2026-09-28)
+  cargo: cargo 1.99.0 (5f94df478 2026-08-27)
+  worktree_clean: true
+artifacts:
+  cargo_lock_sha256: afc8a86191d4a405afcf76502b4ba1721df3aa8e9daef00f976d4a795d28e8ae
+  dataset_hashes: {}
+commands:
+- id: neg-fixtures-two-layer
+  name: ALPHA 7 道门禁的两层 RED 逐道验证（夹具在仓库自身上注入并还原）
+  cmd: bash audit/v4.1.0/neg/verify_neg_fixtures.sh
+  cwd: .
+  timeout_sec: 5400
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+- id: neg-ledger-check
+  name: 夹具台账结构/语义/证据落盘对账
+  cmd: python3 audit/v4.1.0/probe_neg_fixtures.py check
+  cwd: .
+  timeout_sec: 5400
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+- id: neg-fixtures
+  name: 仓库自己的夹具泳道：audit/v4.1.0/neg/ 下每个 fx*.sh 都要有声明的期望值
+  cmd: python3 audit/v4.1.0/probe_neg_fixtures.py fixtures --tree /Volumes/workspace/dev/wt-v410-base
+  cwd: .
+  timeout_sec: 5400
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+- id: honesty-check
+  name: 门禁声明（effect.catches）与夹具账一致性
+  cmd: python3 audit/v4.1.0/honesty.py check
+  cwd: .
+  timeout_sec: 5400
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+- id: gate-registry-check
+  name: 门禁清单现场重算（分母必须仍是 168）
+  cmd: python3 scripts/gate/gate_registry.py check
+  cwd: .
+  timeout_sec: 5400
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+- id: gate-registry-fixtures
+  name: 门禁清单反向变异夹具
+  cmd: python3 scripts/gate/test_gate_registry.py
+  cwd: .
+  timeout_sec: 5400
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+- id: gate-tristate-fixtures
+  name: 三态 runner/汇总器的反向变异夹具
+  cmd: python3 scripts/gate/test_gate_run_tristate.py
+  cwd: .
+  timeout_sec: 5400
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+- id: ci-checkout-consistency
+  name: CI workflow 的 checkout 一致性（新 ALPHA workflow 已纳入 GATED_WORKFLOWS）
+  cmd: bash scripts/gate/check_ci_checkout_consistency.sh
+  cwd: .
+  timeout_sec: 5400
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+- id: verify-baseline
+  name: Task 1 的基线核对
+  cmd: python3 docs/releases/v4.1.0/refactoring/tools/verify_baseline.py
+  cwd: .
+  timeout_sec: 5400
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+- id: verify-sha-scope
+  name: Task 2 的 SHA 作用域核对（S5：冻结集 ∪ 显式增补集）
+  cmd: python3 docs/releases/v4.1.0/refactoring/tools/verify_sha_scope.py
+  cwd: .
+  timeout_sec: 5400
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+- id: verify-handoff
+  name: Task 3 的交接闭包核对
+  cmd: /tmp/task8-venv/bin/python docs/releases/v4.1.0/refactoring/tools/verify_handoff.py
+    --check
+  cwd: .
+  timeout_sec: 5400
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+- id: verify-matrix
+  name: Task 5 的矩阵核对
+  cmd: python3 docs/releases/v4.1.0/refactoring/tools/verify_matrix.py
+  cwd: .
+  timeout_sec: 5400
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+- id: gov-probe-metrics
+  name: 自指度量当期取值（168/83/61/165/57/24）
+  cmd: python3 scripts/gate/gov_probe.py metrics
+  cwd: .
+  timeout_sec: 5400
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+- id: stage-driver-dryrun
+  name: 阶段驱动解析到 ALPHA 清单（dry-run 只解析不执行）
+  cmd: bash scripts/gate/check_stage.sh --version v4.1.0 --stage ALPHA --dry-run
+  cwd: .
+  timeout_sec: 5400
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+- id: neg-ledger-check-after-run
+  name: 台账对账（证据 run 目录已存在之后）
+  cmd: python3 audit/v4.1.0/probe_neg_fixtures.py check
+  cwd: .
+  timeout_sec: 5400
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+- id: alpha-driver-execute
+  name: R60 端到端：阶段驱动在完整 ALPHA 清单上真跑一遍（10 条 required_gates 含 3 条 cargo）
+  cmd: time timeout 5400 bash scripts/gate/check_stage.sh --version v4.1.0 --stage
+    ALPHA
+  cwd: .
+  timeout_sec: 5400
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+- id: coverage-control-intact-tree
+  name: 覆盖率门禁在完整树上的基线取值（fx18 的对照组：门禁在未注入缺陷时已经是红的）
+  cmd: bash scripts/gate/check_coverage_v312.sh
+  cwd: .
+  timeout_sec: 5400
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+results:
+- id: neg-fixtures-two-layer
+  started_at: '2026-11-24T12:34:53Z'
+  finished_at: '2026-11-24T14:23:34Z'
+  exit_code: 3
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+  stdout_sha256: 043aab2048c3d38948dc6c7492a44c9c65d540dc80e984b30abbed144c0cdba7
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/001-neg-fixtures-two-layer.stdout
+  stderr_path: logs/001-neg-fixtures-two-layer.stderr
+- id: neg-ledger-check
+  started_at: '2026-11-24T14:23:34Z'
+  finished_at: '2026-11-24T14:23:34Z'
+  exit_code: 0
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+  stdout_sha256: 6c5d6765e1f1905162f5a0352866e9597549b4cbc12f6bdfcc236463270061da
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/002-neg-ledger-check.stdout
+  stderr_path: logs/002-neg-ledger-check.stderr
+- id: neg-fixtures
+  started_at: '2026-11-24T14:23:34Z'
+  finished_at: '2026-11-24T15:50:45Z'
+  exit_code: 0
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+  stdout_sha256: 2c272a6d1021d09ba7090869579975c4a27fe3567d69be81f6304c7ccdbfb197
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/003-neg-fixtures.stdout
+  stderr_path: logs/003-neg-fixtures.stderr
+- id: honesty-check
+  started_at: '2026-11-24T15:50:45Z'
+  finished_at: '2026-11-24T15:50:45Z'
+  exit_code: 0
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+  stdout_sha256: f7c84abdbc9c2e3725620bc4f4b7fd040e157789b9274fd426d1bc7b5e1991c0
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/004-honesty-check.stdout
+  stderr_path: logs/004-honesty-check.stderr
+- id: gate-registry-check
+  started_at: '2026-11-24T15:50:45Z'
+  finished_at: '2026-11-24T15:50:46Z'
+  exit_code: 0
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+  stdout_sha256: 5799311c89d951b6d812f9ef1637bb8b7b9b55e1714ad359cec8db4b984dfa30
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/005-gate-registry-check.stdout
+  stderr_path: logs/005-gate-registry-check.stderr
+- id: gate-registry-fixtures
+  started_at: '2026-11-24T15:50:46Z'
+  finished_at: '2026-11-24T15:50:49Z'
+  exit_code: 0
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+  stdout_sha256: 80889fd29a74d5e269435033f8f0205058c90d709c0cabddc34b01ce8b8a4f54
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/006-gate-registry-fixtures.stdout
+  stderr_path: logs/006-gate-registry-fixtures.stderr
+- id: gate-tristate-fixtures
+  started_at: '2026-11-24T15:50:49Z'
+  finished_at: '2026-11-24T15:50:49Z'
+  exit_code: 0
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+  stdout_sha256: fca0d449999c0c2769a61481c6e658bd93299d3378c3fc598a07e2db2ed2614f
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/007-gate-tristate-fixtures.stdout
+  stderr_path: logs/007-gate-tristate-fixtures.stderr
+- id: ci-checkout-consistency
+  started_at: '2026-11-24T15:50:49Z'
+  finished_at: '2026-11-24T15:50:50Z'
+  exit_code: 0
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+  stdout_sha256: b673d6ca3db3117f10e21c5e82c64d9964919fa07ea3c2f10c509b951f5c769d
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/008-ci-checkout-consistency.stdout
+  stderr_path: logs/008-ci-checkout-consistency.stderr
+- id: verify-baseline
+  started_at: '2026-11-24T15:50:50Z'
+  finished_at: '2026-11-24T15:50:50Z'
+  exit_code: 0
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+  stdout_sha256: 65d611781d55416d94434a0f14ff2979c52b18f852014c889c5fa573752b0723
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/009-verify-baseline.stdout
+  stderr_path: logs/009-verify-baseline.stderr
+- id: verify-sha-scope
+  started_at: '2026-11-24T15:50:50Z'
+  finished_at: '2026-11-24T15:50:55Z'
+  exit_code: 0
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+  stdout_sha256: c10ba14ef37709771c0e71c7e72a5ff29fe210ed8fefae6aab2f45c197f1e427
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/010-verify-sha-scope.stdout
+  stderr_path: logs/010-verify-sha-scope.stderr
+- id: verify-handoff
+  started_at: '2026-11-24T15:50:55Z'
+  finished_at: '2026-11-24T15:50:55Z'
+  exit_code: 0
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+  stdout_sha256: 23fd93bc00a390968280ce2f9614ed5ae6b790341f406ddc7329539170be7801
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/011-verify-handoff.stdout
+  stderr_path: logs/011-verify-handoff.stderr
+- id: verify-matrix
+  started_at: '2026-11-24T15:50:55Z'
+  finished_at: '2026-11-24T15:50:55Z'
+  exit_code: 0
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+  stdout_sha256: a7213b89a52741a3e98f5f87a94db7626799ba0f11e77478cdfe5e094d6e941c
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/012-verify-matrix.stdout
+  stderr_path: logs/012-verify-matrix.stderr
+- id: gov-probe-metrics
+  started_at: '2026-11-24T15:50:55Z'
+  finished_at: '2026-11-24T15:50:56Z'
+  exit_code: 0
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+  stdout_sha256: a61861a305b81039fb4ec7199c66b5274c93b01f66bc3f88ecdc4e5ff112a594
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/013-gov-probe-metrics.stdout
+  stderr_path: logs/013-gov-probe-metrics.stderr
+- id: stage-driver-dryrun
+  started_at: '2026-11-24T15:50:56Z'
+  finished_at: '2026-11-24T15:50:56Z'
+  exit_code: 0
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+  stdout_sha256: 24bb2ed7e7b12ccf921002e5dd52fa03ccacbd5492590880a8c84b457f10bb54
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/014-stage-driver-dryrun.stdout
+  stderr_path: logs/014-stage-driver-dryrun.stderr
+- id: neg-ledger-check-after-run
+  started_at: '2026-11-24T15:50:56Z'
+  finished_at: '2026-11-24T15:50:56Z'
+  exit_code: 0
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+  stdout_sha256: 6c5d6765e1f1905162f5a0352866e9597549b4cbc12f6bdfcc236463270061da
+  stderr_sha256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+  stdout_path: logs/015-neg-ledger-check-after-run.stdout
+  stderr_path: logs/015-neg-ledger-check-after-run.stderr
+- id: alpha-driver-execute
+  started_at: '2026-11-25T00:05:00Z'
+  finished_at: '2026-11-25T00:29:00Z'
+  exit_code: 1
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+  stdout_sha256: 09f850632ab300eab9b18a9423eda4dead923da2bbfbf0a844c77fb5300ae868
+  stderr_sha256: eeb9a94ae74d2f6a7d571c73e47fddd618456eba0969b395d1f5b894448ca66b
+  stdout_path: logs/016-alpha-driver-execute.stdout
+  stderr_path: logs/016-alpha-driver-execute.stderr
+- id: coverage-control-intact-tree
+  started_at: '2026-11-24T17:20:56Z'
+  finished_at: '2026-11-24T17:27:51Z'
+  exit_code: 1
+  commit: b556199c86ae829f5f2f9f1c57e24dae43ef84c8
+  stdout_sha256: 7b6860f748b79fa72fe03b6bdc96e8c8c9d39f0e4a49a06168d7f73223650c28
+  stderr_sha256: 273467381670c297b24985684a780b1fc70b3cc6f63d0122920dc96d859c93ef
+  stdout_path: logs/017-coverage-control-intact-tree.stdout
+  stderr_path: logs/017-coverage-control-intact-tree.stderr
+evidence_hash: sha256:3c1d4ca378cb59680955de4c26408b08d36b32007dd827b76f64cf63893547df
+completed_at: '2026-11-24T19:30:46Z'
+notes:
+- Task 8（ALPHA 阶段执行点与 7 道负向夹具）修订 2 重建的证据 run。
+- '**全部 17 条命令都在同一个 commit 上执行**（b556199c86ae829f5f2f9f1c57e24dae43ef84c8）：本 run 的
+  manifest 的 frozen_commit 指向它，results[] 里每一条也各自记着同一个 commit（commit 字段）。manifest 自己进在更晚的提交里
+  —— 这是仓库既有惯例（历史 run 的 frozen_commit 也是它判定的那一个提交，manifest 在更晚的提交里入库），不是循环依赖。'
+- 001 是七道 ALPHA 门禁的两层 RED 逐道验证；它的退出码是 3：verify_neg_fixtures.sh 只有 7/7 才退出 0，本次是 RED=6/7、INCONCLUSIVE=1/7（覆盖率门禁）。非
+  0 是设计意图 —— 超时/不可归因一律报 INCONCLUSIVE，不许凑数（R50）。
+- 003 是仓库自己的夹具泳道（probe_neg_fixtures.py fixtures）：audit/v4.1.0/neg/ 下每个 fx*.sh 都必须声明自己的期望值；共享
+  helper 因此改名为 neg_two_layer.sh（否则它落进 fx*.sh 的 glob 里，expect_of() 返回 None ⇒ UNDECLARED-EXPECT
+  ⇒ 该子命令退出 1）。
+- '016 是端到端证据：阶段驱动在完整 ALPHA 清单上真跑了一遍（10 条 required_gates，含 3 条 cargo），耗时 23m58s，退出码
+  1（冻结基线上 ALPHA 本来就红：composite、覆盖率门禁、anti_ignore、cargo fmt --check），其余六条 PASS。它的预算给到
+  10800s（= workflow 的 timeout-minutes: 180）：在夹具泳道刚改过 Rust 源码的树上，composite 内部的 release
+  构建要重跑，90 分钟不够（实测两次撞墙），180 分钟跑完。'
+- 011（verify_handoff）与 010（verify_sha_scope）在**重签之后**的那棵树上跑，退出码 0 —— 上一版 manifest
+  里记着的那条 rc=1（重签之前抓到的旧状态：handoff manifest 的哈希范围里 test_verify_sha_scope.py 的哈希与文件内容对不上）已经被本
+  run 的这一条取代，本 run 里不再 留任何一条会让人读成「某个检查现在是红的」的记录。
+- 002 与 015 是同一条台账对账命令的两个时刻，都退出 0（这一轮重建时证据 run 目录已经存在，所以 002 不再是上一版那条 'NO-EVIDENCE-RUN'
+  的自举状态 —— 上一版的那条红已经被本 run 的这两条取代）。
+- 017 是覆盖率门禁在完整树上的基线取值：退出码 1 —— 门禁在未注入缺陷时就是红的（sqlrustgo-storage 量不出覆盖率表，因为 Task 1–7
+  导入的 RED 特征测试 crates/storage/tests/tf_t4_*.rs 按设计失败）。这正是 fx18 判 INCONCLUSIVE 的依据：红不可归因于夹具注入的缺陷。
+- logs/fixtures/ 下是 001 每一道夹具的逐道日志。
+- 本 run 不含 ci_gate.sh，不构成门禁 PASS 声明。

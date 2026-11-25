@@ -1,0 +1,91 @@
+{
+  "version": "C-MILESTONES-1",
+  "authority": "planning_only",
+  "milestones": [
+    {
+      "milestone_id": "C-ALPHA-01",
+      "scope": "M-Pre / M0 architecture + TF baseline",
+      "dependencies": [],
+      "budget_million_tokens": {
+        "lower": 17,
+        "upper": 34,
+        "status": "OWNER_PROPOSAL_NOT_AUTHORIZATION"
+      },
+      "human_gate": true,
+      "approved_for_implementation": false,
+      "native_tasks_available": 18,
+      "exit_contract_ref": "docs/releases/v4.1.0/refactoring/PHASE_EXIT_GATE_MATRIX.md",
+      "status": "PREPARATION_PLAN_ONLY"
+    },
+    {
+      "milestone_id": "C-ALPHA-02",
+      "scope": "M1 reference transaction kernel",
+      "dependencies": [
+        "C-ALPHA-01"
+      ],
+      "budget_million_tokens": {
+        "lower": 15,
+        "upper": 30,
+        "status": "OWNER_PROPOSAL_NOT_AUTHORIZATION"
+      },
+      "human_gate": true,
+      "approved_for_implementation": false,
+      "native_tasks_available": 0,
+      "exit_contract_ref": "docs/releases/v4.1.0/refactoring/PHASE_EXIT_GATE_MATRIX.md",
+      "status": "CANDIDATE_LOCKED"
+    },
+    {
+      "milestone_id": "C-ALPHA-03",
+      "scope": "M2 / M3 durability + visibility combined",
+      "dependencies": [
+        "C-ALPHA-02"
+      ],
+      "budget_million_tokens": {
+        "lower": 45,
+        "upper": 100,
+        "status": "OWNER_PROPOSAL_NOT_AUTHORIZATION"
+      },
+      "human_gate": true,
+      "approved_for_implementation": false,
+      "native_tasks_available": 0,
+      "exit_contract_ref": "docs/releases/v4.1.0/refactoring/PHASE_EXIT_GATE_MATRIX.md",
+      "status": "CANDIDATE_LOCKED"
+    },
+    {
+      "milestone_id": "C-ALPHA-04",
+      "scope": "M4 / M5 all DML/backends + migration",
+      "dependencies": [
+        "C-ALPHA-03"
+      ],
+      "budget_million_tokens": {
+        "lower": 30,
+        "upper": 69,
+        "status": "OWNER_PROPOSAL_NOT_AUTHORIZATION"
+      },
+      "human_gate": true,
+      "approved_for_implementation": false,
+      "native_tasks_available": 0,
+      "exit_contract_ref": "docs/releases/v4.1.0/refactoring/PHASE_EXIT_GATE_MATRIX.md",
+      "status": "CANDIDATE_LOCKED"
+    },
+    {
+      "milestone_id": "C-ALPHA-05",
+      "scope": "M6 full CI + independent certification",
+      "dependencies": [
+        "C-ALPHA-04"
+      ],
+      "budget_million_tokens": {
+        "lower": 15,
+        "upper": 37,
+        "status": "OWNER_PROPOSAL_NOT_AUTHORIZATION"
+      },
+      "human_gate": true,
+      "approved_for_implementation": false,
+      "native_tasks_available": 0,
+      "exit_contract_ref": "docs/releases/v4.1.0/refactoring/PHASE_EXIT_GATE_MATRIX.md",
+      "status": "CANDIDATE_LOCKED"
+    }
+  ],
+  "authorized_tokens": 0,
+  "dispatch_allowed": false
+}

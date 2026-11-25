@@ -508,7 +508,7 @@
   "evidence": "RERUN-* evidence json/log"
  },
  {
-  "case_id": "PILOT-T6-001",
+  "case_id": "PILOT-T6-001B",
   "matrix_index": 72,
   "test_name": "(crash-recovery-kill-9)",
   "rerun_status": "COVERED_PASS",
@@ -516,7 +516,7 @@
   "evidence": "evidence/d003-red-run-*.log"
  },
  {
-  "case_id": "PILOT-T6-002",
+  "case_id": "PILOT-T6-002B",
   "matrix_index": 73,
   "test_name": "(checkpoint-torn-write)",
   "rerun_status": "COVERED_PASS",

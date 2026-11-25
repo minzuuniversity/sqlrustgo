@@ -71,6 +71,22 @@ CATCHES = {
     "scripts/gate/check_commit_message.sh": ["坏提交信息"],
     "scripts/gate/check_coverage_single_implementation.sh": ["scan_hits"],
     "scripts/gate/check_gate_test_integrity.sh": ["掩码检测器"],
+    # The ALPHA stage gates whose negative fixture is established (v4.1.0
+    # readiness plan, Task 8).  The property id of each one is a literal
+    # substring of its fixture's fixture_id, so the C3 criterion can find it
+    # on the evidence.
+    #
+    # check_coverage_v312.sh is deliberately NOT here: its fixture exists but
+    # could not be established inside the ledger's 30-minute per-fixture
+    # budget (the gate measures eight crates with `cargo llvm-cov`,
+    # single-threaded and instrumented).  Its ledger row therefore stays
+    # kind=pending-fixture, and claiming a property it cannot yet back would
+    # be exactly the kind of over-claim this file exists to prevent.
+    "scripts/gate/check_alpha_v410.sh": ["entry-doc-missing"],
+    "scripts/gate/check_arch_invariants.sh": ["invariant-impl-removed"],
+    "scripts/gate/check_arch3_no_bypass.sh": ["dml-guard-dropped"],
+    "scripts/gate/check_sql_corpus_gate.sh": ["corpus-truncated"],
+    "scripts/gate/check_g1_tpch_baseline.sh": ["hash-tampered"],
 }
 
 NO_CLAIM_YET = ("尚无可证伪夹具（NEG_FIXTURES 里本门禁没有可证伪行），"

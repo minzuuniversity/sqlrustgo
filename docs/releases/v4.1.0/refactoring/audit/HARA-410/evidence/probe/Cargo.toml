@@ -1,0 +1,13 @@
+[package]
+name = "hara410-probe"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[dependencies]
+sqlrustgo-storage = { path = "../../../../../crates/storage" }
+sqlrustgo-transaction = { path = "../../../../../crates/transaction" }
+tempfile = "3"
+sqlrustgo = { path = "../../../../..", default-features = false }
+parking_lot = "0.12"

@@ -1,0 +1,37 @@
+   Compiling sqlrustgo v4.1.0 (/private/tmp/srg-d004-task)
+warning: variable does not need to be mutable
+  --> tests/integration/test_factory/ca01_commit_frontier.rs:87:17
+   |
+87 |             let mut s = storage.write();
+   |                 ----^
+   |                 |
+   |                 help: remove this `mut`
+   |
+   = note: `#[warn(unused_mut)]` (part of `#[warn(unused)]`) on by default
+
+warning: `sqlrustgo` (test "ca01_commit_frontier") generated 1 warning (run `cargo fix --test "ca01_commit_frontier" -p sqlrustgo` to apply 1 suggestion)
+    Finished `test` profile [unoptimized + debuginfo] target(s) in 4.24s
+     Running tests/integration/test_factory/ca01_commit_frontier.rs (target/debug/deps/ca01_commit_frontier-8608252991bebc31)
+
+running 3 tests
+test c01_07c_durable_frontier_concept_absence_documented ... ok
+test c01_07a_commit_durability_without_explicit_flush ... FAILED
+test c01_07b_two_commit_entry_points_consistent ... ok
+
+failures:
+
+---- c01_07a_commit_durability_without_explicit_flush stdout ----
+
+thread 'c01_07a_commit_durability_without_explicit_flush' (42133571) panicked at tests/integration/test_factory/ca01_commit_frontier.rs:51:5:
+assertion `left == right` failed: INV-08 baseline: sync-mode COMMIT ACK must imply durability (target contract)
+  left: []
+ right: [["Integer(1)", "Integer(10)"], ["Integer(2)", "Integer(20)"]]
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    c01_07a_commit_durability_without_explicit_flush
+
+test result: FAILED. 2 passed; 1 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+error: test failed, to rerun pass `-p sqlrustgo --test ca01_commit_frontier`

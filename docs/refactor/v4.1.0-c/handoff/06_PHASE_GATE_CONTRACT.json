@@ -1,0 +1,37 @@
+{
+  "version": "C-GATE-PLAN-1",
+  "authority_sources": [
+    "docs/governance/STAGE_CONFIG.yaml",
+    "docs/releases/v4.1.0/STAGE.yaml",
+    "docs/releases/v4.1.0/ALPHA_TO_BETA_GATE_PLAN.md"
+  ],
+  "phase_matrix_ref": "docs/releases/v4.1.0/refactoring/PHASE_EXIT_GATE_MATRIX.md",
+  "formal_gate_modifications": false,
+  "dispatch_preconditions": [
+    "G-OWNER-TAKEOVER",
+    "G-LOCAL-ONLY",
+    "G-POLICY-BINDING"
+  ],
+  "current_gate_approvals": [],
+  "m_pre_closed": false,
+  "m0_core_implementation_allowed": false,
+  "m1_m6_allowed": false,
+  "required_verification": "All required cases PASS + full evidence + independent review + owner decision",
+  "blocked_statuses": [
+    "FAIL",
+    "KNOWN_FAIL",
+    "NOT_RUN",
+    "INFRA_ERROR",
+    "UNAUTHORIZED_UNSUPPORTED"
+  ],
+  "owner_controls": [
+    "ADR",
+    "isolation",
+    "durability",
+    "format",
+    "product_scope",
+    "resources",
+    "stage"
+  ],
+  "stage_transition_authorized": false
+}

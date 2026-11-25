@@ -1,0 +1,11 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "C-ALPHA-01-HANDOFF-20261120",
+  "started_at": "2026-11-20T13:55:16.849Z",
+  "timestamp": "2026-11-20T13:55:16.938Z",
+  "command": "bash scripts/gate/check_docs_links.sh",
+  "cwd": "/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-calpha01-20261120",
+  "exit_code": 0,
+  "stdout_stderr": "=== Running Markdown Link Check ===\nAll markdown links are valid.\n",
+  "conflict_resolution": "Machine output only, not product acceptance"
+}

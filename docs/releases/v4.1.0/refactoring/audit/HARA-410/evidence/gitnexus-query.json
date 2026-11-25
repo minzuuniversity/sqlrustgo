@@ -1,0 +1,18 @@
+{
+  "source_agent": "Codex GPT-6.1 Sol",
+  "source_run": "HARA-410-20261120",
+  "started": "2026-11-19T21:23:39.447731+00:00",
+  "timestamp": "2026-11-19T21:23:40.457401+00:00",
+  "cwd": "/Volumes/workspace/dev/sqlrustgo/.worktrees/codex-hara410-20261120",
+  "argv": [
+    "gitnexus",
+    "query",
+    "-r",
+    "sqlrustgo",
+    "transaction rollback checkpoint FileStorage",
+    "--limit",
+    "3"
+  ],
+  "exit": 0,
+  "output": "[gitnexus] FTS index ensure failed for repo \"sqlrustgo\" table \"File\" (index \"file_fts\"): Connection exception: Cannot execute write operations in a read-only database!. Will retry on next query.\n[gitnexus] FTS index ensure failed for repo \"sqlrustgo\" table \"Function\" (index \"function_fts\"): Connection exception: Cannot execute write operations in a read-only database!. Will retry on next query.\n[gitnexus] FTS index ensure failed for repo \"sqlrustgo\" table \"Class\" (index \"class_fts\"): Connection exception: Cannot execute write operations in a read-only database!. Will retry on next query.\n[gitnexus] FTS index ensure failed for repo \"sqlrustgo\" table \"Method\" (index \"method_fts\"): Connection exception: Cannot execute write operations in a read-only database!. Will retry on next query.\n[gitnexus] FTS index ensure failed for repo \"sqlrustgo\" table \"Interface\" (index \"interface_fts\"): Connection exception: Cannot execute write operations in a read-only database!. Will retry on next query.\nGitNexus [query:timing] query=\"transaction rollback checkpoint FileStorage\" totalMs=38.2 phases={\"vector\":7.1,\"bm25\":37.5,\"merge\":0,\"symbol_lookup\":0,\"ranking\":0,\"formatting\":0,\"wall\":38.2}\n{\n  \"processes\": [],\n  \"process_symbols\": [],\n  \"definitions\": [],\n  \"timing\": {\n    \"vector\": 7.1,\n    \"bm25\": 37.5,\n    \"merge\": 0,\n    \"symbol_lookup\": 0,\n    \"ranking\": 0,\n    \"formatting\": 0,\n    \"wall\": 38.2\n  }\n}\n"
+}
