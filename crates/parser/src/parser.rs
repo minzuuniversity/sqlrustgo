@@ -296,6 +296,15 @@ pub struct CreateIndexStatement {
     pub schema: Option<String>,
     pub columns: Vec<IndexColumnSpec>,
     pub unique: bool,
+    /// Issue #4669 sub-bug 3: `CREATE INDEX ... ON t(a) WHERE a > 200` — the
+    /// **partial index** predicate.
+    ///
+    /// `None` = no WHERE clause. The old parser never consumed the WHERE, and
+    /// the top-level parser tolerates trailing tokens ⇒ the predicate was
+    /// **silently dropped** and a full index was built instead (the issue's
+    /// "静默接受但实际未生效"). It is parsed now so the executor can refuse
+    /// the statement loudly instead of accepting a lying index.
+    pub where_clause: Option<Expression>,
 }
 
 /// V313-100 / Issue #4701 sub-1: an index column is either a bare
@@ -3727,12 +3736,23 @@ impl Parser {
         };
         self.expect(Token::LParen)?;
         let columns = self.parse_index_column_list()?;
+        // Issue #4669 sub-bug 3: the optional partial-index predicate.
+        // Before this the WHERE was never consumed and the trailing tokens
+        // were tolerated by the top-level parser ⇒ the predicate vanished and
+        // a full index was built silently.
+        let where_clause = if matches!(self.current(), Some(Token::Where)) {
+            self.next();
+            Some(self.parse_expression()?)
+        } else {
+            None
+        };
         Ok(Statement::CreateIndex(CreateIndexStatement {
             name: index_name,
             table: table_name,
             schema,
             columns,
             unique,
+            where_clause,
         }))
     }
 
@@ -12771,8 +12791,19 @@ impl Parser {
                     self.next();
                 }
                 Some(Token::Identifier(name)) => {
-                    columns.push(IndexColumnSpec::column(name));
-                    self.next();
+                    // Issue #4669 sub-bug 2: `CREATE INDEX i ON t(UPPER(a))` —
+                    // an identifier followed by `(` is a **function call**,
+                    // not a column name. The old code took the identifier as
+                    // a bare column, so the executor later looked for a
+                    // column literally named "UPPER" and failed with
+                    // "Column not found".
+                    if matches!(self.peek(), Some(Token::LParen)) {
+                        let expr = self.parse_expression()?;
+                        columns.push(IndexColumnSpec::expr(expr));
+                    } else {
+                        columns.push(IndexColumnSpec::column(name));
+                        self.next();
+                    }
                 }
                 _ => {
                     let expr = self.parse_expression()?;

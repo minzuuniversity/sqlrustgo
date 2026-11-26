@@ -412,7 +412,7 @@ drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-main`
 
 | 子项 | WP 组 | 条数 | issue | 状态 |
 |---|---|---|---|---|
-| P1-03a | WP-C DDL / Integrity | 6 | #4682 #4652 #4672 #4669 #4709 #4703 | 5 条 FIXED；**#4669 NOT FIXED（已重开）** |
+| P1-03a | WP-C DDL / Integrity | 6 | #4682 #4652 #4672 #4669 #4709 #4703 | 5 条 FIXED；**#4669 PARTIAL（已重开；函数索引/部分索引的功能未实现，现为明确拒绝）** |
 | P1-03b | WP-D Join / Subquery | 4 | #4668 #4656 #4649 #4636 | **全部 FIXED（2026-11-26 复验）** |
 | P1-03c | WP-F Schema Migration | 1 | #4848 | **FIXED（2026-11-26 复验）** |
 | P1-03d | WP-G Type / Comparison | 1 | #4846 | **FIXED（2026-11-26 复验）** |
