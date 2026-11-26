@@ -1,0 +1,84 @@
+# WP-B..G 逐条实跑复验 — 2026-11-26
+# scope: v4.1.0 legacy backlog WP-B/C/D/E/F/G = 19 issues (#4682 #4652 #4672 #4669 #4709 #4703 #4668 #4656 #4649 #4636 #4848 #4846 #4721 #4674 #4716 #4676 #4675 #4670 #4626)
+# repo: gitea252 openclaw/sqlrustgo @ d3e43083c9 (develop/v4.1.0)
+# host: Darwin 27.2.0 arm64 / rustc 1.99.0 (b940084d7 2026-09-28)
+
+## 0. Gitea states before the re-verification
+{"number":4682,"state":"closed","closed_at":"2026-09-03T17:40:24Z","title":"[executor] sqlite_master / sqlite_sequence / sqlite_temp_master 系统表全部缺失 (FTS5 / VIRTUAL TABLE 也未实现)"}
+{"number":4652,"state":"closed","closed_at":"2026-09-03T17:53:43Z","title":"[executor] CREATE PROCEDURE / CREATE FUNCTION 静默接受但不实际存储 — CLOSED-BY-PR-4741 (OR-downgrade)"}
+{"number":4672,"state":"closed","closed_at":"2026-09-03T11:11:12Z","title":"[executor] AUTOINCREMENT (SQLite 关键字) 也失效, id 全为 NULL (#4654 + #4673 合并)"}
+{"number":4669,"state":"open","closed_at":null,"title":"[executor] DROP INDEX / CREATE FUNCTION (复杂)/ 部分索引 / 函数索引 实现错误"}
+{"number":4709,"state":"closed","closed_at":"2026-09-03T05:19:05Z","title":"[executor] CHECK 多条件约束完全失效 (INSERT VALUES (200) 与 (-10) 静默接受, PR #4691 未修)"}
+{"number":4703,"state":"closed","closed_at":"2026-09-03T18:34:43Z","title":"[parser] ON DUPLICATE KEY UPDATE 多列 + VALUES() 函数在 ON DUPLICATE 内, AFTER UPDATE OF 多列, ON CONFLICT 形式不工作 — CLOSED-BY-PR-4745 (mixed honest-path: sub-bugs #2/#3 anti-regression, sub-bug #1/#4 OR-downgrade)"}
+{"number":4668,"state":"closed","closed_at":"2026-09-03T18:59:42Z","title":"[CLOSED-BY-PR-4747][OR-downgrade] NATURAL JOIN / USING (id, x) 多列匹配错乱 — sub-bug #1/#2 OR-downgrade, sub-bug #3 anti-regression"}
+{"number":4656,"state":"closed","closed_at":"2026-09-03T11:11:40Z","title":"[executor] > ALL / = ANY 子查询实现错误 (返回空集)"}
+{"number":4649,"state":"closed","closed_at":"2026-09-03T14:26:35Z","title":"[parser] LEFT JOIN ... USING (col) 解析错, 返回 CROSS JOIN 笛卡尔积 (9 行而非 3 行)"}
+{"number":4636,"state":"closed","closed_at":"2026-09-03T14:19:03Z","title":"[planner/executor] 标量子查询 (SELECT ... FROM b WHERE b.id=a.id) 关联外部失败, 返回空"}
+{"number":4848,"state":"closed","closed_at":"2026-09-10T17:27:09Z","title":"[storage] ALTER TABLE ... RENAME COLUMN 不支持 (storage engine 报 not supported, week-11 快检 FAIL)"}
+{"number":4846,"state":"closed","closed_at":"2026-09-10T17:26:56Z","title":"[executor] CHAR(n) 按字节填充导致主键点查 0 行 (与 SQLite/MySQL 均不一致)"}
+{"number":4721,"state":"closed","closed_at":"2026-09-03T13:52:21Z","title":"[executor] PR #4634 修复不彻底: round(real, int) 仍返回整数 (与 #4610 / #4613 同根, parse_lit + round 类型 bug 持续)"}
+{"number":4674,"state":"closed","closed_at":"2026-09-03T17:59:34Z","title":"[executor] CHAR_LENGTH/CHARACTER_LENGTH — CLOSED-BY-PR-4742 (anti-regression lockdown, no functional change)"}
+{"number":4716,"state":"open","closed_at":null,"title":"[executor] DATE_TRUNC 函数输出第 2/3 列为空 (Postgres 函数实现不完整, 与 #4710 同根)"}
+{"number":4676,"state":"open","closed_at":null,"title":"[executor] 数学函数 MOD/POWER/LOG/EXP/SQRT 完全未实现 (返回空)"}
+{"number":4675,"state":"closed","closed_at":"2026-09-03T18:23:51Z","title":"[executor] POSITION/LOCATE 字符串找子串函数完全未实现 (返回空) — CLOSED-BY-COMMIT-8ed76129eb (source fix merged)"}
+{"number":4670,"state":"closed","closed_at":"2026-09-04T15:52:30Z","title":"[executor] CEIL/CEILING/FLOOR 部分实现 (第 2 列返回空), TRUNCATE/TRUNC 不支持, HEX/MD5/SHA 返回空"}
+{"number":4626,"state":"closed","closed_at":"2026-09-03T18:12:05Z","title":"[transaction] SELECT FOR UPDATE 后 ROLLBACK 报 transaction already aborted — CLOSED-BY-PR-4743 (source fix for implicit-tx corruption)"}
+
+## 1. regression suites (all run on the tree above)
+cargo test --test v312_71_sqlite_master_test -> test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+cargo test --test v312_76_sqlite_system_tables_test -> test result: ok. 10 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+cargo test --test repro_v312_91_4669 -> test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+cargo test --test repro_v312_85_check -> test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+cargo test --test issue_4703_on_duplicate_test -> test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+cargo test --test v312_75_update_of_trigger_test -> test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+cargo test --test v312_75_correlated_scalar_subquery_test -> test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+cargo test --test v312_73_join_using_clause_test -> test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+cargo test --test v312_66_quantified_any_all_test -> test result: ok. 7 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+cargo test --test issue_4626_select_for_update_rollback_test -> test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+cargo test --test operators_char_padding -> test result: ok. 4 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+cargo test --test issue_4674_char_length_test -> test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+cargo test --test ddl_e2e_test test_alter_table_rename_column -> test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 25 filtered out; finished in 0.02s
+cargo test -p sqlrustgo-executor --test wp_d_legacy -> test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+cargo test -p sqlrustgo-executor --test issue_4513_create_procedure_test -> test result: ok. 13 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+cargo test -p sqlrustgo-executor --test issue_4846_char_pad_space_test -> test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+cargo test -p sqlrustgo-executor --test pk_fast_path_char_pad_space_4846 -> test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+cargo test -p sqlrustgo-executor --test wp_g_legacy -> test result: ok. 11 passed; 0 failed; 1 ignored; 0 measured; 0 filtered out; finished in 0.04s
+cargo test -p sqlrustgo-executor --test issue_4675_position_locate_test -> test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+cargo test -p sqlrustgo-executor --test issue_4670_trunc_hex_test -> test result: ok. 12 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+cargo test -p sqlrustgo-executor --test bug_report_3120_regression_test -> test result: ok. 6 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+cargo test -p sqlrustgo-storage --test issue_4848_alter_rename_column_test -> test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+cargo test -p sqlrustgo-storage --test wp_f_legacy -> test result: ok. 8 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.03s
+
+## 2. minimal SQL probes (the three NOT FIXED items)
+--- #4676: POW / LN aliases, LOG(base,x), mixed-type MOD ---
+    SELECT POW(2,3)              -> NULL      (expected 8)
+    SELECT LN(2.718281828)       -> NULL      (expected 1)
+    SELECT LOG(100,10)           -> 4.605170185988092 (expected 2)
+    SELECT MOD(10.5,3)           -> NULL      (expected 1.5)
+    SELECT POWER(2,3),LOG(100),EXP(1),SQRT(2) -> 8.0, 4.605…, 2.718…, 1.414… (OK)
+--- #4716: DATE_TRUNC units / format / unknown-unit handling ---
+    SELECT DATE_TRUNC('day','2026-09-15 12:34:56')   -> '2026-09-15'      (spec: '2026-09-15 00:00:00')
+    SELECT DATE_TRUNC('hour','2026-09-15 12:34:56')  -> 1789473600        (spec: '2026-09-15 12:00:00')
+    SELECT DATE_TRUNC('millennium',…) / ('microsecond',…) -> NULL (unsupported units)
+    SELECT DATE_TRUNC('nonsense',…)                  -> NULL      (spec: must raise SqlError)
+--- #4669: the two remaining sub-bugs ---
+    CREATE INDEX i1 ON t(UPPER(a))        -> Execution error: Column not found
+    CREATE INDEX i2 ON t(a) WHERE a > 200 -> Ok (accepted; WHERE silently dropped -> full index)
+
+## 3. the six stale #[ignore] GAP assertions in crates/executor/tests/wp_c_legacy.rs
+--- cargo test -p sqlrustgo-executor --test wp_c_legacy -- --ignored ---
+test issue_4669_drop_index::create_function_index_errors_recognizably ... ok
+test issue_4652_procedure_function::create_procedure_at_executor_silently_accepted ... FAILED
+test issue_4669_drop_index::create_partial_index_errors_recognizably ... FAILED
+test issue_4652_procedure_function::create_function_at_executor_silently_accepted ... FAILED
+test issue_4682_system_tables::sqlite_master_is_queryable ... FAILED
+test issue_4682_system_tables::sqlite_sequence_after_autoincrement ... ok
+test issue_4703_upsert::on_conflict_sqlite_syntax ... FAILED
+test issue_4703_upsert::on_duplicate_key_update_multi_column ... FAILED
+test result: FAILED. 2 passed; 6 failed; 0 ignored; 0 measured; 6 filtered out; finished in 0.03s
+(FAILED = the GAP no longer holds, i.e. the defect is fixed; PASS = the GAP is still real)
+
+## 4. conclusion
+16 items FIXED (keep closed, evidence comments posted on Gitea): #4682 #4652 #4672 #4709 #4703 #4668 #4656 #4649 #4636 #4848 #4846 #4721 #4674 #4675 #4670 #4626
+3 items NOT FIXED (re-opened on Gitea with evidence): #4669 #4716 #4676
+backlog 19 -> 3

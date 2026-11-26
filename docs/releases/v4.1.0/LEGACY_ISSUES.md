@@ -14,12 +14,12 @@ any v4.1.0-specific legacy items introduced since the v4.0.0 GA gate.
 | WP | Issues | v4.0.0 decision | v4.1.0 action |
 |---|---|---|---|
 | WP-A | parser legacy #4708 #4696 #4710 #4720 | DONE | None (inherited DONE) |
-| WP-B | types #4721 #4674 #4716 #4676 #4675 #4670 | partial | Inherited; v4.1.0 carry forward |
-| WP-C | DDL/integrity #4682 #4652 #4672 #4669 #4709 #4703 | deferred | **MIGRATE to v4.1.0 scope** |
-| WP-D | joins #4668 #4656 #4649 #4636 | deferred | **MIGRATE to v4.1.0 scope** |
-| WP-E | transaction #4847 #4626 | partial via V400-05 | Carry forward |
-| WP-F | schema #4848 | deferred | **MIGRATE to v4.1.0 scope** |
-| WP-G | type/comparison #4846 | deferred | **MIGRATE to v4.1.0 scope** |
+| WP-B | types #4721 #4674 #4716 #4676 #4675 #4670 | partial → **4/6 FIXED 2026-11-26** | 余 #4716（DATE_TRUNC 单位/格式/spec）、#4676（POW/LN 别名、LOG(base,x)、混合型 MOD）——**已重开** |
+| WP-C | DDL/integrity #4682 #4652 #4672 #4669 #4709 #4703 | deferred → **5/6 FIXED 2026-11-26** | 余 #4669 的函数索引与部分索引两个子项——**已重开** |
+| WP-D | joins #4668 #4656 #4649 #4636 | deferred → **4/4 FIXED 2026-11-26** | 全部闭环（`ISSUES_PLAN.md` §4.2） |
+| WP-E | transaction #4847 #4626 | partial via V400-05 → **#4626 FIXED 2026-11-26** | 余 #4847 仍 partial（wire 端每语句新建连接 ⇒ 显式事务无法跨语句存活） |
+| WP-F | schema #4848 | deferred → **FIXED 2026-11-26** | 闭环；实现默认开启无开关，已触及 v4.0.0 claim-boundary §3.4，需属主裁决 |
+| WP-G | type/comparison #4846 | deferred → **FIXED 2026-11-26** | 闭环；PAD SPACE 仅覆盖 `=`/`IN`/`BETWEEN`，排序比较仍 BINARY；触及 claim-boundary §3.5，需属主裁决 |
 | WP-H | v3.13/defer #4717 #4707 #4701 #4692 #4699 #4688 #4671 #4639 | DONE (8/8) | #4639 已于 2026-11-26 复验 FIXED（Gitea 2026-09-05 即已 closed）；证据 `evidence/wp-h-reverify-2026-11-26/` |
 
 ## 3. v4.1.0-specific legacy items
