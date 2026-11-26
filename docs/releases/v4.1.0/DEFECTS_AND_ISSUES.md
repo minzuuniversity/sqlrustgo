@@ -26,7 +26,7 @@
 | 优先级 | 项数（2026-10-01 原始） | 仍未销账（2026-10-24） | 主要类别 |
 |---|---|---|---|
 | **P0** 阻断任何 release | **8** | **1** | v4.0.0 GA 撤销（`REVOKED`，是状态不是缺陷） |
-| **P1** 阻断 ALPHA 推进 | **7** | **6** | 覆盖率 60.58%、Q20 oracle 缺产物、legacy backlog 20 条（WP-A 4 条已于 2026-11-26 复验 FIXED 并移出待办）、crate 状态描述错误、G13 门禁红 |
+| **P1** 阻断 ALPHA 推进 | **7** | **6** | 覆盖率 60.58%、Q20 oracle 缺产物、legacy backlog 19 条（P1-03 拆为 7 个 WP 子项；WP-A 4 条与 WP-H #4639 已于 2026-11-26 复验 FIXED 并移出待办）、crate 状态描述错误、G13 门禁红 |
 | **P2** 不阻断但需记录 | **7** | **7** | 门禁假阳性、Q20 decorrelate 零调用点、大文件无门禁、v3.12 失联、未核实遗留、运营债 |
 | **合计** | **22** | **14** | |
 
@@ -398,22 +398,50 @@ drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-main`
     缺失**直接矛盾** —— AFP Type B
 - **修复方向**: 生成 `sqlrustgo/q20.tsv` 真实产物，重新 hash + 改写 GA5 报告
 
-### P1-03 WP-A 4 条 + backlog 20 条
+### P1-03 legacy backlog（拆成 7 个 WP 子项）
 
-- **verdict**: `OPEN` (20 issues) — 其中 WP-A 4 条已于 2026-11-26 销账
-- **销账依据（WP-A 4 条，2026-11-26）**: 4 条 issue 在 parser 层与 E2E 层实跑复验全绿，
-  Gitea 上保持 closed（2026-09-03），**不做 reopen**；其中 #4708 补上永久 E2E 见证
-  `tests/integration/sql/chinese_identifier_e2e_test.rs`（3/3 绿）。
-  证据：`docs/releases/v4.1.0/evidence/wp-a-reverify-2026-11-26/wp_a_reverify.txt`
-  (sha256 `101682c020bd01027fd6003dc235d13a3e292288749708f1a12abe7ea33b9ee1`)；
-  同步修订 `STAGE.yaml`、`ISSUES_PLAN.md §4/§4.7`、`FEATURE_MATRIX.md`、
-  `EVALUATION_REPORT.md`、`VERSION_PLAN.md §1`、`COMPREHENSIVE_ASSESSMENT_REPORT.md`
+- **verdict**: `OPEN`（子项 P1-03a…P1-03f；P1-03g 已于 2026-11-26 销账）
+- **拆解口径（2026-11-26）**: 原条目用**一条** P1 记 20 个 issue，销账进度无法跟踪 ⇒
+  拆成 **7 个子项**（每个 WP 组一条），各自独立销账、独立取证。组内 issue 列表以
+  `ISSUES_PLAN.md §4.1–§4.6` 为准。
 - **位置**: `docs/releases/v4.1.0/ISSUES_PLAN.md §4`
-- **构成**: WP-C 6 + WP-D 4 + WP-F 1 + WP-G 1 +
-  WP-B 6 + WP-E 1 + WP-H 1 = **20 条**（WP-A 4 条已复验 FIXED 并移出待办）
-- **WP-A 现状**: 详见 P0-02 —— **FIXED**（块注释 2026-10-08 修复 + 2026-11-26 双层复验）
-- **其余 WP 现状**: 全部 NOT STARTED
+
+| 子项 | WP 组 | 条数 | issue | 状态 |
+|---|---|---|---|---|
+| P1-03a | WP-C DDL / Integrity | 6 | #4682 #4652 #4672 #4669 #4709 #4703 | NOT STARTED |
+| P1-03b | WP-D Join / Subquery | 4 | #4668 #4656 #4649 #4636 | NOT STARTED |
+| P1-03c | WP-F Schema Migration | 1 | #4848 | NOT STARTED |
+| P1-03d | WP-G Type / Comparison | 1 | #4846 | NOT STARTED |
+| P1-03e | WP-B completion | 6 | #4721 #4674 #4716 #4676 #4675 #4670 | NOT STARTED |
+| P1-03f | WP-E completion | 1 | #4626 | NOT STARTED |
+| P1-03g | WP-H | 1 | #4639 | **FIXED（2026-11-26 复验）** |
+
+- **剩余待办**: **19 条**（P1-03a…P1-03f）
+- **WP-A 4 条**不在本表——已于 2026-11-26 复验 FIXED 并移出待办（见 P0-02 与
+  `ISSUES_PLAN.md §4.0`）
 - **修复方向**: 逐条按 `ISSUES_PLAN.md §4` 顺序关闭；预估 6-10 周（per §4.7）
+
+#### P1-03g — WP-H #4639：RIGHT / FULL OUTER JOIN 语义
+
+- **verdict**: `FIXED` (2026-11-26)
+- **销账依据**: Gitea #4639 已于 **2026-09-05T13:42:25Z closed**（openclaw 的
+  "closing as already-fixed"，附实现位置与两条回归测试）；2026-11-26 实测复核：
+  - `cargo test --test multi_join_test` → **7/7 绿**，含
+    `test_right_join_preserves_right_rows` 与 `test_full_outer_join_preserves_both_sides`
+  - issue 原始复现逐条比对：LEFT JOIN 3 行 / RIGHT JOIN 2 行（无 bob）/
+    FULL OUTER JOIN 3 行 —— 与 issue 期望**完全一致**
+  - 实现：`src/engine_select.rs`（hash-join 臂与 ON 表达式笛卡尔臂都对 Right/Full
+    补 NULL）；`crates/planner/src/lib.rs` 有 `JoinType::Right` / `JoinType::Full`；
+    optimizer 无把 Right/Full 改写成 Inner 的规则
+  - 证据：`docs/releases/v4.1.0/evidence/wp-h-reverify-2026-11-26/wp_h_reverify.txt`
+    (sha256 `6848949dd58c795e6813fbd1875f4ce8883efa4ef5aa1edf0b1b6a343e716692`)
+- **账本滞后的原因**: v4.1.0 台账按 2026-09-30 的分诊快照记「#4639 to v4.1」，
+  而该 issue 在 **2026-09-05 就已 closed** ⇒ 过期的是**记录**，不是代码
+- **同步修订**: `ISSUES_PLAN.md §1.2/§4/§4.7/§4.10`、`LEGACY_ISSUES.md` WP-H 行、
+  `STAGE.yaml`（`phase_1_alpha_status.v410_09…` / `wp_h_v313_defer`）、
+  `FEATURE_MATRIX.md` P-03、`EVALUATION_REPORT.md` D8、`FEATURE_CHECKLIST.md`、
+  `GA_RELEASE_TIMELINE.md`、`VERSION_PLAN.md §1`
+- **backlog 20 → 19**
 
 ### P1-04 C8 门禁债 7 条 (与 P0-06 6 条重叠)
 

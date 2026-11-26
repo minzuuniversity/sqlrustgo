@@ -20,7 +20,7 @@ any v4.1.0-specific legacy items introduced since the v4.0.0 GA gate.
 | WP-E | transaction #4847 #4626 | partial via V400-05 | Carry forward |
 | WP-F | schema #4848 | deferred | **MIGRATE to v4.1.0 scope** |
 | WP-G | type/comparison #4846 | deferred | **MIGRATE to v4.1.0 scope** |
-| WP-H | v3.13/defer #4717 #4707 #4701 #4692 #4699 #4688 #4671 #4639 | DONE (7/8) + #4639 to v4.1 | Own #4639 in v4.1.0 |
+| WP-H | v3.13/defer #4717 #4707 #4701 #4692 #4699 #4688 #4671 #4639 | DONE (8/8) | #4639 已于 2026-11-26 复验 FIXED（Gitea 2026-09-05 即已 closed）；证据 `evidence/wp-h-reverify-2026-11-26/` |
 
 ## 3. v4.1.0-specific legacy items
 
