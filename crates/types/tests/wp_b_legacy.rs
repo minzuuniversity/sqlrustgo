@@ -85,49 +85,19 @@ mod test_4674_charlength {
     }
 }
 
-/// Issue #4716: DATE_TRUNC partial implementation
-mod test_4716_date_trunc {
-    #[test]
-    fn test_date_trunc_millennium() {
-        let _sql = "SELECT DATE_TRUNC('millennium', DATE '2023-05-15')";
-        // Should truncate to start of millennium: 2001-01-01
-        let expected = "2001-01-01";
-        assert_eq!(expected, "2001-01-01");
-    }
-
-    #[test]
-    fn test_date_trunc_century() {
-        let _sql = "SELECT DATE_TRUNC('century', DATE '2023-05-15')";
-        // Should truncate to start of century: 2001-01-01
-        let expected = "2001-01-01";
-        assert_eq!(expected, "2001-01-01");
-    }
-
-    #[test]
-    fn test_date_trunc_decade() {
-        let _sql = "SELECT DATE_TRUNC('decade', DATE '2023-05-15')";
-        // Should truncate to start of decade: 2021-01-01
-        let expected = "2021-01-01";
-        assert_eq!(expected, "2021-01-01");
-    }
-
-    #[test]
-    fn test_date_trunc_week() {
-        let _sql = "SELECT DATE_TRUNC('week', TIMESTAMP '2023-05-15 14:30:00')";
-        // Should truncate to start of week (Monday): 2023-05-15 is Monday
-        // So should be 2023-05-15 00:00:00
-        let expected = "2023-05-15 00:00:00";
-        assert_eq!(expected, "2023-05-15 00:00:00");
-    }
-
-    #[test]
-    fn test_date_trunc_microsecond() {
-        let _sql = "SELECT DATE_TRUNC('microsecond', TIMESTAMP '2023-05-15 14:30:00.123456')";
-        // Should preserve microseconds
-        let expected = "2023-05-15 14:30:00.123456";
-        assert_eq!(expected, "2023-05-15 14:30:00.123456");
-    }
-}
+/// Issue #4716: DATE_TRUNC partial implementation.
+///
+/// **2026-11-26**：这个模块原先是 5 条**同义反复的假测试**
+/// （`assert_eq!("2001-01-01", "2001-01-01")`）——SQL 从未执行，而且它们期望的
+/// 单位集（millennium / century / decade / microsecond）与本项目 spec 相反：
+/// `openspec/specs/executor-date-trunc-function/spec.md` 明确要求 **decade 不被
+/// 识别**（未知单位必须抛错），而不是被支持。
+///
+/// `sqlrustgo-types` 不依赖执行器，跑不了 SQL ⇒ 真正的回归测试在
+/// `crates/parser/tests/issue_4716_date_trunc_test.rs`（5 条，单位校验）与
+/// `tests/integration/sql/repro_4716_date_trunc.rs`（14 条，输出格式 + 未知单位
+/// 抛错，含 spec 的 5 个场景）。本模块只保留指针，不再伪造覆盖。
+/// 债见 `docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md` P2-08。
 
 /// Issue #4676: MOD / POWER / LOG / EXP / SQRT.
 ///

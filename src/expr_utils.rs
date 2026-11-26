@@ -651,6 +651,19 @@ pub fn evaluate_expression_with_subq(
                         .unwrap_or(Value::Null)
                 })
                 .collect();
+            // Issue #4716 / spec `executor-date-trunc-function`: an
+            // unsupported DATE_TRUNC unit must raise an error, not
+            // silently evaluate to NULL. The parser rejects a literal
+            // unit; this covers a unit that is only known at runtime
+            // (a column or an expression). A NULL unit is not an error —
+            // the function is strict and yields NULL.
+            if name.eq_ignore_ascii_case("DATE_TRUNC") {
+                if let Some(unit) = vals.first() {
+                    if !matches!(unit, Value::Null) {
+                        sqlrustgo_parser::validate_date_trunc_unit(&unit.to_sql_string())?;
+                    }
+                }
+            }
             Ok(dispatch_fn(name, &vals))
         }
         // TPC-H Q8/Q12/Q14: CASE WHEN cond THEN a ELSE b END.

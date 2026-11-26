@@ -19,6 +19,52 @@ use crate::transaction::{IsolationLevel, TransactionStatement};
 use serde::{Deserialize, Serialize};
 use std::cell::RefCell;
 
+// Issue #4716 / spec `executor-date-trunc-function`: the units
+// DATE_TRUNC understands. This list is the single source of truth: the
+// parser rejects a literal unit outside it, the executor dispatches on
+// it, and the root executor re-checks a unit computed at runtime.
+pub const DATE_TRUNC_UNITS: [&str; 8] = [
+    "YEAR", "QUARTER", "MONTH", "WEEK", "DAY", "HOUR", "MINUTE", "SECOND",
+];
+
+/// Human-readable rendering of [`DATE_TRUNC_UNITS`], used in the error
+/// message the spec pins ("DATE_TRUNC unit must be one of ...").
+pub fn date_trunc_unit_list() -> String {
+    DATE_TRUNC_UNITS.join("/")
+}
+
+/// Validate a DATE_TRUNC unit name (case-insensitive).
+///
+/// Returns `Err` with the spec-pinned message when the unit is not
+/// supported. Units such as MILLENNIUM/CENTURY/DECADE/MICROSECOND are
+/// deliberately *not* supported: the spec's "decade not recognised"
+/// scenario requires them to be rejected rather than silently
+/// returning NULL.
+///
+/// Surrounding quotes are stripped first: the parser keeps the quotes in
+/// `Expression::Literal` (`'day'`), while the executor hands over the
+/// bare text (`day`).
+pub fn validate_date_trunc_unit(unit: &str) -> Result<String, String> {
+    let trimmed = unit.trim();
+    let bare = if trimmed.len() >= 2
+        && ((trimmed.starts_with('\'') && trimmed.ends_with('\''))
+            || (trimmed.starts_with('"') && trimmed.ends_with('"')))
+    {
+        &trimmed[1..trimmed.len() - 1]
+    } else {
+        trimmed
+    };
+    let up = bare.to_ascii_uppercase();
+    if DATE_TRUNC_UNITS.contains(&up.as_str()) {
+        Ok(up)
+    } else {
+        Err(format!(
+            "DATE_TRUNC unit must be one of {}; got {bare:?}",
+            date_trunc_unit_list()
+        ))
+    }
+}
+
 // Phase 3 (TPCH-01 Q15): registry of subqueries that appear in
 // `FROM t, (SELECT ...) AS alias` comma-lists. The parser registers
 // each subquery here during parsing; the executor retrieves and
@@ -10858,6 +10904,21 @@ impl Parser {
                                 self.next();
                             } else {
                                 break;
+                            }
+                        }
+                    }
+                    // Issue #4716 / spec `executor-date-trunc-function`:
+                    // an unsupported DATE_TRUNC unit must be rejected with
+                    // an error instead of silently evaluating to NULL. A
+                    // literal unit is validated here — the same precedent
+                    // as the TIMESTAMPDIFF unit check above. A unit that
+                    // is only known at runtime (a column, an expression)
+                    // is validated by the executor. A NULL unit is not an
+                    // error: the function is strict and yields NULL.
+                    if name.eq_ignore_ascii_case("DATE_TRUNC") {
+                        if let Some(Expression::Literal(unit)) = args.first() {
+                            if !unit.eq_ignore_ascii_case("NULL") {
+                                validate_date_trunc_unit(unit)?;
                             }
                         }
                     }

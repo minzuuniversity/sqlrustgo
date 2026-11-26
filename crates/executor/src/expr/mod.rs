@@ -3295,96 +3295,101 @@ fn timestamp_diff(args: &[Value]) -> Value {
     Value::Integer(v)
 }
 
-/// V312-64 / Issue #4655: DATE_TRUNC(unit, value) — PostgreSQL/Snowflake
-/// style truncation. `unit` is a string token (YEAR/QUARTER/MONTH/DAY/
-/// HOUR/MINUTE/SECOND). `value` is either a text date in YYYY-MM-DD form
-/// or an integer epoch-second timestamp. Returns:
-///   - YEAR/QUARTER/MONTH/DAY → Value::Text("YYYY-MM-DD")
-///   - HOUR/MINUTE/SECOND     → Value::Integer (epoch seconds floored to
-///     the unit boundary)
-///   - Returns Value::Null on any malformed input.
+/// V312-64 / Issue #4655, refined by Issue #4716 / spec
+/// `executor-date-trunc-function`: DATE_TRUNC(unit, value) —
+/// PostgreSQL/Snowflake style truncation. `unit` is a string token
+/// (YEAR/QUARTER/MONTH/WEEK/DAY/HOUR/MINUTE/SECOND — the canonical list
+/// lives in the parser crate, `DATE_TRUNC_UNITS`). `value` is either a
+/// text date/timestamp (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM:SS`) or an
+/// integer epoch-second timestamp.
+///
+/// The result is **always a string** (spec: "return the result as a
+/// string"):
+///   - YEAR/QUARTER/MONTH/WEEK → `YYYY-MM-DD`
+///   - DAY                      → `YYYY-MM-DD 00:00:00`
+///   - HOUR                     → `YYYY-MM-DD HH:00:00`
+///   - MINUTE                   → `YYYY-MM-DD HH:MM:00`
+///   - SECOND                   → `YYYY-MM-DD HH:MM:SS`
+///
+/// An unsupported unit is rejected before it reaches here (the parser
+/// rejects a literal unit, the root executor rejects a runtime one), so
+/// the fallback arm below only guards a NULL unit — the function is
+/// strict, so a NULL unit yields NULL.
 fn date_trunc(args: &[Value]) -> Value {
     if args.len() != 2 {
         return Value::Null;
     }
+    if matches!(args[0], Value::Null) || matches!(args[1], Value::Null) {
+        return Value::Null;
+    }
     let unit = args[0].to_sql_string().to_uppercase();
     let raw = args[1].to_sql_string();
+    // Normalise the input to epoch seconds; the calendar components are
+    // derived from that so text dates and epoch timestamps behave the
+    // same way.
+    let secs = match parse_text_to_secs(&raw) {
+        Some(s) => s,
+        None => return Value::Null,
+    };
+    let days = secs.div_euclid(86_400);
+    let rem = secs.rem_euclid(86_400);
+    let (y, mut m, mut d) = civil_from_days(days);
+    let (mut hh, mut mm, mut ss) = (rem / 3600, (rem % 3600) / 60, rem % 60);
+
     match unit.as_str() {
         "YEAR" => {
-            if raw.len() < 4 {
-                return Value::Null;
-            }
-            let y: i64 = raw[..4].parse().unwrap_or(0);
-            Value::Text(format!("{:04}-01-01", y))
+            m = 1;
+            d = 1;
+            Value::Text(format!("{:04}-{:02}-{:02}", y, m, d))
         }
         "QUARTER" => {
-            if raw.len() < 7 {
-                return Value::Null;
-            }
-            let y: i64 = raw[..4].parse().unwrap_or(0);
-            let m: i64 = raw[5..7].parse().unwrap_or(1);
             // Quarter start: 1, 4, 7, 10 → (m - 1) / 3 * 3 + 1
-            let qm = (m - 1) / 3 * 3 + 1;
-            Value::Text(format!("{:04}-{:02}-01", y, qm))
+            m = (m - 1) / 3 * 3 + 1;
+            d = 1;
+            Value::Text(format!("{:04}-{:02}-{:02}", y, m, d))
         }
         "MONTH" => {
-            if raw.len() < 7 {
-                return Value::Null;
-            }
-            let y: i64 = raw[..4].parse().unwrap_or(0);
-            let m: i64 = raw[5..7].parse().unwrap_or(1);
-            Value::Text(format!("{:04}-{:02}-01", y, m))
-        }
-        "DAY" => {
-            // Accepts both text YYYY-MM-DD (return same text) and integer
-            // epoch seconds (re-format via civil_from_days).
-            if let Ok(secs) = raw.trim().parse::<i64>() {
-                let days = secs.div_euclid(86_400);
-                let (y, m, d) = civil_from_days(days);
-                return Value::Text(format!("{:04}-{:02}-{:02}", y, m, d));
-            }
-            if raw.len() < 10 {
-                return Value::Null;
-            }
-            // Strip everything after the day portion so `YYYY-MM-DD HH:MM:SS`
-            // still truncates cleanly.
-            Value::Text(raw[..10].to_string())
+            d = 1;
+            Value::Text(format!("{:04}-{:02}-{:02}", y, m, d))
         }
         "WEEK" => {
             // Truncate to the Monday of the ISO week containing the date.
             // PostgreSQL/Snowflake semantics: Mon=1..Sun=7. Howard Hinnant
             // epoch: 1970-01-01 (Thu) is day 0; dow for Mon=0..Sun=6 is
-            // (z + 3).rem_euclid(7). Returns Value::Text("YYYY-MM-DD").
-            let (y, m, d) = if let Ok(secs) = raw.trim().parse::<i64>() {
-                let days = secs.div_euclid(86_400);
-                civil_from_days(days)
-            } else {
-                if raw.len() < 10 {
-                    return Value::Null;
-                }
-                let y: i64 = raw[..4].parse().unwrap_or(0);
-                let m: i64 = raw[5..7].parse().unwrap_or(1);
-                let d: i64 = raw[8..10].parse().unwrap_or(1);
-                (y, m, d)
-            };
+            // (z + 3).rem_euclid(7).
             let z = days_from_civil(y, m, d);
             let dow = (z + 3_i64).rem_euclid(7); // Mon=0..Sun=6
-            let monday_z = z - dow;
-            let (y2, m2, d2) = civil_from_days(monday_z);
+            let (y2, m2, d2) = civil_from_days(z - dow);
             Value::Text(format!("{:04}-{:02}-{:02}", y2, m2, d2))
         }
-        "HOUR" | "MINUTE" | "SECOND" => {
-            let secs = match parse_text_to_secs(&raw) {
-                Some(s) => s,
-                None => return Value::Null,
-            };
-            let truncated = match unit.as_str() {
-                "HOUR" => secs - secs.rem_euclid(3600),
-                "MINUTE" => secs - secs.rem_euclid(60),
-                _ => secs, // SECOND
-            };
-            Value::Integer(truncated)
+        "DAY" => {
+            hh = 0;
+            mm = 0;
+            ss = 0;
+            Value::Text(format!(
+                "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+                y, m, d, hh, mm, ss
+            ))
         }
+        "HOUR" => {
+            mm = 0;
+            ss = 0;
+            Value::Text(format!(
+                "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+                y, m, d, hh, mm, ss
+            ))
+        }
+        "MINUTE" => {
+            ss = 0;
+            Value::Text(format!(
+                "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+                y, m, d, hh, mm, ss
+            ))
+        }
+        "SECOND" => Value::Text(format!(
+            "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+            y, m, d, hh, mm, ss
+        )),
         _ => Value::Null,
     }
 }
