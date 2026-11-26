@@ -616,6 +616,15 @@ drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-main`
      「deferred / 不支持」⇒ **需属主裁决**。
 - **证据**: `docs/releases/v4.1.0/evidence/wp-b-g-reverify-2026-11-26/wp_b_g_reverify.txt`
   (sha256 `e82950d96e45f453a7de6f83cfcafdbd57402a0ac4f089a5f380f46dc64d53e5`) §3
+- **进展（2026-11-26）**: ① 已做一半 —— `crates/types/tests/wp_b_legacy.rs` 的
+  **20 条同义反复假测试**（#4676 的 15 条 + #4716 的 5 条）已删除，覆盖改到真跑文件
+  （`crates/executor/tests/issue_4676_math_funcs_test.rs` 31 条 /
+  `crates/parser/tests/issue_4716_date_trunc_test.rs` 5 条 /
+  `tests/integration/sql/repro_4716_date_trunc.rs` 14 条），该文件只留指针注释。
+  `crates/transaction/tests/wp_e_legacy.rs` 的 8 条假测试仍在（属 #4847 / WP-E 组）。
+  另：T4 切片的 4 条「RED 固化」反例（`crates/storage/tests/tf_t4_ai_candidate_v1.rs`）
+  此前**未登记**却让 storage crate 的套件在发布线上长期红着，已按 ADR-008 §Policy 2
+  登记为在案 GAP（`ADR-008-exception-t4-binary-storage-v2.md`，registry 136 → 140）。
 - **修复方向**: ① 重写两个假绿测试文件为真跑用例（或删除并把覆盖补进真实测试文件）；
   ② 逐条处理 6 条过期 ignore（改断言 + 更新 registry reason），2 条真实 GAP 保留；
   ③ 属主裁定 #4848 / #4846 的开关化方案与声明侧文档同步。

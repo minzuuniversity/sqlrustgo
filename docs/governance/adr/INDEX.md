@@ -48,6 +48,7 @@ follow the file naming convention `ADR-NNN-<topic>.md`.
 | **ADR-013** | **v3.10 Wired-Soak DDL + Wire Protocol 修复 RFC** | PROPOSED | v3.10 milestone plan (closes Issue #3302, 4-PR plan) | [ADR-013-v310-wired-soak-ddl-and-wire-protocol-repair.md](ADR-013-v310-wired-soak-ddl-and-wire-protocol-repair.md) |
 | **ADR-008x** | **ADR-008 §Policy 2 Exception: v3.11.0 G4 TPC-H SF=1 Wire Test Deferral** | PROPOSED | First use of ADR-008 exception mechanism; expires 2026-09-01 | [ADR-008-exception-v311-tpch-sf1.md](ADR-008-exception-v311-tpch-sf1.md) |
 | **ADR-008y** | **ADR-008 §Policy 2 Exception: V312-58 Q17 SF=1 Perf Benchmark Deferral** | PROPOSED | Second use of ADR-008 exception; expires 2026-10-31; GA-5 cell-diff gate carries canonical PASS artifact | [ADR-008-exception-v312-58-q17-sf1.md](ADR-008-exception-v312-58-q17-sf1.md) |
+| **ADR-008z** | **ADR-008 §Policy 2 Exception: T4 `BinaryTableStorageV2` 4 条 RED 固化反例登记为 GAP** | PROPOSED | Third use of ADR-008 exception; expires 2026-12-26; storage crate 的 4 条未登记红项转为在案 GAP（registry 136 → 140） | [ADR-008-exception-t4-binary-storage-v2.md](ADR-008-exception-t4-binary-storage-v2.md) |
 | **ADR-014** | Multi-AI Coordination | ACCEPTED | Z6G4 + macmini + future AI agent protocol (5 evidence fields, conflict resolution) | [ADR-014-multi-ai-coordination.md](ADR-014-multi-ai-coordination.md) |
 | **ADR-015** | 12 条 ACL/审计链契约测试的显式延后（假覆盖 → 登记在案的未实现） | ACCEPTED | omp (macmini) + 属主裁定待补（双专家席位恢复后复核） | [ADR-015-fake-coverage-contracts-deferred.md](ADR-015-fake-coverage-contracts-deferred.md) |
 
@@ -59,6 +60,7 @@ exceptions are:
 
 - **ADR-008x** (2026-08-09, expires 2026-09-01) — v3.11.0 G4 TPC-H SF=1 wire test deferral
 - **ADR-008y** (2026-08-31, expires 2026-10-31) — V312-58 Q17 SF=1 perf benchmark deferral
+- **ADR-008z** (2026-11-26, expires 2026-12-26) — T4 `BinaryTableStorageV2` 4 条 RED 固化反例登记为 GAP
 
 Exception suffix convention: `ADR-NNNx` (e.g. `ADR-008x`, `ADR-008y`). The underlying
 policy ADR retains its base number; each exception is a separate file with its own
