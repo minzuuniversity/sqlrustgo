@@ -253,23 +253,30 @@ fn repro_4655_date_trunc_day_runs() {
         .execute("SELECT DATE_TRUNC('DAY', ts) FROM t")
         .expect("DATE_TRUNC DAY must execute");
     assert_eq!(r.rows.len(), 1);
-    assert_eq!(format!("{:?}", r.rows[0][0]), "Text(\"2024-07-15\")");
+    // Issue #4716 / spec `executor-date-trunc-function`: the day scenario
+    // truncates a timestamp to the start of the day and keeps the
+    // timestamp shape — '2026-09-15 00:00:00', not '2026-09-15'.
+    assert_eq!(
+        format!("{:?}", r.rows[0][0]),
+        "Text(\"2024-07-15 00:00:00\")"
+    );
 }
 
 #[test]
-fn repro_4655_date_trunc_unknown_unit_returns_null() {
+fn repro_4716_date_trunc_unknown_unit_is_rejected() {
+    // Issue #4716 / spec `executor-date-trunc-function`: "unknown unit must
+    // error" — an unsupported unit raises instead of silently returning
+    // NULL (which read as "the date happened to be NULL").
     let mut x = fresh_mem();
     x.execute("CREATE TABLE t(ts TEXT)").unwrap();
     x.execute("INSERT INTO t VALUES ('2024-07-15 13:45:30')")
         .unwrap();
-    let r = x
+    let err = x
         .execute("SELECT DATE_TRUNC('UNKNOWN', ts) FROM t")
-        .expect("DATE_TRUNC must not error on unknown unit");
-    assert_eq!(r.rows.len(), 1);
+        .expect_err("an unsupported DATE_TRUNC unit must be rejected");
     assert!(
-        matches!(r.rows[0][0], sqlrustgo::Value::Null),
-        "unknown unit must return NULL, got: {:?}",
-        r.rows[0][0]
+        err.to_string().contains("DATE_TRUNC unit must be one of"),
+        "the error must name the supported units, got: {err}"
     );
 }
 
