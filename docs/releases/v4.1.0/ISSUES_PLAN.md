@@ -217,7 +217,7 @@ parser AST 接受性，不含 binder / executor / storage。而 3 条 issue 的�
 | #4682 | `sqlite_master` / `sqlite_sequence` / `sqlite_temp_master` 缺失 | **FIXED**（2026-11-26 复验；见 §4.11） | — |
 | #4652 | CREATE PROCEDURE/FUNCTION 接受但不存储 (DDL fake-success) | **FIXED**（2026-11-26 复验；CLI 显式报错 + 执行器落库） | — |
 | #4672 | SQLite AUTOINCREMENT 仍未生效 | **FIXED**（2026-11-26 复验） | — |
-| #4669 | 复杂 DROP INDEX / function index / partial index | ❌ **NOT FIXED** — 4 子项修好 2（DROP INDEX / CREATE FUNCTION 体）；**函数索引与部分索引仍复现原症状**，已重开 | own |
+| #4669 | 复杂 DROP INDEX / function index / partial index | ⚠️ **PARTIAL（2026-11-26）** — 4 子项修好 2（DROP INDEX / CREATE FUNCTION 体）；另 2 个子项（函数索引 / 部分索引）**功能仍未实现**，但已从「误导性报错 / 静默丢弃」改为**明确拒绝**（OR-downgrade），issue 保持 open | own |
 | #4709 | CHECK multi-condition 静默接受非法 row | **FIXED**（2026-11-26 复验） | — |
 | #4703 | UPSERT / trigger-column syntax failures | **FIXED**（2026-11-26 复验；CLI 侧 VALUES() upsert 仍显式拒收＝OR-downgrade） | — |
 
@@ -426,7 +426,7 @@ mtime，重写无法蒙混过关。
 | #4682 | C | ✅ FIXED | `v312_71_sqlite_master_test` 4/4、`v312_76_sqlite_system_tables_test` 10/10 |
 | #4652 | C | ✅ FIXED | CLI 显式报错（`sqlite_mode.rs:325-366`）+ 执行器落库；`issue_4513_create_procedure_test` 13/13 |
 | #4672 | C | ✅ FIXED | id 分配在写锁内（`src/engine_dml.rs:565-595`）；`v312_76…` 10/10 |
-| #4669 | C | ❌ **NOT FIXED（已重开）** | DROP INDEX 6/6 绿；但 `CREATE INDEX i1 ON t(UPPER(a))` → `Column not found`、`CREATE INDEX i2 ON t(a) WHERE a > 200` → **WHERE 被静默丢弃** |
+| #4669 | C | ⚠️ **PARTIAL（已重开，功能未实现）** | DROP INDEX 6/6 绿；2026-11-26 起 `CREATE INDEX i1 ON t(UPPER(a))` 与 `CREATE INDEX i2 ON t(a) WHERE a > 200` 均**明确拒绝**（parser 已分别识别函数索引表达式与部分索引谓词；executor 不再报误导性的 `Column not found`、不再静默丢弃 WHERE 建出全量索引）。**索引物化与谓词过滤仍未实现 ⇒ issue 保持 open** |
 | #4709 | C | ✅ FIXED | `repro_v312_85_check` 4/4（issue 原文 `CHECK (val>0 AND val<100)` 插 200 被拒） |
 | #4703 | C | ✅ FIXED | `issue_4703_on_duplicate_test` 3/3、`v312_75_update_of_trigger_test` 5/5 |
 | #4668 | D | ✅ FIXED | NATURAL JOIN / 多列 USING 真实实现；`wp_d_legacy` 13/13 |

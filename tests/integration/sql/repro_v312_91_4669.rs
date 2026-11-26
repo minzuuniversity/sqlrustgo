@@ -241,3 +241,85 @@ fn drop_index_differential_test_p3_ddl_001_4810() {
         after
     );
 }
+
+// ============================================================================
+// Issue #4669 sub-bug 2 — function index `CREATE INDEX i ON t(UPPER(a))`
+//
+// Before 2026-11-26 the parser took `UPPER` as a **column name**, so the
+// executor looked for a column literally named "UPPER" and failed with the
+// misleading `Column not found`. The parser now records the entry as an
+// expression, and the executor refuses the statement with a message that
+// says what is actually missing (this engine does not materialise
+// expression indexes) instead of pretending the column does not exist.
+// ============================================================================
+
+#[test]
+fn function_index_is_rejected_with_a_clear_error_4669() {
+    let mut e = fresh_mem();
+    e.execute("CREATE TABLE t(a INT, b INT)").unwrap();
+    let err = e
+        .execute("CREATE INDEX idx_up ON t(UPPER(a))")
+        .expect_err("function indexes must be refused, not silently mis-indexed");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("not supported"),
+        "the error must say the feature is unsupported, got: {msg}"
+    );
+    assert!(
+        !msg.contains("Column not found"),
+        "the misleading 'Column not found' must be gone, got: {msg}"
+    );
+    // A refused statement must not leave an index behind.
+    let names = sqlite_master_index_names(&mut e);
+    assert!(
+        !names.iter().any(|n| n == "idx_up"),
+        "no index row may survive the refusal, got {names:?}"
+    );
+}
+
+// ============================================================================
+// Issue #4669 sub-bug 3 — partial index `CREATE INDEX i ON t(a) WHERE a > 200`
+//
+// Before 2026-11-26 the WHERE clause was never parsed and the top-level
+// parser tolerated the trailing tokens ⇒ the predicate was **silently
+// dropped** and a FULL index was created ("静默接受但实际未生效"). The
+// parser now records the predicate, and the executor refuses the statement.
+// ============================================================================
+
+#[test]
+fn partial_index_is_rejected_with_a_clear_error_4669() {
+    let mut e = fresh_mem();
+    e.execute("CREATE TABLE t(a INT, b INT)").unwrap();
+    e.execute("INSERT INTO t VALUES (1, 1), (300, 2)").unwrap();
+    let err = e
+        .execute("CREATE INDEX idx_partial ON t(a) WHERE a > 200")
+        .expect_err("partial indexes must be refused, not silently turned into full indexes");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("partial indexes"),
+        "the error must name the partial-index form, got: {msg}"
+    );
+    // The refusal must not leave a full index pretending to be partial.
+    let names = sqlite_master_index_names(&mut e);
+    assert!(
+        !names.iter().any(|n| n == "idx_partial"),
+        "no index row may survive the refusal, got {names:?}"
+    );
+}
+
+// ============================================================================
+// Regression guard — the ordinary single-column index still works.
+// ============================================================================
+
+#[test]
+fn plain_column_index_still_works_4669() {
+    let mut e = fresh_mem();
+    e.execute("CREATE TABLE t(a INT, b INT)").unwrap();
+    e.execute("CREATE INDEX idx_a ON t(a)")
+        .expect("a plain column index must still be accepted");
+    let names = sqlite_master_index_names(&mut e);
+    assert!(
+        names.iter().any(|n| n == "idx_a"),
+        "idx_a must be in the catalog, got {names:?}"
+    );
+}

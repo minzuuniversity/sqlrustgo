@@ -844,6 +844,32 @@ impl<S: StorageEngine + 'static> ExecutionEngine<S> {
             .to_lowercase();
         let mut storage = self.storage.write();
         let table_name = &idx.table;
+        // Issue #4669 sub-bugs 2 + 3: this engine does **not** materialise
+        // expression indexes, and it does **not** apply a partial-index
+        // predicate. Both forms used to be accepted and then lie:
+        //   - `CREATE INDEX i ON t(UPPER(a))` — the parser took "UPPER" as a
+        //     column name, so the lookup below failed with the misleading
+        //     "Column not found" instead of saying what was actually missing;
+        //   - `CREATE INDEX i ON t(a) WHERE a > 200` — the WHERE was never
+        //     parsed and the trailing tokens were tolerated, so a **full**
+        //     index was built and the predicate vanished ("静默接受但未生效").
+        // Refuse both loudly rather than accept an index that does not do
+        // what it says. (The parser now records both forms: the column list
+        // entry carries the expression, and `where_clause` carries the
+        // predicate.)
+        if idx.columns.iter().any(|spec| spec.expression.is_some()) {
+            return Err(SqlError::ExecutionError(
+                "function/expression indexes are not supported by this engine (issue #4669)"
+                    .to_string(),
+            ));
+        }
+        if idx.where_clause.is_some() {
+            return Err(SqlError::ExecutionError(
+                "partial indexes (CREATE INDEX ... WHERE ...) are not supported by this engine \
+                 (issue #4669)"
+                    .to_string(),
+            ));
+        }
         // V313-100 / Issue #4701 sub-1: a CREATE INDEX column list may
         // start with an arbitrary expression, not a bare column name.
         // Skip the table-column lookup when the head entry has no
