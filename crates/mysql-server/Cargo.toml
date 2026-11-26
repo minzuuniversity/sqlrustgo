@@ -17,7 +17,7 @@ sqlrustgo-tools = { path = "../tools" }
 sqlrustgo-telemetry = { path = "../telemetry" }
 query-stats = { path = "../query-stats" }
 byteorder = "1"
-thiserror = "1"
+thiserror = "2"
 parking_lot.workspace = true
 crossbeam-channel = "0.5"
 tracing = "0.1"
