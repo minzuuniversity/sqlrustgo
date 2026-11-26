@@ -26,9 +26,9 @@
 | 优先级 | 项数（2026-10-01 原始） | 仍未销账（2026-10-24） | 主要类别 |
 |---|---|---|---|
 | **P0** 阻断任何 release | **8** | **1** | v4.0.0 GA 撤销（`REVOKED`，是状态不是缺陷） |
-| **P1** 阻断 ALPHA 推进 | **7** | **6** | 覆盖率 60.58%、Q20 oracle 缺产物、legacy backlog 19 条（P1-03 拆为 7 个 WP 子项；WP-A 4 条与 WP-H #4639 已于 2026-11-26 复验 FIXED 并移出待办）、crate 状态描述错误、G13 门禁红 |
-| **P2** 不阻断但需记录 | **7** | **7** | 门禁假阳性、Q20 decorrelate 零调用点、大文件无门禁、v3.12 失联、未核实遗留、运营债 |
-| **合计** | **22** | **14** | |
+| **P1** 阻断 ALPHA 推进 | **7** | **6** | 覆盖率 60.58%、Q20 oracle 缺产物、legacy backlog 4 条（P1-03 拆为 8 个 WP 子项；2026-11-26 逐条实跑复验后 21 条 FIXED 移出待办，余 #4669 / #4716 / #4676 / #4847）、crate 状态描述错误、G13 门禁红 |
+| **P2** 不阻断但需记录 | **7** | **8** | 门禁假阳性、Q20 decorrelate 零调用点、大文件无门禁、v3.12 失联、未核实遗留、运营债、**假绿测试 + 过期 GAP 注释（P2-08，2026-11-26 新登记）** |
+| **合计** | **22** | **15** | |
 
 **性能状态**：A1/B2 A/B 实测已落地 (见 `PERF_A1_4912_AB_MEASUREMENT.md` /
 `PERF_B2_4915_AB_MEASUREMENT.md`)，B2.1 在 22x-39x 范围，但发现一处 regression
@@ -398,28 +398,33 @@ drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-main`
     缺失**直接矛盾** —— AFP Type B
 - **修复方向**: 生成 `sqlrustgo/q20.tsv` 真实产物，重新 hash + 改写 GA5 报告
 
-### P1-03 legacy backlog（拆成 7 个 WP 子项）
+### P1-03 legacy backlog（拆成 8 个 WP 子项）
 
-- **verdict**: `OPEN`（子项 P1-03a…P1-03f；P1-03g 已于 2026-11-26 销账）
+- **verdict**: `OPEN`（余 4 条：P1-03a 的 #4669、P1-03e 的 #4716/#4676、P1-03h 的 #4847）
 - **拆解口径（2026-11-26）**: 原条目用**一条** P1 记 20 个 issue，销账进度无法跟踪 ⇒
-  拆成 **7 个子项**（每个 WP 组一条），各自独立销账、独立取证。组内 issue 列表以
+  拆成 **8 个子项**（每个 WP 组一条），各自独立销账、独立取证。组内 issue 列表以
   `ISSUES_PLAN.md §4.1–§4.6` 为准。
+- **复验口径**: 逐条取 Gitea 状态 → 定位实现 → 跑**真跑**回归测试或最小 SQL 探针 ⇒
+  判定（`ISSUES_PLAN.md` §4.11 逐条表；证据
+  `docs/releases/v4.1.0/evidence/wp-b-g-reverify-2026-11-26/wp_b_g_reverify.txt`
+  sha256 `e82950d96e45f453a7de6f83cfcafdbd57402a0ac4f089a5f380f46dc64d53e5`）。
 - **位置**: `docs/releases/v4.1.0/ISSUES_PLAN.md §4`
 
 | 子项 | WP 组 | 条数 | issue | 状态 |
 |---|---|---|---|---|
-| P1-03a | WP-C DDL / Integrity | 6 | #4682 #4652 #4672 #4669 #4709 #4703 | NOT STARTED |
-| P1-03b | WP-D Join / Subquery | 4 | #4668 #4656 #4649 #4636 | NOT STARTED |
-| P1-03c | WP-F Schema Migration | 1 | #4848 | NOT STARTED |
-| P1-03d | WP-G Type / Comparison | 1 | #4846 | NOT STARTED |
-| P1-03e | WP-B completion | 6 | #4721 #4674 #4716 #4676 #4675 #4670 | NOT STARTED |
-| P1-03f | WP-E completion | 1 | #4626 | NOT STARTED |
+| P1-03a | WP-C DDL / Integrity | 6 | #4682 #4652 #4672 #4669 #4709 #4703 | 5 条 FIXED；**#4669 NOT FIXED（已重开）** |
+| P1-03b | WP-D Join / Subquery | 4 | #4668 #4656 #4649 #4636 | **全部 FIXED（2026-11-26 复验）** |
+| P1-03c | WP-F Schema Migration | 1 | #4848 | **FIXED（2026-11-26 复验）** |
+| P1-03d | WP-G Type / Comparison | 1 | #4846 | **FIXED（2026-11-26 复验）** |
+| P1-03e | WP-B completion | 6 | #4721 #4674 #4716 #4676 #4675 #4670 | 4 条 FIXED；**#4716 / #4676 NOT FIXED（已重开）** |
+| P1-03f | WP-E completion | 1 | #4626 | **FIXED（2026-11-26 复验）** |
 | P1-03g | WP-H | 1 | #4639 | **FIXED（2026-11-26 复验）** |
+| P1-03h | WP-E 其余项 | 1 | #4847 | **PARTIAL**（此前未计入 §4.7 计数，2026-11-26 复核后补入） |
 
-- **剩余待办**: **19 条**（P1-03a…P1-03f）
+- **剩余待办**: **4 条**（#4669、#4716、#4676、#4847）
 - **WP-A 4 条**不在本表——已于 2026-11-26 复验 FIXED 并移出待办（见 P0-02 与
   `ISSUES_PLAN.md §4.0`）
-- **修复方向**: 逐条按 `ISSUES_PLAN.md §4` 顺序关闭；预估 6-10 周（per §4.7）
+- **修复方向**: 逐条按 `ISSUES_PLAN.md §4` 顺序关闭；余量 4 条，预估 2-3 周
 
 #### P1-03g — WP-H #4639：RIGHT / FULL OUTER JOIN 语义
 
@@ -586,6 +591,34 @@ drift gate (`scripts/sync/5remotes_drift_check.sh`) 当前 `--strict-main`
 (2026-09-30 23:36:08 完成；24 项 verdict 全带 file:line)
 
 ---
+
+### P2-08 假绿测试 + 过期 GAP 注释（2026-11-26 复验 WP-B..G 时暴露）
+
+- **verdict**: `OPEN`（2026-11-26 新登记）
+- **来源**: 2026-11-26 对 WP-B..G 19 条 legacy backlog 逐条实跑复验时暴露的**账外债**
+  （不在 §4.7 的 20 条计数内），逐条判定见 `ISSUES_PLAN.md` §4.11
+- **三类**：
+  1. **同义反复的假绿测试**：`crates/types/tests/wp_b_legacy.rs`、
+     `crates/transaction/tests/wp_e_legacy.rs` 的用例形如
+     `let expected = true; assert_eq!(expected, expected);` —— **SQL 从未执行**。
+     而 v4.0.0 台账（`CLAIM_DOWNGRADE_MANIFEST.md §3.1` / §3.8）正是拿这两个文件
+     当作「partial test coverage」的依据 ⇒ 属 `[AFP-VIOLATION]` 类伪证据。
+  2. **过期的 `#[ignore]` GAP 注释**：`crates/executor/tests/wp_c_legacy.rs` 的 8 条
+     ACTIVE ignore 里，实跑 `--ignored` 得 **6 FAILED**（缺陷已修，断言不成立）+
+     **2 PASS**（GAP 仍真：`create_partial_index_errors_recognizably`；
+     `sqlite_master_is_queryable` 只在 **executor crate 的独立引擎**里仍缺，根包
+     `src/system_tables.rs` 已有）。`tests/baseline/ignore_registry.json` 里对应的
+     reason 也已过期 ⇒ **registry 与源码双漂移**。
+  3. **claim-boundary 越界**：#4848 / #4846 的修复 PR 直接合进 `develop/v4.0.0`
+     且**无选项开关**，与 `ISSUES_PLAN.md` §4.3 / §4.4 关键路径要求的
+     「用新开关实现，不静默改默认语义」冲突；声明侧文档（v4.0.0 / v4.1.0
+     `CLAIM_DOWNGRADE_MANIFEST.md`、`MIGRATION_GUIDE.md`、`README.md`）仍写
+     「deferred / 不支持」⇒ **需属主裁决**。
+- **证据**: `docs/releases/v4.1.0/evidence/wp-b-g-reverify-2026-11-26/wp_b_g_reverify.txt`
+  (sha256 `e82950d96e45f453a7de6f83cfcafdbd57402a0ac4f089a5f380f46dc64d53e5`) §3
+- **修复方向**: ① 重写两个假绿测试文件为真跑用例（或删除并把覆盖补进真实测试文件）；
+  ② 逐条处理 6 条过期 ignore（改断言 + 更新 registry reason），2 条真实 GAP 保留；
+  ③ 属主裁定 #4848 / #4846 的开关化方案与声明侧文档同步。
 
 ## 6. References
 

@@ -64,10 +64,12 @@
 2. **V400-09 168h SOAK FINAL** — ✅ 已完成
    `docs/releases/v4.0.0/V400_09_168H_SOAK_FINAL_REPORT.md` 已存在。
 
-3. **WP-C..G deferred items** — 4 个 WP 组 / 12 条 issue
-   （WP-C 6 / WP-D 4 / WP-F 1 / WP-G 1）待迁移至 v4.1.0。
-   另加 WP-B 6 条 + WP-E #4626 1 条 = 19 条（WP-H #4639 已于 2026-11-26 复验 FIXED
-   并移出待办，见 §4.10；总计见 §4.7）。
+3. **WP-C..G deferred items** — 原 4 个 WP 组 / 12 条 issue（WP-C 6 / WP-D 4 /
+   WP-F 1 / WP-G 1）待迁移至 v4.1.0；**2026-11-26 实跑复验后，其中 11 条已修好并
+   移出待办**，只余 WP-C 的 **#4669** 1 条（函数索引 / 部分索引两个子项）。
+   WP-B 6 条 + WP-E #4626 1 条：#4626 已修好移出；WP-B 余 **#4716 / #4676** 2 条。
+   WP-E 的另一条 **#4847** 此前未被 §4.7 计入，2026-11-26 复核它仍是 partial ⇒ 补入。
+   合计待办 **4 条**（总计见 §4.7，逐条判定见 §4.11）。
 
 4. **v4.0.0 STAGE.yaml SSOT contradiction**（DRAFT vs GA_GATE_REPORT.md 声明
    GA CONDITIONAL PASS）— governance gap，待人工决策。
@@ -79,14 +81,19 @@
 
 ## 4. WP-A..G detailed backlog (v4.1.0 scope)
 
-The following 19 issues are in v4.1.0 scope. 12 were **deferred** from
-v4.0.0 to v4.0.1 (now v4.1.0) via `docs/releases/v4.0.0/WP_LEGACY_TRIAGE.md`
-§Detailed Status (§4.1–§4.4 below); 6 WP-B + 1 WP-E (#4626) are **carry-forward
-completions** of partial work.
-The 4 WP-A items (§4.0) were **re-opened** 2026-09-30 and **re-verified
-fixed 2026-11-26** — they are kept in §4.0 for traceability but are **not
-counted** in the backlog any more. The WP-H item #4639 (§4.10) was **re-verified
-fixed 2026-11-26** as well and is likewise no longer counted.
+The following **4** issues are in v4.1.0 scope. The original list was 24 items:
+12 **deferred** from v4.0.0 to v4.0.1 (now v4.1.0) via
+`docs/releases/v4.0.0/WP_LEGACY_TRIAGE.md` §Detailed Status (§4.1–§4.4 below);
+6 WP-B + 1 WP-E (#4626) are **carry-forward completions** of partial work.
+The 4 WP-A items (§4.0) were **re-opened** 2026-09-30 and **re-verified fixed
+2026-11-26**; the WP-H item #4639 (§4.10) was re-verified fixed the same day;
+and 16 further items (WP-B/C/D/E/F/G) were re-verified on 2026-11-26 (§4.11).
+All of them stay in their sections for traceability but are **not counted** in
+the backlog any more. What remains is **4 items**: **#4669** (WP-C), **#4716**
+and **#4676** (WP-B) — the three whose defects are still reproducible, all
+**re-opened on Gitea** with the measured evidence — plus **#4847** (WP-E), which
+is still *partial* (the wire-side path was never implemented) and had not been
+counted in §4.7 at all.
 
 > **计数口径修正**（2026-09-30）：本节原写 "The following 18 issues"，
 > 与 §4.7 汇总的 20 不自洽（12 + 6 + 1 + 1 = 20）。已订正为 20 并标明构成。
@@ -205,12 +212,12 @@ parser AST 接受性，不含 binder / executor / storage。而 3 条 issue 的�
 
 | Issue | Title (per v4.0.0 LEGACY_ISSUES §3 — authoritative) | Status | v4.1.0 plan |
 |---|---|---|---|
-| #4682 | `sqlite_master` / `sqlite_sequence` / `sqlite_temp_master` 缺失 | NOT STARTED | own |
-| #4652 | CREATE PROCEDURE/FUNCTION 接受但不存储 (DDL fake-success) | NOT STARTED | own |
-| #4672 | SQLite AUTOINCREMENT 仍未生效 | NOT STARTED | own |
-| #4669 | 复杂 DROP INDEX / function index / partial index | NOT STARTED | own |
-| #4709 | CHECK multi-condition 静默接受非法 row | NOT STARTED | own |
-| #4703 | UPSERT / trigger-column syntax failures | NOT STARTED | own |
+| #4682 | `sqlite_master` / `sqlite_sequence` / `sqlite_temp_master` 缺失 | **FIXED**（2026-11-26 复验；见 §4.11） | — |
+| #4652 | CREATE PROCEDURE/FUNCTION 接受但不存储 (DDL fake-success) | **FIXED**（2026-11-26 复验；CLI 显式报错 + 执行器落库） | — |
+| #4672 | SQLite AUTOINCREMENT 仍未生效 | **FIXED**（2026-11-26 复验） | — |
+| #4669 | 复杂 DROP INDEX / function index / partial index | ❌ **NOT FIXED** — 4 子项修好 2（DROP INDEX / CREATE FUNCTION 体）；**函数索引与部分索引仍复现原症状**，已重开 | own |
+| #4709 | CHECK multi-condition 静默接受非法 row | **FIXED**（2026-11-26 复验） | — |
+| #4703 | UPSERT / trigger-column syntax failures | **FIXED**（2026-11-26 复验；CLI 侧 VALUES() upsert 仍显式拒收＝OR-downgrade） | — |
 
 **Source**: `docs/releases/v4.0.0/WP_LEGACY_TRIAGE.md` — "DDL changes
 require schema migration v4.0.1".
@@ -219,10 +226,10 @@ require schema migration v4.0.1".
 
 | Issue | Title (per v4.0.0 LEGACY_ISSUES §3.5 — authoritative) | Status | v4.1.0 plan |
 |---|---|---|---|
-| #4668 | NATURAL JOIN / multi-column USING 错误 | NOT STARTED | own |
-| #4656 | `> ALL` / `= ANY` 子query 错误 | NOT STARTED | own |
-| #4649 | LEFT JOIN USING 退化为笛卡尔积 | NOT STARTED | own |
-| #4636 | Correlated scalar subquery 失败 | NOT STARTED | own |
+| #4668 | NATURAL JOIN / multi-column USING 错误 | **FIXED**（2026-11-26 复验；已超越原 OR-downgrade 口径） | — |
+| #4656 | `> ALL` / `= ANY` 子query 错误 | **FIXED**（2026-11-26 复验；相关量化子查询仍是保守降级） | — |
+| #4649 | LEFT JOIN USING 退化为笛卡尔积 | **FIXED**（2026-11-26 复验） | — |
+| #4636 | Correlated scalar subquery 失败 | **FIXED**（2026-11-26 复验） | — |
 
 **Source**: `docs/releases/v4.0.0/WP_LEGACY_TRIAGE.md` — "graph projection
 extends this".
@@ -231,7 +238,7 @@ extends this".
 
 | Issue | Title | Status | v4.1.0 plan |
 |---|---|---|---|
-| #4848 | ALTER TABLE RENAME COLUMN | NOT STARTED | own |
+| #4848 | ALTER TABLE RENAME COLUMN | **FIXED**（2026-11-26 复验；默认开启无开关，已触及 v4.0.0 claim-boundary §3.4） | — |
 
 **Source**: `docs/releases/v4.0.0/WP_LEGACY_TRIAGE.md` §Detailed Status — "ALTER
 TABLE RENAME COLUMN is part of schema migration framework (WP-F). v4.0.0 GA
@@ -242,7 +249,7 @@ CLAIM_DOWNGRADE_MANIFEST."
 
 | Issue | Title | Status | v4.1.0 plan |
 |---|---|---|---|
-| #4846 | CHAR(n) PAD SPACE semantics | NOT STARTED | own |
+| #4846 | CHAR(n) PAD SPACE semantics | **FIXED**（2026-11-26 复验；仅 `=`/`IN`/`BETWEEN` 走 PAD SPACE，排序比较仍 BINARY；已触及 claim-boundary §3.5） | — |
 
 **Source**: `docs/releases/v4.0.0/WP_LEGACY_TRIAGE.md` — "CHAR(n) byte-vs-char
 fix requires deep executor changes".
@@ -258,6 +265,17 @@ The 6 WP-B issues (#4721, #4674, #4716, #4676, #4675, #4670) have
 partial test coverage in v4.0.0 but require executor changes to close.
 v4.1.0 should own the executor-side closure.
 
+**2026-11-26 实跑复验（逐条判定见 §4.11）**：
+
+| Issue | 判定 | 依据 |
+|---|---|---|
+| #4721 | **FIXED** | `round(3.5,0)` / `round(70.0*0.5,2)` → `4.0` / `35.0`（Float），parse_lit 不再截断为 Integer |
+| #4674 | **FIXED** | `CHAR_LENGTH('abc')` → 3（codepoint 计数） |
+| #4675 | **FIXED** | `POSITION('bc' IN 'abcd')` → 2；`LOCATE('bc','abcd',2)` → 2；16 条 E2E 绿 |
+| #4670 | **FIXED** | `MD5/SHA1/SHA2/UNHEX/CEIL/FLOOR/TRUNCATE/HEX` 全部实装且实测正确（**但哈希类零回归覆盖**） |
+| #4716 | ❌ **NOT FIXED** | `DATE_TRUNC` 已有真实计算，但缺 millennium/century/decade/microsecond；未知单位静默返回 NULL（spec 要求抛错）；输出格式与 spec 不符 —— **已重开** |
+| #4676 | ❌ **NOT FIXED** | 主体 5 个函数已修且 16 条 E2E 绿，但 `POW` / `LN` 别名与 `LOG(base,x)` 双参、混合型 `MOD` 仍为 NULL —— **已重开** |
+
 ### 4.6 WP-E completion (carry from v4.0.1 partial)
 
 Per `CLAIM_DOWNGRADE_MANIFEST.md §3.8` (Cross-model transaction V400-05):
@@ -265,25 +283,32 @@ Per `CLAIM_DOWNGRADE_MANIFEST.md §3.8` (Cross-model transaction V400-05):
 > "WP-E issues (#4847, #4626) are partial via V400-05 scaffold."
 
 - **#4847**: V400-05 cross-model transaction scaffold covers partial.
-  Full closure needs v4.1.0 completion.
-- **#4626**: not started. Carry-forward to v4.1.0.
+  Full closure needs v4.1.0 completion。**2026-11-26 复核：仍属 partial** ——
+  引擎/CLI 两条路径已修，但 wire 端「每语句新建连接 ⇒ 显式事务无法跨语句存活」
+  未实现；`crates/transaction/tests/v400_cross_model_tx.rs` 是纯内存自模拟，
+  不接触真实引擎/线协议路径，不构成闭合证据。
+- **#4626**: **FIXED**（2026-11-26 复验）—— issue 于 2026-09-03 即由 PR #4743
+  关闭（CLI 顶层 BEGIN 前预冲刷隐式事务 + 引擎隐式 TX drain + ROLLBACK 状态复位），
+  `cargo test --test issue_4626_select_for_update_rollback_test` → 3/3 绿。
+  残留：引擎层 `SELECT ... FOR UPDATE` 未真正取行锁；`crates/transaction/tests/wp_e_legacy.rs`
+  的 8 条用例是同义反复假测试，不构成证据。
 
 ### 4.7 Total v4.1.0 backlog size
 
 | Category | Count |
 |---|---|
-| WP-C DDL / Integrity | 6 |
-| WP-D Join / Subquery | 4 |
-| WP-F Schema Migration | 1 |
-| WP-G Type / Comparison | 1 |
-| WP-B completion | 6 |
-| WP-E completion (#4626) | 1 |
-| **Total** | **19** |
+| WP-C DDL / Integrity（#4669 函数索引 / 部分索引两个子项） | 1 |
+| WP-B completion（#4716 DATE_TRUNC、#4676 数学函数别名） | 2 |
+| WP-E 其余项（#4847，partial，此前未计入） | 1 |
+| **Total** | **4** |
 
 > 计数沿革：18 → 20（2026-09-30 第一次修正）→ 24（2026-09-30 第二次修正，
 > 因 WP-A 4 条回填）→ 20（2026-11-26 第三次修正：WP-A 4 条复验为 FIXED，
-> 移出待办；§4.0 保留可追溯记录，小节编号不动）→ **19**（2026-11-26 第四次修正：
-> WP-H #4639 复验为 FIXED，移出待办；§4.10 保留记录，编号不动）。
+> 移出待办；§4.0 保留可追溯记录，小节编号不动）→ 19（2026-11-26 第四次修正：
+> WP-H #4639 复验为 FIXED，移出待办；§4.10 保留记录，编号不动）→ **3**
+> （2026-11-26 第五次修正：WP-B/C/D/E/F/G 逐条实跑复验，16 条 FIXED 移出待办，
+> 3 条缺陷仍可复现已重开；逐条判定见 §4.11）。**2026-11-26 第六次修正**：
+> WP-E 的 #4847 此前未计入本表（复核后确认仍 partial），补入 ⇒ 总数 3 → **4**。
 > 2026-09-30 提到的门禁债 `UNREG-IGNORE-WP-A`（`wp_a_legacy.rs:68` 的
 > `#[ignore]` 未登记）**已于 2026-10-08 消解**：该 `#[ignore]` 随块注释支持
 > 一并移除，registry 以 `resolved_removed_ignores` 记录，故不再计入本表。
@@ -383,6 +408,55 @@ mtime，重写无法蒙混过关。
 （WP-H）销账；`LEGACY_ISSUES.md` WP-H 行、`STAGE.yaml` `wp_h_v313_defer` /
 `phase_1_alpha_status.v410_09…`、`FEATURE_MATRIX.md` P-03、`EVALUATION_REPORT.md` D8、
 `FEATURE_CHECKLIST.md`、`GA_RELEASE_TIMELINE.md`、`VERSION_PLAN.md` §1 同步修订。
+
+### 4.11 WP-B..G 逐条实跑复验（2026-11-26，16 条 FIXED / 3 条重开）
+
+> **方法**：按 WP 组逐条取 Gitea issue（状态 + 关闭说明）→ 定位当前实现 → 跑**真跑**
+> 回归测试或最小 SQL 探针 → 判定。2026-09-30 的分诊快照把这些条目记成
+> 「NOT STARTED / DEFERRED」，实测证明**其中 16 条早已修好**，过期的是台账不是代码。
+> 依据：`docs/releases/v4.1.0/evidence/wp-b-g-reverify-2026-11-26/wp_b_g_reverify.txt`
+> (sha256 `e82950d96e45f453a7de6f83cfcafdbd57402a0ac4f089a5f380f46dc64d53e5`)。
+
+| Issue | WP | 判定 | 关键证据 |
+|---|---|---|---|
+| #4682 | C | ✅ FIXED | `v312_71_sqlite_master_test` 4/4、`v312_76_sqlite_system_tables_test` 10/10 |
+| #4652 | C | ✅ FIXED | CLI 显式报错（`sqlite_mode.rs:325-366`）+ 执行器落库；`issue_4513_create_procedure_test` 13/13 |
+| #4672 | C | ✅ FIXED | id 分配在写锁内（`src/engine_dml.rs:565-595`）；`v312_76…` 10/10 |
+| #4669 | C | ❌ **NOT FIXED（已重开）** | DROP INDEX 6/6 绿；但 `CREATE INDEX i1 ON t(UPPER(a))` → `Column not found`、`CREATE INDEX i2 ON t(a) WHERE a > 200` → **WHERE 被静默丢弃** |
+| #4709 | C | ✅ FIXED | `repro_v312_85_check` 4/4（issue 原文 `CHECK (val>0 AND val<100)` 插 200 被拒） |
+| #4703 | C | ✅ FIXED | `issue_4703_on_duplicate_test` 3/3、`v312_75_update_of_trigger_test` 5/5 |
+| #4668 | D | ✅ FIXED | NATURAL JOIN / 多列 USING 真实实现；`wp_d_legacy` 13/13 |
+| #4656 | D | ✅ FIXED | `v312_66_quantified_any_all_test` 7/7 |
+| #4649 | D | ✅ FIXED | `v312_73_join_using_clause_test` 5/5（LEFT JOIN USING 不再是笛卡尔） |
+| #4636 | D | ✅ FIXED | `v312_75_correlated_scalar_subquery_test` 6/6 |
+| #4848 | F | ✅ FIXED | `issue_4848_alter_rename_column_test` 3/3、`wp_f_legacy` 8/8、`ddl_e2e_test` 1/1 |
+| #4846 | G | ✅ FIXED | `issue_4846_char_pad_space_test` 3/3、`pk_fast_path_char_pad_space_4846` 5/5、`operators_char_padding` 4/4 |
+| #4721 | B | ✅ FIXED | `round(3.5,0), round(70.0*0.5,2)` → `4.0, 35.0`（Float） |
+| #4674 | B | ✅ FIXED | `CHAR_LENGTH('abc')` → 3；`issue_4674_char_length_test` 3/3 |
+| #4675 | B | ✅ FIXED | `POSITION('bc' IN 'abcd')` → 2；`issue_4675_position_locate_test` 16/16 |
+| #4670 | B | ✅ FIXED | `MD5/SHA1/SHA2/UNHEX/CEIL/FLOOR/TRUNCATE/HEX` 实测全部正确 |
+| #4626 | E | ✅ FIXED | `issue_4626_select_for_update_rollback_test` 3/3 |
+| #4716 | B | ❌ **NOT FIXED（已重开）** | `DATE_TRUNC` 单位集缺 4 个；未知单位静默 NULL（spec 要求抛错）；输出格式与 spec 不符 |
+| #4676 | B | ❌ **NOT FIXED（已重开）** | `POW`/`LN` 别名 → NULL；`LOG(100,10)` → 4.605（应 2）；`MOD(10.5,3)` → NULL |
+
+**Gitea 处置**：16 条保持 `closed` 并留复验评论；3 条（#4669 / #4716 / #4676）**已重开**，
+评论附实测证据。**backlog 19 → 3**；另有 **#4847**（WP-E）复核后仍是 partial 且此前
+未计入计数 ⇒ 补入，**最终 backlog = 4**。
+
+**本轮同时暴露的账外债（需另立条目）**
+
+1. **假绿测试**：`crates/types/tests/wp_b_legacy.rs`、`crates/transaction/tests/wp_e_legacy.rs`
+   的用例形如 `assert_eq!(expected, expected)`，**SQL 从未执行** —— 而 v4.0.0 台账
+   正是拿这两个文件当「partial test coverage」的依据。`crates/executor/tests/wp_c_legacy.rs`
+   与 `crates/storage/tests/wp_f_legacy.rs` 同族但为真跑用例。
+2. **过期的 `#[ignore]` GAP 注释**：`crates/executor/tests/wp_c_legacy.rs` 的 8 条
+   ACTIVE ignore 里，6 条的 GAP 断言已不成立（实跑 `--ignored` 结果：6 FAILED＝缺陷已修，
+   2 PASS＝GAP 仍真）；其中 `sqlite_master` 一条只在 **executor crate 的独立引擎**里仍缺
+   （根包 `src/system_tables.rs` 已有）。registry 与注释都需重写。
+3. **claim-boundary 被默认开启的改动**：#4848 / #4846 的修复 PR 直接合进 `develop/v4.0.0`
+   且**无选项开关**，与 §4.3 / §4.4 关键路径要求的「用新开关实现，不静默改默认语义」冲突；
+   声明侧文档（v4.0.0/v4.1.0 `CLAIM_DOWNGRADE_MANIFEST.md`、`MIGRATION_GUIDE.md`、
+   `README.md`）仍写「deferred / 不支持」⇒ **需属主裁决**。
 
 ## 5. Alpha→Beta 整改计划（2026-10-08）
 
