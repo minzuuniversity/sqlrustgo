@@ -23,9 +23,10 @@ active development trunk. v4.1.0 carries v4.0.0 forward through:
 3. **Pending** (carried into v4.1.0 scope):
    - ~~WP-A parser legacy #4708/#4696/#4710/#4720~~ — **RESOLVED 2026-11-26**
      (re-opened 2026-09-30, then re-verified fixed at parser + E2E layer; see
-     LEGACY_LEDGER §2.1 / ISSUES_PLAN §4.0) + WP-C/D/F/G legacy issues deferred
-     from v4.0.0 — 4 WP groups / 12 issues
-     (see ISSUES_PLAN.md §4; total v4.1.0 backlog = 20 issues incl. WP-B/WP-E/WP-H)
+     LEGACY_LEDGER §2.1 / ISSUES_PLAN §4.0) + ~~WP-H #4639~~ — **RESOLVED
+     2026-11-26** (re-verified fixed; see ISSUES_PLAN §4.10) + WP-C/D/F/G legacy
+     issues deferred from v4.0.0 — 4 WP groups / 12 issues
+     (see ISSUES_PLAN.md §4; total v4.1.0 backlog = 19 issues incl. WP-B/WP-E)
    - ~~V400-09 168h SOAK FINAL_REPORT~~ — **RESOLVED 2026-09-30**:
      `docs/releases/v4.0.0/V400_09_168H_SOAK_FINAL_REPORT.md` exists
    - ~~3 v4.0.0 alpha gate FAILs~~ — **CLEARED 2026-09-30** by real gate runs

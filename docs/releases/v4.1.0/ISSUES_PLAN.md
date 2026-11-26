@@ -13,7 +13,7 @@
 | 3 alpha gate FAILs | arch_invariants / anti_fabrication / anti_ignore_gate | OPEN (v4.0.0 DRAFT) | **MIGRATE to v4.1.0 scope** |
 | V400-09 168h SOAK | 168h multi-model SOAK FINAL_REPORT | KICKED OFF, no FINAL | Carry forward; require before GA |
 | WP-C..G deferred items | 4 WP groups / 12 issues deferred to v4.0.1 (WP-C, WP-D, WP-F, WP-G) | DEFERRED | **MIGRATE to v4.1.0 scope** per WP-H intent |
-| #4639 | v4.1-targeted legacy item | DEFERRED | Own in v4.1.0 |
+| #4639 | RIGHT / FULL OUTER JOIN 语义（WP-H） | DEFERRED → **FIXED 2026-11-26** | 已闭环，见 §4.10 |
 
 ### 1.2 v4.1.0-new issues
 
@@ -66,7 +66,8 @@
 
 3. **WP-C..G deferred items** — 4 个 WP 组 / 12 条 issue
    （WP-C 6 / WP-D 4 / WP-F 1 / WP-G 1）待迁移至 v4.1.0。
-   另加 WP-B 6 条 + WP-E #4626 1 条 + WP-H #4639 1 条，合计 **20**（见 §4.7）。
+   另加 WP-B 6 条 + WP-E #4626 1 条 = 19 条（WP-H #4639 已于 2026-11-26 复验 FIXED
+   并移出待办，见 §4.10；总计见 §4.7）。
 
 4. **v4.0.0 STAGE.yaml SSOT contradiction**（DRAFT vs GA_GATE_REPORT.md 声明
    GA CONDITIONAL PASS）— governance gap，待人工决策。
@@ -78,13 +79,14 @@
 
 ## 4. WP-A..G detailed backlog (v4.1.0 scope)
 
-The following 20 issues are in v4.1.0 scope. 12 were **deferred** from
+The following 19 issues are in v4.1.0 scope. 12 were **deferred** from
 v4.0.0 to v4.0.1 (now v4.1.0) via `docs/releases/v4.0.0/WP_LEGACY_TRIAGE.md`
 §Detailed Status (§4.1–§4.4 below); 6 WP-B + 1 WP-E (#4626) are **carry-forward
-completions** of partial work; 1 (#4639) is the WP-H v4.1-targeted item.
+completions** of partial work.
 The 4 WP-A items (§4.0) were **re-opened** 2026-09-30 and **re-verified
 fixed 2026-11-26** — they are kept in §4.0 for traceability but are **not
-counted** in the backlog any more.
+counted** in the backlog any more. The WP-H item #4639 (§4.10) was **re-verified
+fixed 2026-11-26** as well and is likewise no longer counted.
 
 > **计数口径修正**（2026-09-30）：本节原写 "The following 18 issues"，
 > 与 §4.7 汇总的 20 不自洽（12 + 6 + 1 + 1 = 20）。已订正为 20 并标明构成。
@@ -104,6 +106,12 @@ counted** in the backlog any more.
 > 同步修订 `STAGE.yaml` `legacy_chain_audit_2026_09_30.false_done_wp_a`、
 > `FEATURE_MATRIX.md` P-01/P-03、`EVALUATION_REPORT.md` D6/D8、
 > `VERSION_PLAN.md` §1。
+>
+> **2026-11-26 第四次修正**：WP-H #4639 复验为 FIXED（§4.10），**移出待办**，
+> 总数 20 → **19**。同时 `DEFECTS_AND_ISSUES.md` 的 P1-03 拆成 7 个按 WP 分组的
+> 子项（P1-03a…P1-03g），逐组跟踪销账。依据：
+> `docs/releases/v4.1.0/evidence/wp-h-reverify-2026-11-26/wp_h_reverify.txt`
+> (sha256 `6848949dd58c795e6813fbd1875f4ce8883efa4ef5aa1edf0b1b6a343e716692`)。
 
 ### 4.0 WP-A — Parser legacy (4 issues, RE-OPENED 2026-09-30 → RE-VERIFIED FIXED 2026-11-26)
 
@@ -270,12 +278,12 @@ Per `CLAIM_DOWNGRADE_MANIFEST.md §3.8` (Cross-model transaction V400-05):
 | WP-G Type / Comparison | 1 |
 | WP-B completion | 6 |
 | WP-E completion (#4626) | 1 |
-| WP-H #4639 (carried from v4.0.0) | 1 |
-| **Total** | **20** |
+| **Total** | **19** |
 
 > 计数沿革：18 → 20（2026-09-30 第一次修正）→ 24（2026-09-30 第二次修正，
-> 因 WP-A 4 条回填）→ **20**（2026-11-26 第三次修正：WP-A 4 条复验为 FIXED，
-> 移出待办；§4.0 保留可追溯记录，小节编号不动）。
+> 因 WP-A 4 条回填）→ 20（2026-11-26 第三次修正：WP-A 4 条复验为 FIXED，
+> 移出待办；§4.0 保留可追溯记录，小节编号不动）→ **19**（2026-11-26 第四次修正：
+> WP-H #4639 复验为 FIXED，移出待办；§4.10 保留记录，编号不动）。
 > 2026-09-30 提到的门禁债 `UNREG-IGNORE-WP-A`（`wp_a_legacy.rs:68` 的
 > `#[ignore]` 未登记）**已于 2026-10-08 消解**：该 `#[ignore]` 随块注释支持
 > 一并移除，registry 以 `resolved_removed_ignores` 记录，故不再计入本表。
@@ -355,6 +363,26 @@ B2.2"——整理重复实现时顺带暴露出来的。
 修前 5 例全红（`flush_parallel_persists_one_table: left: 0, right: 2`），
 修后全绿。其中一例断言"表增长后写 delta 而非重写基础快照"，同时校验内容与
 mtime，重写无法蒙混过关。
+
+### 4.10 WP-H — #4639 RIGHT / FULL OUTER JOIN 语义（复验 FIXED 2026-11-26）
+
+> **为什么放在这里**：WP-H 是 v4.1.0 台账里最后一条 legacy backlog（见 §1.2 与
+> §4.7）。2026-09-30 的分诊快照把它记成「#4639 to v4.1 / Own in v4.1.0」，但
+> **Gitea 上该 issue 早在 2026-09-05 就已 closed**（"closing as already-fixed"，
+> 附实现位置与两条回归测试）。2026-11-26 实跑复验确认：过期的是**记录**，不是代码。
+>
+> 依据：`docs/releases/v4.1.0/evidence/wp-h-reverify-2026-11-26/wp_h_reverify.txt`
+> (sha256 `6848949dd58c795e6813fbd1875f4ce8883efa4ef5aa1edf0b1b6a343e716692`)
+
+| Issue | Title | Gitea state | 复验结论 | Status | v4.1.0 plan |
+|---|---|---|---|---|---|
+| #4639 | RIGHT JOIN / FULL OUTER JOIN 退化为 INNER JOIN | closed 2026-09-05T13:42:25Z（openclaw: "closing as already-fixed"） | ✅ **已修复** — `cargo test --test multi_join_test` 7/7 绿（含 `test_right_join_preserves_right_rows`、`test_full_outer_join_preserves_both_sides`）；issue 原始复现逐条比对：LEFT 3 行 / RIGHT 2 行（无 bob）/ FULL OUTER 3 行，与 issue 期望完全一致；实现见 `src/engine_select.rs`（hash-join 臂与 ON 表达式臂均对 Right/Full 补 NULL），planner 有 `JoinType::Right` / `JoinType::Full`，optimizer 无 Right/Full→Inner 改写规则 | **FIXED**（2026-11-26 复验） | 无（已闭环） |
+
+**处置**：保持 closed，不做任何状态变更；WP-H 从 v4.1.0 待办移出（backlog 20 → 19）。
+**台账同步**：`DEFECTS_AND_ISSUES.md` P1-03 拆为 7 个 WP 子项，其中 P1-03g
+（WP-H）销账；`LEGACY_ISSUES.md` WP-H 行、`STAGE.yaml` `wp_h_v313_defer` /
+`phase_1_alpha_status.v410_09…`、`FEATURE_MATRIX.md` P-03、`EVALUATION_REPORT.md` D8、
+`FEATURE_CHECKLIST.md`、`GA_RELEASE_TIMELINE.md`、`VERSION_PLAN.md` §1 同步修订。
 
 ## 5. Alpha→Beta 整改计划（2026-10-08）
 
