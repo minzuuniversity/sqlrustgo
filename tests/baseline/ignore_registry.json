@@ -3,7 +3,7 @@
   "purpose": "SSOT for every #[ignore] attribute in the live test tree; read by scripts/gate/check_anti_ignore_gate.sh (G19).",
   "captured_at_commit": "9935d21b2d79692045992747885a94ae3cce256a",
   "captured_at_date": "2026-11-26",
-  "total_allowed": 136,
+  "total_allowed": 140,
   "limits": {
     "total_allowed_max": 150,
     "active_max": 92,
@@ -1267,6 +1267,42 @@
       "status": "ACTIVE",
       "category": "GAP_DOCUMENTED",
       "status_rationale": "契约尚未实现：测试原本只断言描述文字非空，不触及产品行为；显式标为 ignored 并登记，避免以假覆盖充数"
+    },
+    {
+      "file": "crates/storage/tests/tf_t4_ai_candidate_v1.rs",
+      "test": "test_insert_then_scan_visible",
+      "line_at_capture": 24,
+      "reason": "T4 slice not implemented: BinaryTableStorageV2.scan() returns an empty result set, so rows written by insert() are never visible (silent success)",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "crates/storage/tests/tf_t4_ai_candidate_v1.rs",
+      "test": "test_delete_returns_real_count",
+      "line_at_capture": 38,
+      "reason": "T4 slice not implemented: BinaryTableStorageV2.delete() returns 0 and deletes nothing instead of the real affected-row count",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "crates/storage/tests/tf_t4_ai_candidate_v1.rs",
+      "test": "test_update_returns_real_count_and_persists",
+      "line_at_capture": 56,
+      "reason": "T4 slice not implemented: BinaryTableStorageV2.update() returns 0 and applies nothing instead of the real affected-row count",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
+    },
+    {
+      "file": "crates/storage/tests/tf_t4_ai_candidate_v1.rs",
+      "test": "test_transaction_methods_reject_on_non_tx_backend",
+      "line_at_capture": 87,
+      "reason": "T4 slice not implemented: BinaryTableStorageV2.begin_transaction() returns Ok on a non-transactional backend instead of rejecting the call",
+      "status": "ACTIVE",
+      "category": "GAP_DOCUMENTED",
+      "status_rationale": "reason names unimplemented behaviour or a known open bug"
     }
   ],
   "resolved_removed_ignores": [

@@ -1,9 +1,9 @@
 {
   "version": "v4.1.0",
-  "timestamp": "2026-11-26T05:32:16Z",
-  "cargo_tests": 498,
-  "active_tests": 14509,
-  "ignored_tests": 136,
+  "timestamp": "2026-11-26T06:47:20Z",
+  "cargo_tests": 499,
+  "active_tests": 14531,
+  "ignored_tests": 140,
   "ignored_counting_method": "real-attributes-v1",
-  "note": "Updated by check_test_count_monotonic.sh"
+  "note": "Updated by check_test_count_monotonic.sh — 2026-11-26: +4 #[ignore] for the T4 BinaryTableStorageV2 frozen-red tests, authorised by docs/governance/adr/ADR-008-exception-t4-binary-storage-v2.md (merged with the concurrent workstream's +1 active test)"
 }

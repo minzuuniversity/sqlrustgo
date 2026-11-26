@@ -1,7 +1,7 @@
 {
   "version": 1,
   "scope": "docs/releases/v4.1.0",
-  "updated_at": "2026-11-12T11:16:36Z",
+  "updated_at": "2026-11-26T06:50:00Z",
   "note": "Known-broken documentation pointers in the release line. The gate fails on any pointer that is NOT listed here. Each entry is a reviewable debt item, not a suppression: the category says why the pointer is broken (the path was moved by the crates/ -> src/ flattening, the artifact was planned but never committed, or the target lives on another branch only). 每条 entry 带一个 category（分类）与 reason（为什么它仍然是债）；「该修的」应当直接改文档指向真实文件，只有确实修不了的才登记进来。",
   "entries": [
     {
@@ -217,6 +217,12 @@
       "target": "src/transaction/manager.rs",
       "category": "path_moved_after_restructure",
       "reason": "同上：v1.0.0 时期的真实路径，当前文件在 crates/transaction/src/manager.rs。历史架构审计不改写"
+    },
+    {
+      "file": "refactor-r1/R1_CONTRACT_DESIGN_NOTES.md",
+      "target": "crates/executor/src/trigger/tests.rs",
+      "category": "planned_artifact_never_committed",
+      "reason": "R1 设计说明里写的是「把 mod tests 移到 crates/executor/src/trigger/tests.rs」这条**计划**路径；该文件尚未创建 ⇒ 属计划中的产物，不是已存在的文件"
     }
   ]
 }
