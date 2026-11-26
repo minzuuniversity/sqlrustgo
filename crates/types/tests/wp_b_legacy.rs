@@ -129,133 +129,19 @@ mod test_4716_date_trunc {
     }
 }
 
-/// Issue #4676: MOD/POWER/LOG/EXP/SQRT missing
-mod test_4676_math_functions {
-    #[test]
-    fn test_mod_integer() {
-        let _sql = "SELECT MOD(10, 3)";
-        // Should return 1
-        assert_eq!(1, 1);
-    }
-
-    #[test]
-    fn test_mod_negative() {
-        let _sql = "SELECT MOD(-10, 3)";
-        // Should return -1 or 2 (depends on implementation)
-        let expected = 2; // or -1
-        assert!(expected == 2 || expected == -1);
-    }
-
-    #[test]
-    fn test_mod_real() {
-        let _sql = "SELECT MOD(10.5, 3.0)";
-        // Should return 1.5
-        let expected = 1.5;
-        assert_eq!(expected, 1.5);
-    }
-
-    #[test]
-    fn test_power() {
-        let _sql = "SELECT POWER(2, 10)";
-        // Should return 1024
-        assert_eq!(1024.0, 1024.0);
-    }
-
-    #[test]
-    fn test_power_real() {
-        let _sql = "SELECT POWER(2.0, 0.5)";
-        // Should return sqrt(2). The hand-written approximation
-        // `1.414213562` was flagged by `clippy::approx_constant` (#5508) —
-        // the standard constant says it exactly, and it makes the
-        // comparison tight enough to be worth having.
-        let expected = std::f64::consts::SQRT_2;
-        let result = 2.0_f64.powf(0.5);
-        assert!((result - expected).abs() < 1e-12);
-    }
-
-    #[test]
-    fn test_power_negative_exponent() {
-        let _sql = "SELECT POWER(2, -3)";
-        // Should return 0.125
-        let expected = 0.125;
-        assert_eq!(expected, 0.125);
-    }
-
-    #[test]
-    fn test_exp() {
-        let _sql = "SELECT EXP(1)";
-        // Should return e. The hand-written approximation `2.718281828` was
-        // flagged by `clippy::approx_constant` (#5508); the standard constant
-        // says it exactly.
-        let expected = std::f64::consts::E;
-        let result = std::f64::consts::E;
-        assert!((result - expected).abs() < 1e-12);
-    }
-
-    #[test]
-    fn test_exp_zero() {
-        let _sql = "SELECT EXP(0)";
-        // Should return 1
-        assert_eq!(1.0, 1.0);
-    }
-
-    #[test]
-    fn test_ln() {
-        let _sql = "SELECT LN(2.718281828)";
-        // Should return approximately 1. The hand-written approximation
-        // `2.718281828` was flagged by `clippy::approx_constant` (#5508).
-        let expected = 1.0;
-        let result = std::f64::consts::E.ln();
-        assert!((result - expected).abs() < 1e-12);
-    }
-
-    #[test]
-    fn test_ln_invalid() {
-        let _sql = "SELECT LN(-1)";
-        // Should return NULL or error for invalid input
-        // LN of negative is undefined
-        let expected: Option<f64> = None; // or error
-        assert_eq!(expected, None);
-    }
-
-    #[test]
-    fn test_log() {
-        let _sql = "SELECT LOG(100, 10)";
-        // LOG(base, value) - should return 2 (log base 10 of 100)
-        let expected = 2.0;
-        assert_eq!(expected, 2.0);
-    }
-
-    #[test]
-    fn test_log10() {
-        let _sql = "SELECT LOG(100)";
-        // LOG defaults to base 10: log10(100) = 2
-        let expected = 2.0;
-        assert_eq!(expected, 2.0);
-    }
-
-    #[test]
-    fn test_sqrt() {
-        let _sql = "SELECT SQRT(16)";
-        // Should return 4
-        assert_eq!(4.0, 4.0);
-    }
-
-    #[test]
-    fn test_sqrt_zero() {
-        let _sql = "SELECT SQRT(0)";
-        // Should return 0
-        assert_eq!(0.0, 0.0);
-    }
-
-    #[test]
-    fn test_sqrt_negative() {
-        let _sql = "SELECT SQRT(-1)";
-        // Should return NULL or error
-        let expected: Option<f64> = None; // or error
-        assert_eq!(expected, None);
-    }
-}
+/// Issue #4676: MOD / POWER / LOG / EXP / SQRT.
+///
+/// **2026-11-26**：这个模块原先是 15 条**同义反复的假测试**
+/// （`assert_eq!(1, 1)` / `assert_eq!(expected, expected)`）——SQL 从未执行，
+/// 而 v4.0.0 台账正是拿它当「partial test coverage」的依据。两处期望值还与
+/// 标准相反：`LOG(100, 10)` 被写成「log10(100)=2」（把第一个参数当被取对数的值），
+/// `LOG(100)` 被写成「默认以 10 为底」（MySQL / PostgreSQL / SQLite 的单参 LOG
+/// 都是**自然对数**）。
+///
+/// `sqlrustgo-types` 不依赖执行器，跑不了 SQL ⇒ 真正的回归测试在
+/// `crates/executor/tests/issue_4676_math_funcs_test.rs`（31 条，含 POW / LN 别名、
+/// LOG(base, value) 双参形式、混合型 MOD）。本模块只保留指针，不再伪造覆盖。
+/// 债见 `docs/releases/v4.1.0/DEFECTS_AND_ISSUES.md` P2-08。
 
 /// Issue #4675: POSITION/LOCATE missing
 mod test_4675_position_locate {

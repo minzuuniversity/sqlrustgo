@@ -69,7 +69,8 @@
    移出待办**，只余 WP-C 的 **#4669** 1 条（函数索引 / 部分索引两个子项）。
    WP-B 6 条 + WP-E #4626 1 条：#4626 已修好移出；WP-B 余 **#4716 / #4676** 2 条。
    WP-E 的另一条 **#4847** 此前未被 §4.7 计入，2026-11-26 复核它仍是 partial ⇒ 补入。
-   合计待办 **4 条**（总计见 §4.7，逐条判定见 §4.11）。
+   WP-B 的 **#4676** 已于 2026-11-26 实现闭环（POW/LN 别名、LOG(base,value)、混合型 MOD）。
+   合计待办 **3 条**（总计见 §4.7，逐条判定见 §4.11）。
 
 4. **v4.0.0 STAGE.yaml SSOT contradiction**（DRAFT vs GA_GATE_REPORT.md 声明
    GA CONDITIONAL PASS）— governance gap，待人工决策。
@@ -81,7 +82,7 @@
 
 ## 4. WP-A..G detailed backlog (v4.1.0 scope)
 
-The following **4** issues are in v4.1.0 scope. The original list was 24 items:
+The following **3** issues are in v4.1.0 scope. The original list was 24 items:
 12 **deferred** from v4.0.0 to v4.0.1 (now v4.1.0) via
 `docs/releases/v4.0.0/WP_LEGACY_TRIAGE.md` §Detailed Status (§4.1–§4.4 below);
 6 WP-B + 1 WP-E (#4626) are **carry-forward completions** of partial work.
@@ -89,11 +90,12 @@ The 4 WP-A items (§4.0) were **re-opened** 2026-09-30 and **re-verified fixed
 2026-11-26**; the WP-H item #4639 (§4.10) was re-verified fixed the same day;
 and 16 further items (WP-B/C/D/E/F/G) were re-verified on 2026-11-26 (§4.11).
 All of them stay in their sections for traceability but are **not counted** in
-the backlog any more. What remains is **4 items**: **#4669** (WP-C), **#4716**
-and **#4676** (WP-B) — the three whose defects are still reproducible, all
-**re-opened on Gitea** with the measured evidence — plus **#4847** (WP-E), which
-is still *partial* (the wire-side path was never implemented) and had not been
-counted in §4.7 at all.
+the backlog any more. What remains is **3 items**: **#4669** (WP-C) and **#4716**
+(WP-B) — the two whose defects are still reproducible, both **re-opened on
+Gitea** with the measured evidence — plus **#4847** (WP-E), which is still
+*partial* (the wire-side path was never implemented) and had not been counted
+in §4.7 at all. (**#4676** was in the same set until 2026-11-26, when it was
+implemented and closed.)
 
 > **计数口径修正**（2026-09-30）：本节原写 "The following 18 issues"，
 > 与 §4.7 汇总的 20 不自洽（12 + 6 + 1 + 1 = 20）。已订正为 20 并标明构成。
@@ -274,7 +276,7 @@ v4.1.0 should own the executor-side closure.
 | #4675 | **FIXED** | `POSITION('bc' IN 'abcd')` → 2；`LOCATE('bc','abcd',2)` → 2；16 条 E2E 绿 |
 | #4670 | **FIXED** | `MD5/SHA1/SHA2/UNHEX/CEIL/FLOOR/TRUNCATE/HEX` 全部实装且实测正确（**但哈希类零回归覆盖**） |
 | #4716 | ❌ **NOT FIXED** | `DATE_TRUNC` 已有真实计算，但缺 millennium/century/decade/microsecond；未知单位静默返回 NULL（spec 要求抛错）；输出格式与 spec 不符 —— **已重开** |
-| #4676 | ❌ **NOT FIXED** | 主体 5 个函数已修且 16 条 E2E 绿，但 `POW` / `LN` 别名与 `LOG(base,x)` 双参、混合型 `MOD` 仍为 NULL —— **已重开** |
+| #4676 | ✅ **FIXED**（2026-11-26 实现） | 补齐 `POW` / `LN` 别名、`LOG(base,value)` 双参形式、混合型 `MOD`；`issue_4676_math_funcs_test.rs` 31 条全绿 |
 
 ### 4.6 WP-E completion (carry from v4.0.1 partial)
 
@@ -298,9 +300,9 @@ Per `CLAIM_DOWNGRADE_MANIFEST.md §3.8` (Cross-model transaction V400-05):
 | Category | Count |
 |---|---|
 | WP-C DDL / Integrity（#4669 函数索引 / 部分索引两个子项） | 1 |
-| WP-B completion（#4716 DATE_TRUNC、#4676 数学函数别名） | 2 |
+| WP-B completion（#4716 DATE_TRUNC 单位/格式/spec） | 1 |
 | WP-E 其余项（#4847，partial，此前未计入） | 1 |
-| **Total** | **4** |
+| **Total** | **3** |
 
 > 计数沿革：18 → 20（2026-09-30 第一次修正）→ 24（2026-09-30 第二次修正，
 > 因 WP-A 4 条回填）→ 20（2026-11-26 第三次修正：WP-A 4 条复验为 FIXED，
@@ -309,6 +311,8 @@ Per `CLAIM_DOWNGRADE_MANIFEST.md §3.8` (Cross-model transaction V400-05):
 > （2026-11-26 第五次修正：WP-B/C/D/E/F/G 逐条实跑复验，16 条 FIXED 移出待办，
 > 3 条缺陷仍可复现已重开；逐条判定见 §4.11）。**2026-11-26 第六次修正**：
 > WP-E 的 #4847 此前未计入本表（复核后确认仍 partial），补入 ⇒ 总数 3 → **4**。
+> **2026-11-26 第七次修正**：#4676 当日实现闭环（POW/LN 别名、LOG(base,value)、
+> 混合型 MOD）⇒ 总数 4 → **3**。
 > 2026-09-30 提到的门禁债 `UNREG-IGNORE-WP-A`（`wp_a_legacy.rs:68` 的
 > `#[ignore]` 未登记）**已于 2026-10-08 消解**：该 `#[ignore]` 随块注释支持
 > 一并移除，registry 以 `resolved_removed_ignores` 记录，故不再计入本表。
@@ -437,11 +441,12 @@ mtime，重写无法蒙混过关。
 | #4670 | B | ✅ FIXED | `MD5/SHA1/SHA2/UNHEX/CEIL/FLOOR/TRUNCATE/HEX` 实测全部正确 |
 | #4626 | E | ✅ FIXED | `issue_4626_select_for_update_rollback_test` 3/3 |
 | #4716 | B | ❌ **NOT FIXED（已重开）** | `DATE_TRUNC` 单位集缺 4 个；未知单位静默 NULL（spec 要求抛错）；输出格式与 spec 不符 |
-| #4676 | B | ❌ **NOT FIXED（已重开）** | `POW`/`LN` 别名 → NULL；`LOG(100,10)` → 4.605（应 2）；`MOD(10.5,3)` → NULL |
+| #4676 | B | ✅ **FIXED（2026-11-26 实现）** | 实现补齐 `POW`/`LN` 别名、`LOG(base,value)` 双参、混合型 `MOD`；`issue_4676_math_funcs_test.rs` 31 条绿；`LOG(100,10)=0.5`（标准为 base-first，与 v4.0.0 台账那条假测试写的 2 相反） |
 
 **Gitea 处置**：16 条保持 `closed` 并留复验评论；3 条（#4669 / #4716 / #4676）**已重开**，
 评论附实测证据。**backlog 19 → 3**；另有 **#4847**（WP-E）复核后仍是 partial 且此前
-未计入计数 ⇒ 补入，**最终 backlog = 4**。
+未计入计数 ⇒ 补入 ⇒ 当时 backlog = 4。**2026-11-26 当日 #4676 已实现闭环**（见上）
+⇒ **backlog 4 → 3**。
 
 **本轮同时暴露的账外债（需另立条目）**
 
