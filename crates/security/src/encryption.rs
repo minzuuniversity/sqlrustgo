@@ -49,11 +49,18 @@ impl Encryptor {
     pub fn encrypt(&self, plaintext: &[u8]) -> Result<Vec<u8>, EncryptionError> {
         let mut nonce_bytes = [0u8; 12];
         rand::thread_rng().fill_bytes(&mut nonce_bytes);
-        let nonce = Nonce::from_slice(&nonce_bytes);
+        // aes-gcm 0.11（aead 0.6）把 `Nonce::from_slice` 标成了 deprecated ——
+        // 它仍能编译，但会触发 `deprecated` 警告，而本仓的 clippy 门禁是
+        // `-D warnings` ⇒ 必须改用 `TryFrom`。
+        //
+        // 长度是**静态**的：AES-GCM 的 nonce 恒为 12 字节 —— 加密路径的
+        // `nonce_bytes` 是 `[u8; 12]`，解密路径已由上面的 `data.len() < 12`
+        // 守卫 ⇒ 这里的转换**不可能失败**。
+        let nonce = Nonce::try_from(&nonce_bytes[..]).expect("AES-GCM nonce is 12 bytes");
 
         let ciphertext = self
             .cipher
-            .encrypt(nonce, plaintext)
+            .encrypt(&nonce, plaintext)
             .map_err(|_| EncryptionError::EncryptionFailed)?;
 
         let mut result = Vec::with_capacity(12 + ciphertext.len());
@@ -67,11 +74,11 @@ impl Encryptor {
             return Err(EncryptionError::DecryptionFailed);
         }
 
-        let nonce = Nonce::from_slice(&data[..12]);
+        let nonce = Nonce::try_from(&data[..12]).expect("AES-GCM nonce is 12 bytes");
         let ciphertext = &data[12..];
 
         self.cipher
-            .decrypt(nonce, ciphertext)
+            .decrypt(&nonce, ciphertext)
             .map_err(|_| EncryptionError::DecryptionFailed)
     }
 }
@@ -242,6 +249,46 @@ mod tests {
         let decrypted = encryptor.decrypt(&ciphertext).unwrap();
 
         assert_eq!(plaintext.to_vec(), decrypted);
+    }
+
+    /// **密文格式的黄金向量** —— 锁住「nonce ‖ ciphertext ‖ tag」这个布局。
+    ///
+    /// 为什么需要它：aes-gcm 0.10 → 0.11 是一次**主版本**升级（aead 0.5 → 0.6，
+    /// 底层从 `generic-array` 换成 `hybrid-array`）。仓库此前**没有任何**跨版本的
+    /// 密文兼容证据 —— 只有往返测试（同一个版本里 encrypt→decrypt），而往返测试
+    /// **证明不了**「用 0.11 写的密文能被 0.10 读出来」。
+    ///
+    /// 这条向量是在 **aes-gcm 0.10 与 0.11 上分别实跑**得到的，两边输出
+    /// **逐字节相同** ⇒ 该升级是**线上兼容**的。
+    /// 以后再动 aes-gcm（或任何影响密文布局的东西），这条测试会立刻变红。
+    #[test]
+    fn test_ciphertext_format_golden_vector() {
+        // 固定的 key / nonce / 明文 ⇒ 输出确定。
+        const KEY: [u8; 32] = [0x42u8; 32];
+        const NONCE: [u8; 12] = [0x24u8; 12];
+        const PLAINTEXT: &[u8] = b"sqlrustgo golden vector probe";
+        const EXPECTED_HEX: &str = concat!(
+            "242424242424242424242424", // nonce（12 字节）
+            "66e0a8339cb5b25949c845c5d156f6c8",
+            "4c8d5613c2c4224dc0d6a33833b0591e",
+            "bcf924e6989dc4cacc9c348250", // ciphertext ‖ tag
+        );
+
+        let cipher = Aes256Gcm::new_from_slice(&KEY).expect("32-byte key");
+        let nonce = Nonce::try_from(&NONCE[..]).expect("AES-GCM nonce is 12 bytes");
+        let ct = cipher.encrypt(&nonce, PLAINTEXT).expect("encrypt");
+
+        let mut wire = NONCE.to_vec();
+        wire.extend_from_slice(&ct);
+        let hex: String = wire.iter().map(|b| format!("{:02x}", b)).collect();
+        assert_eq!(
+            hex, EXPECTED_HEX,
+            "密文格式变了（aes-gcm 升级不得改变线上密文布局）"
+        );
+
+        // 再验一次：同一条密文能被解回原文（布局与解密路径自洽）。
+        let back = cipher.decrypt(&nonce, ct.as_ref()).expect("decrypt");
+        assert_eq!(back, PLAINTEXT);
     }
 
     #[test]
