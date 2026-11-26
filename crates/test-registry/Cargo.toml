@@ -15,7 +15,7 @@ path = "src/bin/test-registry-cli.rs"
 serde = { version = "1.0", features = ["derive"] }
 toml = "0.8"
 chrono = { version = "0.4", features = ["serde"] }
-thiserror = "1.0"
+thiserror = "2.0"
 parking_lot = "0.12"
 
 [dev-dependencies]
