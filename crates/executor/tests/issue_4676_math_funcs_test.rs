@@ -212,3 +212,141 @@ fn table_column_usage() {
     );
     assert!((get_float(&r, 2, 3) - 10.0).abs() < 1e-10, "SQRT(100)=10.0");
 }
+
+// ---------------------------------------------------------------------------
+// 2026-11-26 (#4676 re-verification): the issue text names POW and LN as
+// aliases of POWER and LOG, LOG(base, value) as the two-argument form, and
+// MOD over mixed integer/float operands. All three were missing.
+// ---------------------------------------------------------------------------
+
+#[test]
+fn pow_alias_matches_power() {
+    let mut e = engine();
+    let r = e.execute("SELECT POW(2, 3)").unwrap();
+    assert!((first_float(&r) - 8.0).abs() < 1e-10, "POW(2,3) = 8.0");
+}
+
+#[test]
+fn pow_alias_half_exponent() {
+    let mut e = engine();
+    let r = e.execute("SELECT POW(2.0, 0.5)").unwrap();
+    let v = first_float(&r);
+    assert!(
+        (v - std::f64::consts::SQRT_2).abs() < 1e-10,
+        "POW(2.0,0.5) ≈ 1.414..., got {}",
+        v
+    );
+}
+
+#[test]
+fn pow_alias_negative_exponent() {
+    let mut e = engine();
+    let r = e.execute("SELECT POW(2, -3)").unwrap();
+    assert!((first_float(&r) - 0.125).abs() < 1e-12, "POW(2,-3) = 0.125");
+}
+
+#[test]
+fn pow_alias_with_null_argument_returns_null() {
+    let mut e = engine();
+    let r = e.execute("SELECT POW(NULL, 2)").unwrap();
+    assert!(is_null(&r), "POW(NULL,2) must be NULL");
+}
+
+#[test]
+fn ln_alias_is_natural_log() {
+    let mut e = engine();
+    let r = e.execute("SELECT LN(2.718281828)").unwrap();
+    let v = first_float(&r);
+    assert!((v - 1.0).abs() < 0.0001, "LN(e) ≈ 1.0, got {}", v);
+}
+
+#[test]
+fn ln_of_one_is_zero() {
+    let mut e = engine();
+    let r = e.execute("SELECT LN(1)").unwrap();
+    assert!((first_float(&r) - 0.0).abs() < 1e-12, "LN(1) = 0.0");
+}
+
+#[test]
+fn ln_of_zero_returns_null() {
+    let mut e = engine();
+    let r = e.execute("SELECT LN(0)").unwrap();
+    assert!(is_null(&r), "LN(0) must be NULL (domain error)");
+}
+
+#[test]
+fn ln_with_two_arguments_returns_null() {
+    let mut e = engine();
+    let r = e.execute("SELECT LN(2, 3)").unwrap();
+    assert!(is_null(&r), "LN takes exactly one argument");
+}
+
+#[test]
+fn log_two_arg_is_base_log() {
+    // MySQL / PostgreSQL / SQLite all read the two-argument form as
+    // LOG(base, value) = log_base(value).
+    let mut e = engine();
+    let r = e.execute("SELECT LOG(10, 100)").unwrap();
+    assert!((first_float(&r) - 2.0).abs() < 1e-10, "LOG(10,100) = 2.0");
+}
+
+#[test]
+fn log_two_arg_with_fractional_base() {
+    let mut e = engine();
+    let r = e.execute("SELECT LOG(2, 8)").unwrap();
+    assert!((first_float(&r) - 3.0).abs() < 1e-10, "LOG(2,8) = 3.0");
+}
+
+#[test]
+fn log_two_arg_invalid_base_returns_null() {
+    let mut e = engine();
+    for sql in &[
+        "SELECT LOG(1, 10)",
+        "SELECT LOG(0, 10)",
+        "SELECT LOG(-2, 10)",
+    ] {
+        let r = e.execute(sql).unwrap();
+        assert!(is_null(&r), "{} must be NULL (invalid base)", sql);
+    }
+}
+
+#[test]
+fn log_two_arg_non_positive_value_returns_null() {
+    let mut e = engine();
+    for sql in &["SELECT LOG(10, 0)", "SELECT LOG(10, -5)"] {
+        let r = e.execute(sql).unwrap();
+        assert!(is_null(&r), "{} must be NULL (domain error)", sql);
+    }
+}
+
+#[test]
+fn mod_mixed_float_and_integer_operands() {
+    let mut e = engine();
+    let r = e.execute("SELECT MOD(10.5, 3)").unwrap();
+    assert!((first_float(&r) - 1.5).abs() < 1e-12, "MOD(10.5,3) = 1.5");
+
+    let mut e = engine();
+    let r = e.execute("SELECT MOD(10, 3.0)").unwrap();
+    assert!((first_float(&r) - 1.0).abs() < 1e-12, "MOD(10,3.0) = 1.0");
+}
+
+#[test]
+fn mod_negative_dividend_keeps_sign() {
+    let mut e = engine();
+    let r = e.execute("SELECT MOD(-10, 3)").unwrap();
+    assert!((first_float(&r) + 1.0).abs() < 1e-12, "MOD(-10,3) = -1");
+
+    let mut e = engine();
+    let r = e.execute("SELECT MOD(-10.5, 3)").unwrap();
+    assert!((first_float(&r) + 1.5).abs() < 1e-12, "MOD(-10.5,3) = -1.5");
+}
+
+#[test]
+fn mod_min_int_by_minus_one_does_not_panic() {
+    let mut e = engine();
+    let r = e.execute("SELECT MOD(-9223372036854775808, -1)").unwrap();
+    assert!(
+        (first_float(&r) - 0.0).abs() < 1e-12,
+        "MOD(i64::MIN, -1) = 0 (must not panic)"
+    );
+}

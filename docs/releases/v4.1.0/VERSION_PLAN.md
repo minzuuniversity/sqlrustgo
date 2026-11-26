@@ -26,8 +26,9 @@ active development trunk. v4.1.0 carries v4.0.0 forward through:
      LEGACY_LEDGER §2.1 / ISSUES_PLAN §4.0) + ~~WP-H #4639~~ — **RESOLVED
      2026-11-26** (re-verified fixed; see ISSUES_PLAN §4.10) + WP-C/D/F/G legacy
      issues deferred from v4.0.0 — 4 WP groups / 12 issues
-     (see ISSUES_PLAN.md §4; total v4.1.0 backlog = **4** issues: #4669 #4716 #4676 #4847 —
-      the other 21 legacy items were re-verified fixed on 2026-11-26)
+     (see ISSUES_PLAN.md §4; total v4.1.0 backlog = **3** issues: #4669 #4716 #4847 —
+      22 legacy items were re-verified fixed on 2026-11-26, #4676 among them
+      implemented and closed)
    - ~~V400-09 168h SOAK FINAL_REPORT~~ — **RESOLVED 2026-09-30**:
      `docs/releases/v4.0.0/V400_09_168H_SOAK_FINAL_REPORT.md` exists
    - ~~3 v4.0.0 alpha gate FAILs~~ — **CLEARED 2026-09-30** by real gate runs

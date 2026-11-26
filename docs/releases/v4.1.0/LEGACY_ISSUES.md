@@ -14,7 +14,7 @@ any v4.1.0-specific legacy items introduced since the v4.0.0 GA gate.
 | WP | Issues | v4.0.0 decision | v4.1.0 action |
 |---|---|---|---|
 | WP-A | parser legacy #4708 #4696 #4710 #4720 | DONE | None (inherited DONE) |
-| WP-B | types #4721 #4674 #4716 #4676 #4675 #4670 | partial → **4/6 FIXED 2026-11-26** | 余 #4716（DATE_TRUNC 单位/格式/spec）、#4676（POW/LN 别名、LOG(base,x)、混合型 MOD）——**已重开** |
+| WP-B | types #4721 #4674 #4716 #4676 #4675 #4670 | partial → **5/6 FIXED 2026-11-26**（#4676 当日实现闭环） | 余 #4716（DATE_TRUNC 单位/格式/spec）——**已重开** |
 | WP-C | DDL/integrity #4682 #4652 #4672 #4669 #4709 #4703 | deferred → **5/6 FIXED 2026-11-26** | 余 #4669 的函数索引与部分索引两个子项——**已重开** |
 | WP-D | joins #4668 #4656 #4649 #4636 | deferred → **4/4 FIXED 2026-11-26** | 全部闭环（`ISSUES_PLAN.md` §4.2） |
 | WP-E | transaction #4847 #4626 | partial via V400-05 → **#4626 FIXED 2026-11-26** | 余 #4847 仍 partial（wire 端每语句新建连接 ⇒ 显式事务无法跨语句存活） |

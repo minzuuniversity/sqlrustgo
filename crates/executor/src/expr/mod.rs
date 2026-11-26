@@ -1252,6 +1252,27 @@ fn to_i64(v: &Value) -> i64 {
     }
 }
 
+/// Issue #4676: numeric coercion **for the math builtins only**.
+///
+/// `to_f64` is the arithmetic coercion (text→number, boolean→0/1); the math
+/// builtins must not inherit it — MySQL returns NULL for a non-numeric
+/// argument of `MOD`/`POWER`/`LOG`/`LN`/`EXP`/`SQRT`, not a coerced zero.
+fn math_arg_f64(v: &Value) -> Option<f64> {
+    match v {
+        Value::Integer(n) => Some(*n as f64),
+        Value::Float(f) => Some(*f),
+        _ => None,
+    }
+}
+
+/// Issue #4676: natural logarithm with the SQL domain rule (x <= 0 → NULL).
+fn math_ln(v: &Value) -> Value {
+    match math_arg_f64(v) {
+        Some(x) if x > 0.0 => Value::Float(x.ln()),
+        _ => Value::Null,
+    }
+}
+
 /// V312-59-D / Issue #4572: explicit type coercion for CAST(... AS TYPE)
 /// and CONVERT(expr, TYPE). Returns the source value converted to the
 /// target type. The target type string is case-insensitive and accepts
@@ -1799,6 +1820,9 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
         }
         // V312-77 / Issue #4676: MOD / POWER / LOG / EXP / SQRT — previously fell
         // through to Value::Null. IEEE 754 f64 arithmetic; domain errors → NULL.
+        // 2026-11-26 (#4676 re-verification): the issue text names POW and LN as
+        // aliases of POWER and LOG, LOG(base, value) as the two-argument form,
+        // and MOD over mixed integer/float operands — all three were missing.
         "MOD" => {
             if args.len() < 2 {
                 return Value::Null;
@@ -1815,13 +1839,30 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
                     if *b == 0 {
                         Value::Null
                     } else {
-                        Value::Integer(a % b)
+                        // wrapping_rem: `i64::MIN % -1` panics in Rust; the
+                        // mathematical answer is 0.
+                        Value::Integer(a.wrapping_rem(*b))
+                    }
+                }
+                // Mixed operands: MOD() is defined on numbers, so 10.5 % 3 = 1.5.
+                (Value::Float(a), Value::Integer(b)) => {
+                    if *b == 0 {
+                        Value::Null
+                    } else {
+                        Value::Float(a % (*b as f64))
+                    }
+                }
+                (Value::Integer(a), Value::Float(b)) => {
+                    if *b == 0.0 {
+                        Value::Null
+                    } else {
+                        Value::Float((*a as f64) % *b)
                     }
                 }
                 _ => Value::Null,
             }
         }
-        "POWER" => {
+        "POWER" | "POW" => {
             if args.len() < 2 {
                 return Value::Null;
             }
@@ -1859,27 +1900,26 @@ pub fn eval_fn(name: &str, args: &[Value]) -> Value {
             }
         }
         "LOG" => {
-            if let Some(v) = args.first() {
-                match v {
-                    Value::Float(f) => {
-                        if *f <= 0.0 {
-                            Value::Null
-                        } else {
-                            Value::Float(f.ln())
-                        }
-                    }
-                    Value::Integer(i) => {
-                        if *i <= 0 {
-                            Value::Null
-                        } else {
-                            Value::Float((*i as f64).ln())
-                        }
+            // MySQL / PostgreSQL / SQLite all read the two-argument form as
+            // LOG(base, value) = log_base(value); the one-argument form is the
+            // natural logarithm.
+            match args.len() {
+                0 => Value::Null,
+                1 => math_ln(&args[0]),
+                _ => match (math_arg_f64(&args[0]), math_arg_f64(&args[1])) {
+                    (Some(base), Some(value)) if base > 0.0 && base != 1.0 && value > 0.0 => {
+                        Value::Float(value.ln() / base.ln())
                     }
                     _ => Value::Null,
-                }
-            } else {
-                Value::Null
+                },
             }
+        }
+        // LN(x) is the alias of the one-argument LOG (natural logarithm).
+        "LN" => {
+            if args.len() != 1 {
+                return Value::Null;
+            }
+            math_ln(&args[0])
         }
         "EXP" => {
             if let Some(v) = args.first() {
